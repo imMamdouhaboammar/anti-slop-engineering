@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-10-17
+
+### Added
+- **The Direct Payload & Zero Affordance Narration Invariant:** Codified a universal, general doctrine in `SKILL.md` (Operating Priority 12, Gate 3, Gate 5, Non-Negotiable Rules) and `AGENTS.md` (Directive 13) eradicating the entire class of meta-preambles, affordance narration, and ceremonial mechanical hand-holding. Mandates direct transition from domain headers to technical payloads (code, tables, media, schemas) with zero transitional conversational fluff, zero affordance coaching, and zero dual-language title-stacking.
+- **The Direct Payload & Affordance Principle in Engineering Judgment:** Added foundational trade-off guidance in `references/engineering-judgment.md` establishing that any sentence explaining a tool's mechanism instead of its domain value is pure cognitive debt.
+- **201st Anti-Pattern Catalog Entry (`references/anti-pattern-catalog.md`):**
+  - `REV-19 | Affordance narration, meta-preambles & mechanical hand-holding (The Over-Clarification Syndrome)`: Systematically diagnoses and remedies affordance narrations (explaining how to play videos, expand accordions, copy snippets), conversational preambles ("The following table outlines..."), bilingual title-stacking, and buzzword inflation for mundane artifacts.
+- **Automated Diff Guard Detection (`scripts/diff_guard.py`):**
+  - `META_PREAMBLE_AND_AFFORDANCE_NARRATION`: Generalized heuristic regex scanning markdown and documentation files to detect conversational preambles, affordance narrations ("click to expand", "watch without leaving page", "copy to clipboard"), and bilingual title-stacking (`English · عربي`).
+- **Comprehensive Unit Tests (`tests/test_diff_guard.py`):** Added tests covering affordance narration, conversational preambles, and clean direct payloads (all 16 unit tests passing).
+
 ## [0.2.0] - 2026-10-17
 
 ### Added

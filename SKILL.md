@@ -4,7 +4,7 @@ description: Prevent, detect, and repair AI coding slop and dirty engineering in
 author: Mamdouh Aboammar <mamdouhfces1997@gmail.com>
 license: MIT
 metadata:
-  version: "0.2.0"
+  version: "0.2.1"
   focus: "engineering-discipline"
   repository: "https://github.com/imMamdouhaboammar/anti-slop-engineering"
 ---
@@ -26,7 +26,7 @@ metadata:
 9. **Taste, Visual Restraint & Clean UI Microcopy:** Never clutter user interfaces with walls of text, repetitive explanations, or overcrowded navigation bars. Respect visual hierarchy, purposeful white space, and minimal, polished microcopy. Eliminate gratuitous widgets, stat pills, or icon clutter.
 10. **Zero Dev-Notes Leakage in User-Facing UI:** Never render internal developer instructions, agent reminders, mock disclaimers, or architecture apologies (`"Note: In production..."`, `"Mock data displayed"`, `"TODO: Add auth"`) into user-visible DOM/JSX. Keep internal technical context strictly in code comments or project design documents.
 11. **Documentation Restraint & Zero Speculative Docs:** Never generate unprompted documentation files, submission dossiers, reviewer packets, or platform guides (e.g. "Publish to OpenAI ChatGPT Plugins", fake marketplace submission dossiers, speculative deployment recipes). Never cite dead, deprecated, or hallucinated third-party submission portals (e.g. `platform.openai.com/plugins`). Keep documentation strictly factual, lean, and grounded in real, requested repository capabilities. Reject documentation file sprawl and ceremonial note callouts.
-12. **The Zero-Obviousness & Anti-Truism Doctrine:** Strictly eliminate trivial syntax narration, tautological docstrings, patronizing UI microcopy, and ceremonial documentation truisms. Code comments must NEVER narrate what syntax already states (e.g. `// increment count`, `// return result`, `// check if null`). Docstrings must NEVER merely restate the symbol name. UI microcopy must NEVER condescend to the user by narrating self-evident controls (e.g. `"Please enter your email"` under an Email field, or `"Click here to submit"` on a Submit button). Documentation must NEVER pad prerequisites with trivial truisms ("Must have a computer and internet"). Silence and clarity outrank noise.
+12. **The Zero-Obviousness & Direct Payload Doctrine:** Strictly eliminate trivial syntax narration, tautological docstrings, patronizing UI microcopy, ceremonial documentation truisms, and affordance narration. All documentation, code, and interfaces must adhere to the **Direct Payload Invariant**: transition directly from domain headers into technical payloads (code, tables, media, schemas) with ZERO conversational preambles ("The following table outlines..."), ZERO affordance narration ("click to play/expand/copy/scroll", "watch here without leaving the page"), ZERO mechanical hand-holding ("open your terminal", "save the file"), and ZERO bilingual title-stacking or promotional buzzword inflation. Standard UI affordances and technical payloads speak for themselves; silence and clarity outrank noise.
 
 ## Activation / modes
 
@@ -128,6 +128,7 @@ Before proposing merge, report: intent, changed files, exact test evidence, base
 - Do not write trivial syntax-narration comments (e.g. `// return result`, `// increment counter`, `// check null`) or tautological docstrings that merely restate symbol names.
 - Do not add patronizing UI microcopy or obvious instructional labels underneath self-evident controls (e.g. `"Please enter your email"`, `"Click here to submit"`).
 - Do not pad documentation, READMEs, or setup guides with obvious truisms, trivial prerequisite lists, or tautological summaries.
+- Do not violate the Direct Payload Invariant: never write affordance narration (explaining how to click, expand, play, scroll, or copy standard controls), conversational preambles ("The following section discusses..."), bilingual title-stacking (e.g. `Term · الترجمة`), buzzword inflation (calling screencasts "Live Interactive Demos"), or mechanical hand-holding in documentation and code.
 - Do not generate speculative submission dossiers (e.g., `docs/*SUBMISSION*.md`, `docs/*DOSSIER*.md`) or invent publishing guides for unrequested third-party platforms.
 - Do not cite dead, deprecated, or hallucinated platform URLs (e.g., `platform.openai.com/plugins`).
 - Do not sprawl the repository with ceremonial markdown files or pad READMEs with marketing filler, fake prompt examples, or repetitive note callouts.

@@ -17,7 +17,7 @@ const args = process.argv.slice(2);
 
 function printBanner() {
   console.log(`
-🛡️  Anti-Slop Engineering CLI (v0.2.0)
+🛡️  Anti-Slop Engineering CLI (v0.2.1)
    An Engineering Discipline Playbook & Guard System for AI Coding Agents
    Author: Mamdouh Aboammar <mamdouhfces1997@gmail.com>
    Repo:   https://github.com/imMamdouhaboammar/anti-slop-engineering

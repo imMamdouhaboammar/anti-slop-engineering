@@ -18,7 +18,7 @@
   <a href="#-quickstart--installation">Quickstart</a> •
   <a href="#-the-seven-gates">The Seven Gates</a> •
   <a href="#-heuristic-diff-guard">Diff Guard CLI</a> •
-  <a href="#-anti-pattern-catalog-200-diagnostic-patterns">Anti-Pattern Catalog</a> •
+  <a href="#-anti-pattern-catalog-201-diagnostic-patterns">Anti-Pattern Catalog</a> •
   <a href="#-contributing-noted-slop">Contribute Slop</a> •
   <a href="#-multi-agent-distribution-channels">Distribution Channels</a> •
   <a href="#-license--copyright">License</a>
@@ -164,13 +164,14 @@ npx anti-slop-engineering --base HEAD --fail-on-blocker
 - **Dev-Notes Leaked in UI:** Detects developer notes, agent reminders, and mock-data disclaimers inside UI components (`<p>`, `<span>`, `<div>`, `<Alert>`).
 - **Patronizing UI Copy:** Detects obvious, condescending instructions under UI controls (e.g. `<small>Please enter your email</small>`, `Click here to submit`).
 - **Trivial Comment Narration:** Detects syntax play-by-play comments (e.g. `// return result`, `// increment count`, `// check null`, `// import react`).
+- **Meta-Preambles & Affordance Narration:** Detects violations of the Direct Payload Invariant in markdown and documentation (such as transitional phrases explaining what a table shows, narrating how to play or expand media, instructing the reader to copy snippets, or stacking bilingual translations in titles).
 - **Speculative Submission Dossiers:** Detects unrequested submission guides or reviewer packets in docs/ (`docs/*submission*.md`, `docs/*dossier*.md`).
 - **Hallucinated Platform URLs:** Catches deprecated or hallucinated plugin submission portals (e.g. `platform.openai.com/plugins`).
 - **Large Diff Scope:** Prompts review when added lines exceed threshold (default 400 lines).
 
 ---
 
-## 📚 Anti-Pattern Catalog (200 Diagnostic Patterns)
+## 📚 Anti-Pattern Catalog (201 Diagnostic Patterns)
 
 The repository includes a detailed diagnostic catalog in [`references/anti-pattern-catalog.md`](references/anti-pattern-catalog.md) covering:
 
@@ -185,7 +186,7 @@ The repository includes a detailed diagnostic catalog in [`references/anti-patte
 9. **Frontend & UI:** Scroll hijacking, accessibility violations, layout thrashing, **dev-notes leaked in UI (`UI-13`)**, **wall-of-text microcopy (`UI-14`)**, **navbar overcrowding (`UI-15`)**, **compulsive decoration (`UI-16`)**, and **patronizing microcopy (`UI-17`)**.
 10. **Operations & Reliability:** Missing graceful shutdown, unbounded retry storms, blind migrations, unmonitored queues.
 11. **CI, Builds & Release:** Disabling lint rules, flaky test workarounds, missing build locks, **stale or guessed dependency versions (`CI-15`)**.
-12. **Workflow & Review Hygiene:** Mega-PRs, unreviewable diffs, lack of test proof in review notes, **speculative submission guides (`REV-15`)**, **documentation file sprawl (`REV-16`)**, **doc logorrhea & filler (`REV-17`)**, and **ceremonial documentation truisms (`REV-18`)**.
+12. **Workflow & Review Hygiene:** Mega-PRs, unreviewable diffs, lack of test proof in review notes, **speculative submission guides (`REV-15`)**, **documentation file sprawl (`REV-16`)**, **doc logorrhea & filler (`REV-17`)**, **ceremonial documentation truisms (`REV-18`)**, and **affordance narration & meta-preambles (`REV-19`)**.
 13. **Agent Autonomy:** Self-modifying safety boundaries, hallucinated test outputs, speculative code deletions.
 
 ---
@@ -206,7 +207,7 @@ anti-slop-engineering/
 ├── tests/
 │   └── test_diff_guard.py            # Unit tests for the heuristic diff guard
 ├── references/
-│   ├── anti-pattern-catalog.md       # 200 diagnostic anti-patterns across 13 engineering domains
+│   ├── anti-pattern-catalog.md       # 201 diagnostic anti-patterns across 13 engineering domains
 │   ├── test-integrity.md             # The Test Integrity Protocol: protecting test oracles
 │   ├── pr-review.md                  # Evidence-first PR review protocol with severity scales
 │   ├── security-and-operations.md    # Trust boundaries, injection resistance & operational safety

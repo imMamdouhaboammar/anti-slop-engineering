@@ -31,6 +31,22 @@ DOC_PATH = re.compile(r'(?i)(?:\.(?:md|markdown|rst|txt|adoc)$|(?:^|/)(?:docs?|d
 UI_PATH = re.compile(r'(?i)\.(?:tsx|jsx|html|vue|svelte|astro)$')
 SPECULATIVE_DOC_PATH = re.compile(r'(?i)(?:^|/)docs/.*(?:submission|dossier|reviewer_packet).*\.md$')
 HALLUCINATED_DOC_URL = re.compile(r'(?i)(?:https?://(?:platform|developers)\.openai\.com/plugins|\[[^\]]*\]\([^)]*(?:platform|developers)\.openai\.com/plugins[^)]*\))')
+META_PREAMBLE_AND_AFFORDANCE_NARRATION = re.compile(
+    r'(?i)(?:'
+    r'\b(?:without leaving (?:this|the) page|دون مغادرة الصفحة|شاهد (?:التجربة|الفيديو|هنا)|'
+    r'click (?:here\s+)?to (?:play|watch|view|expand|collapse|copy|download|see)|'
+    r'click on the (?:button|link|chevron|arrow)|'
+    r'toggle (?:to|this) (?:reveal|expand)|'
+    r'press play to|tap here to)\b|'
+    r'^\s*(?:In this section,? we will (?:explore|discuss|explain|cover|learn)|'
+    r'The following (?:table|section|code snippet|example|list|guide) (?:outlines|illustrates|shows|describes|provides|details)|'
+    r'Below,? you will find (?:a|an|the)|'
+    r'Let\'s take a (?:closer )?look at|'
+    r'Here is a breakdown of)\b|'
+    r'^#{1,6}\s+.*[a-zA-Z]{3,}\s*[·•|/]\s*[\u0600-\u06FF]{3,}|'
+    r'^#{1,6}\s+.*[\u0600-\u06FF]{3,}\s*[·•|/]\s*[a-zA-Z]{3,}'
+    r')'
+)
 
 
 def git(repo, *args):
@@ -107,6 +123,12 @@ def scan(repo, base, max_lines=400):
                                  'evidence': code_line.strip()[:180],
                                  'action': 'Deprecated or hallucinated platform submission URL detected (e.g. OpenAI plugins are deprecated); verify URL and user intent.'})
         if DOC_PATH.search(path):
+            if not TEST_PATH.search(path) and not re.search(r'(?i)(?:^|/)references/', path) and not re.search(r'(?i)(?:^|/)(?:SKILL\.md|AGENTS\.md|CHANGELOG\.md)$', path) and META_PREAMBLE_AND_AFFORDANCE_NARRATION.search(code_line):
+                if ('META_PREAMBLE_AND_AFFORDANCE_NARRATION', path, new_line) not in seen:
+                    seen.add(('META_PREAMBLE_AND_AFFORDANCE_NARRATION', path, new_line))
+                    findings.append({'id': 'META_PREAMBLE_AND_AFFORDANCE_NARRATION', 'severity': 'review', 'file': path, 'line': new_line,
+                                     'evidence': code_line.strip()[:180],
+                                     'action': 'Violation of Direct Payload Invariant: remove conversational preambles, affordance narration (explaining how to click/play/expand/copy), mechanical hand-holding, or bilingual title-stacking.'})
             if new_line is not None:
                 new_line += 1
             continue

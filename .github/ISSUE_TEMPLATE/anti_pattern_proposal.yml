@@ -1,5 +1,5 @@
 name: Anti-Pattern Proposal
-description: Propose an addition or revision to the 200-pattern catalog
+description: Propose an addition or revision to the 201-pattern catalog
 labels: ["catalog", "anti-pattern"]
 body:
   - type: markdown

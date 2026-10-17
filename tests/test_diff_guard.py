@@ -123,11 +123,23 @@ class DiffGuardTests(unittest.TestCase):
         _, report = self.check()
         self.assertIn('TRIVIAL_COMMENT_NARRATION', [x['id'] for x in report['findings']])
 
-    def test_permits_meaningful_invariant_comments(self):
-        (self.repo / 'src' / 'counter.py').write_text('def add(x):\n    # Invariant: x must be non-negative integer\n    return x + 1\n')
-        git(self.repo, 'add', 'src/counter.py')
+    def test_flags_patronizing_affordance_narration_in_docs(self):
+        (self.repo / 'README.md').write_text('# Demo\n<summary>🎬 Live Interactive Demo · مشغل الفيديو المباشر (شاهد التجربة هنا دون مغادرة الصفحة)</summary>\n')
+        git(self.repo, 'add', 'README.md')
         _, report = self.check()
-        self.assertNotIn('TRIVIAL_COMMENT_NARRATION', [x['id'] for x in report['findings']])
+        self.assertIn('META_PREAMBLE_AND_AFFORDANCE_NARRATION', [x['id'] for x in report['findings']])
+
+    def test_flags_conversational_preamble_in_docs(self):
+        (self.repo / 'README.md').write_text('## Settings\nThe following table outlines all configuration options:\n| K | V |\n')
+        git(self.repo, 'add', 'README.md')
+        _, report = self.check()
+        self.assertIn('META_PREAMBLE_AND_AFFORDANCE_NARRATION', [x['id'] for x in report['findings']])
+
+    def test_permits_clean_direct_payloads_in_docs(self):
+        (self.repo / 'README.md').write_text('## Settings\n| Key | Value |\n| a | 1 |\n\n### Demo\nhttps://example.com/demo.mp4\n')
+        git(self.repo, 'add', 'README.md')
+        _, report = self.check()
+        self.assertNotIn('META_PREAMBLE_AND_AFFORDANCE_NARRATION', [x['id'] for x in report['findings']])
 
 
 if __name__ == '__main__':

@@ -1,6 +1,6 @@
 {
   "name": "anti-slop-engineering",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "An Engineering Discipline Playbook, Agent Skill & Triage Guard for AI Coding Agents",
   "type": "module",
   "main": "bin/cli.js",
