@@ -1,0 +1,85 @@
+name: "🚨 Report Noted Slop (AI Anti-Pattern Observation)"
+description: "Spotted recurring AI slop in the wild? Report it here with real diff/prompt evidence to get it codified."
+title: "[Noted Slop]: "
+labels: ["noted-slop", "catalog", "community-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ### 🔍 Noted Slop Community Intake
+        Thank you for helping codify AI coding habits and edge cases! Use this template to report real-world AI coding slop, hallucination patterns, oracle tampering, UI clutter, or bad agent habits observed in practice.
+        
+        *If you also have a solution (rules, catalog entry, or diff guard heuristic), feel free to open a Pull Request referencing this issue!*
+
+  - type: input
+    id: slop-summary
+    attributes:
+      label: Slop Summary / Short Title
+      placeholder: "e.g. Agents embedding 'TODO: Mock data' banner in client navigation"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: Engineering Category
+      options:
+        - "Frontend & UI (Visual clutter, dev-notes in DOM, bad layout, logorrhea)"
+        - "Testing & Test Oracles (Assertion weakening, skipping tests, fake mocks)"
+        - "Architecture & Abstractions (Needless files, micro-wrappers, manual scaffolding)"
+        - "Dependencies & Package Management (Guessed versions, outdated deps, wrong toolchains)"
+        - "Security & Boundaries (Hardcoded secrets, disabling auth, verify=False)"
+        - "Data, State & Persistence (N+1 queries, unindexed migrations, silent failures)"
+        - "Concurrency & Async (Race conditions, leaked promises/threads, unfenced jobs)"
+        - "APIs & Contracts (Breaking changes, untyped payloads, missing status codes)"
+        - "Code Cleanliness & Simplicity (Trivial comment narration, endless boilerplate)"
+        - "Agent Autonomy & Review (Hallucinated passes, self-tampering safety checks)"
+        - "Other"
+    validations:
+      required: true
+
+  - type: textarea
+    id: observed-evidence
+    attributes:
+      label: Observed Real-World Evidence (Diff, Code, or Prompt Excerpt)
+      description: Provide the exact code snippet, diff, or UI text where this slop occurred.
+      placeholder: |
+        ```tsx
+        // Paste snippet or diff demonstrating the slop
+        ```
+    validations:
+      required: true
+
+  - type: input
+    id: agent-context
+    attributes:
+      label: Agent / Model / Tool (Optional)
+      description: Which AI coding assistant or model produced this? (e.g. Claude 3.7 Sonnet, GPT-4o, Cursor, Copilot, Antigravity, Gemini CLI, etc.)
+      placeholder: "e.g. Claude Code, Cursor, Copilot, Antigravity..."
+    validations:
+      required: false
+
+  - type: textarea
+    id: negative-impact
+    attributes:
+      label: Negative Impact & Why It Fails Engineering Discipline
+      description: What breaks? Why is this bad for production reliability, reviewability, or user experience?
+      placeholder: "It introduces fake confidence, clutters user screens, exposes internal dev notes to users..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed-remediation
+    attributes:
+      label: Proposed Rule or Remediation (Optional)
+      description: What should the agent have done instead? How should Anti-Slop prevent or detect this?
+      placeholder: "Add a Gate 3 rule prohibiting X, and a diff_guard regex pattern detecting Y in .tsx files..."
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: contribution-intent
+    attributes:
+      label: Contribution Intent
+      options:
+        - label: "I would like to submit a Pull Request implementing this into the catalog / diff_guard myself! 🚀"

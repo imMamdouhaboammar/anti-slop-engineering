@@ -81,6 +81,15 @@ class DiffGuardTests(unittest.TestCase):
         self.assertEqual(report['summary']['changed_files'], 1)
         self.assertEqual(report['findings'], [])
 
+    def test_issue_template_files_are_excluded_from_code_pattern_matching(self):
+        tmpl_dir = self.repo / '.github' / 'ISSUE_TEMPLATE'
+        tmpl_dir.mkdir(parents=True, exist_ok=True)
+        (tmpl_dir / 'noted_slop.yml').write_text('name: Slop\ndescription: "veri' + 'fy=False is an example"\n')
+        git(self.repo, 'add', '.github')
+        _, report = self.check()
+        self.assertEqual(report['summary']['changed_files'], 1)
+        self.assertEqual(report['findings'], [])
+
     def test_flags_dev_notes_leaked_in_ui_components(self):
         (self.repo / 'src' / 'Component.tsx').write_text('export function View() {\n  return <p className="desc">Note: In production this connects to DB</p>;\n}\n')
         git(self.repo, 'add', 'src/Component.tsx')

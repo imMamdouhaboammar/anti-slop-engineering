@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.4] - 2026-10-17
+
+### Added
+- **Community Noted Slop Contribution Policy (`CONTRIBUTING.md`):** Established a comprehensive protocol for developers and researchers to contribute observed AI slop patterns via GitHub Issues (Path A: Report Only) or Pull Requests (Path B: Problem + Solution).
+- **Dedicated Noted Slop Issue Template (`.github/ISSUE_TEMPLATE/noted_slop.yml`):** Form template capturing observed code diffs, agent/model context, negative impact analysis, and proposed remediation.
+- **PR Template Checklist for Anti-Patterns (`.github/PULL_REQUEST_TEMPLATE.md`):** Added specific verification steps for catalog entry allocation, agent directive updates, and diff guard heuristics.
+- **CLI `contribute` Command (`bin/cli.js`):** Run `npx anti-slop-engineering contribute` or `bunx anti-slop-engineering contribute` to view contribution guidelines and quick links.
+- **NOTED_SLOP Mode (`SKILL.md`):** Added explicit activation mode for AI coding agents to codify newly observed slop into catalog patterns, directives, and diff guard heuristics.
+- **Documentation & Intake Links:** Added prominent "Contributing Noted Slop" section and navigation links in `README.md`.
+
 ## [0.1.3] - 2026-10-17
 
 ### Added

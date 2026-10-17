@@ -19,5 +19,12 @@
 - [ ] Reviewed dependencies, migrations, compatibility, rollback and instrumentation where relevant
 - [ ] Evidence-backed findings resolved or documented
 
+## If adding or updating a "Noted Slop" / Anti-Pattern
+- [ ] Pattern added to `references/anti-pattern-catalog.md` with unique ID and 5-part schema
+- [ ] (If applicable) Agent directive added to `SKILL.md` and `AGENTS.md`
+- [ ] (If applicable) Heuristic check added to `scripts/diff_guard.py` and unit test added to `tests/test_diff_guard.py`
+- [ ] Catalog counter updated in `README.md` and change documented in `CHANGELOG.md`
+- [ ] Ran `make check` and `bun ./bin/cli.js test` with clean pass
+
 ## Remaining uncertainty / reviewer guidance
 <!-- Flag risks, unverified environment assumptions, and review hotspots. -->

@@ -1,11 +1,11 @@
 name: Anti-Pattern Proposal
-description: Propose an addition or revision to the 186-pattern catalog
+description: Propose an addition or revision to the 193-pattern catalog
 labels: ["catalog", "anti-pattern"]
 body:
   - type: markdown
     attributes:
       value: |
-        Use this template to propose a concrete anti-pattern observed in AI coding agents or PR reviews.
+        Use this template to propose a formal anti-pattern addition to `references/anti-pattern-catalog.md`. If you just observed AI coding slop in the wild and want to share evidence, use the **Report Noted Slop** template instead.
   - type: input
     id: pattern-name
     attributes:

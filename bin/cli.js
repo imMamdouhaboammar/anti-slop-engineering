@@ -17,7 +17,7 @@ const args = process.argv.slice(2);
 
 function printBanner() {
   console.log(`
-🛡️  Anti-Slop Engineering CLI (v0.1.3)
+🛡️  Anti-Slop Engineering CLI (v0.1.4)
    An Engineering Discipline Playbook & Guard System for AI Coding Agents
    Author: Mamdouh Aboammar <mamdouhfces1997@gmail.com>
    Repo:   https://github.com/imMamdouhaboammar/anti-slop-engineering
@@ -33,6 +33,7 @@ Commands & Options:
   --fail-on-blocker      Exit code 2 if blocker patterns (e.g. skipped tests) are found
   --review-lines <num>   Added-line threshold prompting scope review (default: 400)
   test                   Run the automated unit test suite
+  contribute             Print guidelines on reporting noted slop or opening PRs
   --help, -h             Show this help menu
 
 Seven Gates of Anti-Slop:
@@ -48,6 +49,26 @@ Seven Gates of Anti-Slop:
 
 if (args.includes("--help") || args.includes("-h")) {
   printBanner();
+  process.exit(0);
+}
+
+if (args[0] === "contribute") {
+  console.log(`
+🤝 How to Contribute "Noted Slop" to Anti-Slop Engineering:
+
+Path A: Report Observed Slop (No code required)
+  Spotted a new recurring AI slop pattern in Claude, Cursor, Copilot, etc.?
+  Open an issue: https://github.com/imMamdouhaboammar/anti-slop-engineering/issues/new?template=noted_slop.yml
+
+Path B: Submit a PR (Problem + Solution Integrated)
+  1. Add diagnostic pattern to references/anti-pattern-catalog.md
+  2. Update SKILL.md & AGENTS.md with concise agent directives
+  3. (Optional) Add regex heuristic to scripts/diff_guard.py & unit tests
+  4. Run verification: make check
+  5. Open a Pull Request: https://github.com/imMamdouhaboammar/anti-slop-engineering/pulls
+
+Full Contributor Guide: https://github.com/imMamdouhaboammar/anti-slop-engineering/blob/main/CONTRIBUTING.md
+`);
   process.exit(0);
 }
 

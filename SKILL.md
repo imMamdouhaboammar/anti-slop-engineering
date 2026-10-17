@@ -4,7 +4,7 @@ description: Prevent, detect, and repair AI coding slop and dirty engineering in
 author: Mamdouh Aboammar <mamdouhfces1997@gmail.com>
 license: MIT
 metadata:
-  version: "0.1.3"
+  version: "0.1.4"
   focus: "engineering-discipline"
   repository: "https://github.com/imMamdouhaboammar/anti-slop-engineering"
 ---
@@ -34,8 +34,9 @@ Select the relevant mode and follow the same gates:
 - **FIX:** reproduce observed bug first, fix smallest root cause, prove regression tests hold.
 - **REVIEW:** read-only diff and repository-context audit; report findings with severity, evidence, and counterfactual.
 - **CLEANUP:** establish an observable behavior baseline, isolate pure refactors from feature changes, prove no drift.
+- **NOTED_SLOP:** codify newly observed AI slop into a diagnostic catalog pattern, agent directive, and automated diff guard heuristic (see [CONTRIBUTING.md](CONTRIBUTING.md)).
 
-For extensive audits, load [anti-pattern catalog](references/anti-pattern-catalog.md). For any test changes, load [test integrity policy](references/test-integrity.md). For a PR or merge request, load [PR review protocol](references/pr-review.md). For elevated permissions, sensitive code, network access, or deployment, load [security and execution boundaries](references/security-and-operations.md). For project-specific exceptions, load [judgment and exceptions](references/engineering-judgment.md).
+For extensive audits, load [anti-pattern catalog](references/anti-pattern-catalog.md). For any test changes, load [test integrity policy](references/test-integrity.md). For a PR or merge request, load [PR review protocol](references/pr-review.md). For elevated permissions, sensitive code, network access, or deployment, load [security and execution boundaries](references/security-and-operations.md). For project-specific exceptions, load [judgment and exceptions](references/engineering-judgment.md). For community contributions, follow [contributor guidelines](CONTRIBUTING.md).
 
 ## The seven gates
 

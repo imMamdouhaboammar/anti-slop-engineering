@@ -19,6 +19,7 @@
   <a href="#-the-seven-gates">The Seven Gates</a> •
   <a href="#-heuristic-diff-guard">Diff Guard CLI</a> •
   <a href="#-anti-pattern-catalog-193-diagnostic-patterns">Anti-Pattern Catalog</a> •
+  <a href="#-contributing-noted-slop">Contribute Slop</a> •
   <a href="#-multi-agent-distribution-channels">Distribution Channels</a> •
   <a href="#-license--copyright">License</a>
 </p>
@@ -239,6 +240,37 @@ make lint
 # Complete verification pass:
 make check
 ```
+
+---
+
+## 🤝 Contributing "Noted Slop"
+
+Spotted recurring AI coding slop, weird prompt leakages, test tampering, or UI clutter in the wild? We welcome community contributions to expand the diagnostic catalog and verification guards!
+
+You can participate through two streamlined paths:
+
+### 📝 Path 1: Report Observed Slop (No code required)
+If you spotted a bad habit in an AI assistant (Claude Code, Cursor, Copilot, Codex, Gemini CLI, etc.):
+- Open a **[🚨 Report Noted Slop Issue](https://github.com/imMamdouhaboammar/anti-slop-engineering/issues/new?template=noted_slop.yml)**.
+- Share the real-world code snippet or diff, which model produced it, and why it degrades engineering quality.
+- Our maintainers and community will triage, categorize, and schedule it for inclusion.
+
+### 🛠️ Path 2: Submit a Pull Request (Problem + Solution Integrated)
+If you have both the observed slop and the engineered fix:
+1. Allocate the next pattern ID in [`references/anti-pattern-catalog.md`](references/anti-pattern-catalog.md) (e.g., `UI-17`, `TST-16`, `ARC-16`).
+2. Document the diagnostic symptom, root cause, and remediation using the 5-part catalog schema.
+3. Update [`SKILL.md`](SKILL.md) and [`AGENTS.md`](AGENTS.md) with explicit agent rules.
+4. (Optional) Add automated diff guard heuristics to `scripts/diff_guard.py` with unit tests in `tests/test_diff_guard.py`.
+5. Run `make check` and submit your PR!
+
+```bash
+# Print contribution cheat sheet right from your terminal:
+npx anti-slop-engineering contribute
+# Or via Bun:
+bunx anti-slop-engineering contribute
+```
+
+See our comprehensive **[Contributing Guide (CONTRIBUTING.md)](CONTRIBUTING.md)** for full details.
 
 ---
 
