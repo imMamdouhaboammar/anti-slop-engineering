@@ -1,0 +1,38 @@
+name: Bug report
+description: Create a report to help us improve the anti-slop rules or diff guard
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report an issue!
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Also tell us what you expected to happen.
+      placeholder: Tell us what you see!
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: How to reproduce?
+      description: Provide reproduction steps, minimal diff, or script invocation.
+      placeholder: |
+        1. Run `python scripts/diff_guard.py ...`
+        2. With diff ...
+        3. See error
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Python version, Git version, OS.
+      value: |
+        - Python: 3.x
+        - Git: 2.x
+        - OS: macOS / Linux / Windows
+    validations:
+      required: false

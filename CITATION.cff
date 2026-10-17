@@ -1,0 +1,21 @@
+cff-version: 1.2.0
+message: "If you use Anti-Slop Engineering in your research, agent frameworks, or software workflows, please cite it as below."
+authors:
+  - family-names: "Aboammar"
+    given-names: "Mamdouh"
+    email: "mamdouhfces1997@gmail.com"
+title: "Anti-Slop Engineering: An Engineering Discipline Playbook and Guard System for AI Coding Agents"
+version: 0.1.0
+date-released: 2026-10-17
+url: "https://github.com/imMamdouhaboammar/anti-slop-engineering"
+repository-code: "https://github.com/imMamdouhaboammar/anti-slop-engineering"
+license: MIT
+keywords:
+  - "ai-agents"
+  - "anti-slop"
+  - "code-quality"
+  - "code-review"
+  - "engineering-discipline"
+  - "software-engineering"
+  - "agent-skills"
+  - "test-integrity"

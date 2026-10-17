@@ -1,0 +1,63 @@
+name: Anti-Pattern Proposal
+description: Propose an addition or revision to the 186-pattern catalog
+labels: ["catalog", "anti-pattern"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template to propose a concrete anti-pattern observed in AI coding agents or PR reviews.
+  - type: input
+    id: pattern-name
+    attributes:
+      label: Pattern Name
+      placeholder: "e.g. SILENT_FALLBACK_ON_RPC_FAILURE"
+    validations:
+      required: true
+  - type: dropdown
+    id: category
+    attributes:
+      label: Category
+      options:
+        - "Requirements & Scope"
+        - "Architecture & Abstractions"
+        - "Duplication & Code Organization"
+        - "Data, State & Persistence"
+        - "Security & Trust Boundaries"
+        - "Concurrency & Async"
+        - "APIs & Contracts"
+        - "Testing & Test Oracles"
+        - "Frontend & UI"
+        - "Operations & Reliability"
+        - "CI & Release"
+        - "Workflow & Review"
+        - "Agent Autonomy & Prompt Injection"
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostic-smell
+    attributes:
+      label: Diagnostic Symptom / Smell
+      description: What does the code or diff do wrong?
+    validations:
+      required: true
+  - type: textarea
+    id: root-cause
+    attributes:
+      label: Root Cause & Why Agents Do It
+      description: Why does this pattern emerge in agent or human workflows?
+    validations:
+      required: true
+  - type: textarea
+    id: remediation
+    attributes:
+      label: Correct Engineering Remediation
+      description: What is the disciplined, minimal fix?
+    validations:
+      required: true
+  - type: textarea
+    id: exceptions
+    attributes:
+      label: Legitimate Exceptions & Context Caveats
+      description: When is this pattern acceptable or intentional?
+    validations:
+      required: false
