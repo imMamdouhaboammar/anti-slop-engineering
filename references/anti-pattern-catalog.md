@@ -54,6 +54,8 @@ Format: **ID | pattern | how to verify / safer alternative**. Numbers are stable
 - **SIM-13 | Magic values.** Unexplained retry limits, amounts and thresholds; derive from explicit domain config.
 - **SIM-14 | Broad nullability.** `any`/unknown/nullable masks modeling errors; enforce meaningful types at boundaries.
 - **SIM-15 | Logorrhea and code narration.** Over-explaining every trivial statement with conversational comments narrating obvious syntax, bloated repetitive wrappers, or unnecessary boilerplate; write minimal, idiomatic, self-documenting code.
+- **SIM-16 | Tautological docstrings and symbol restatement.** Docstrings or type comments that merely restate function or variable names in sentence form without adding domain semantics, invariants, or constraints (e.g. `/** Gets the user id */ function getUserId()`, `/** The user email */ let userEmail`); omit docstrings when type signatures and domain names are self-evident.
+- **SIM-17 | Syntax play-by-play & obvious code narration.** Littering code with line-by-line syntax narration comments (e.g. `// increment counter`, `// return result`, `// initialize array`, `// check if null`, `// import react`); write clean, idiomatic code where comments explain non-obvious *why*, architectural constraints, or algorithmic invariants only.
 
 ## D. Database design, migrations, and data reliability
 
@@ -179,6 +181,7 @@ Format: **ID | pattern | how to verify / safer alternative**. Numbers are stable
 - **UI-14 | Wall-of-text microcopy & over-instruction.** Crowding the interface with paragraphs of obvious instructions, redundant tooltips, and defensive disclaimers explaining basic controls; enforce concise, human, 1-3 word labels and minimal microcopy.
 - **UI-15 | Visual overcrowding & navbar clutter.** Jamming excessive icons, links, theme switches, search bars, and status badges into headers or navbars without optical balance or hierarchy; enforce breathing room, negative space, and single-purpose navigation.
 - **UI-16 | Compulsive decoration & gratuitous widgets.** Adding dummy stats cards, useless progress bars, decorative badges, or unasked widgets to make the UI look complex and busy; remove non-functional clutter.
+- **UI-17 | Patronizing UI microcopy & label restatement.** Inserting obvious, condescending instructions, tooltips, or helper labels underneath self-evident controls (e.g. `"Please enter your email"` beneath an input labeled "Email", `"Click here to submit"` on a button labeled "Submit", `"This form allows you to edit profile"`); eliminate microcopy unless communicating a non-obvious formatting rule, security constraint, or consequence.
 
 ## K. Dependencies, builds, CI/CD, and supply chain
 
@@ -217,6 +220,7 @@ Format: **ID | pattern | how to verify / safer alternative**. Numbers are stable
 - **REV-15 | Speculative platform submission & hallucinated distribution guides.** Agent invents unprompted publishing guides, submission dossiers, or reviewer packets for third-party platforms (e.g. "Publish to OpenAI ChatGPT plugins", `docs/OPENAI_SUBMISSION.md`, `platform.openai.com/plugins`), citing dead, deprecated, or fictional URLs and procedures; never create distribution guides or submission dossiers unless explicitly requested by the user and verified against current official documentation.
 - **REV-16 | Documentation file sprawl & markdown inflation.** Sprawling the repository with unprompted, superficial `.md` files in `docs/` or root (e.g. `docs/SUBMISSION.md`, `docs/REVIEWER_PACKET.md`, `docs/NOTES.md`) that nobody asked for; consolidate factual documentation into a single lean README or authorized doc set.
 - **REV-17 | Documentation logorrhea & filler sections.** Stuffing READMEs and docs with excessive note callouts, speculative marketing copy, redundant disclaimers, and fake prompt examples that dilute real technical APIs and contract evidence; maintain high-signal, concise, factual documentation.
+- **REV-18 | Ceremonial documentation truisms & prerequisite inflation.** Padding READMEs, docs, and setup guides with obvious patronizing truisms, trivial prerequisite lists (e.g. `"Prerequisites: A modern computer, internet access, text editor, and web browser"`, `"Make sure to save the file before running"`), or tautological summaries; assume an educated engineer and focus strictly on unique project architecture, operational nuances, and non-standard prerequisites.
 
 ## M. Agent-specific workflow and autonomy failures
 

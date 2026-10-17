@@ -18,7 +18,7 @@
   <a href="#-quickstart--installation">Quickstart</a> •
   <a href="#-the-seven-gates">The Seven Gates</a> •
   <a href="#-heuristic-diff-guard">Diff Guard CLI</a> •
-  <a href="#-anti-pattern-catalog-196-diagnostic-patterns">Anti-Pattern Catalog</a> •
+  <a href="#-anti-pattern-catalog-200-diagnostic-patterns">Anti-Pattern Catalog</a> •
   <a href="#-contributing-noted-slop">Contribute Slop</a> •
   <a href="#-multi-agent-distribution-channels">Distribution Channels</a> •
   <a href="#-license--copyright">License</a>
@@ -101,6 +101,7 @@ As AI coding agents take on complex multi-step tasks, common pathological failur
 8. **Dev-Notes & Agent Instructions Leaked in UI:** Leaving developer notes, TODOs, agent reminders, or "mock data displayed" banners inside user-facing components.
 9. **UI Clutter, Overcrowding & Logorrhea:** Overloading navigation bars, jamming layouts with gratuitous icons/widgets, and burying users under walls of text and code narration.
 10. **Speculative Docs & Submission Dossier Slop:** Inventing unrequested platform submission dossiers, fake marketplace reviewer packets (e.g. "Publish to OpenAI ChatGPT Plugins", `docs/OPENAI_SUBMISSION.md`), citing dead/deprecated URLs, and sprawling directories with ceremonial markdown files.
+11. **Obviousness, Tautology & Truism Slop:** Narrating syntax in code comments (`// increment count`, `// return result`), tautological docstrings that merely rephrase symbol names, patronizing UI microcopy under obvious inputs, and ceremonial documentation truisms.
 
 ---
 
@@ -161,28 +162,30 @@ npx anti-slop-engineering --base HEAD --fail-on-blocker
 - **Error Swallowing:** Detects `except: pass`, empty `catch {}` blocks.
 - **Type Suppression:** Detects `@ts-ignore`, `@ts-nocheck`, `type: ignore`.
 - **Dev-Notes Leaked in UI:** Detects developer notes, agent reminders, and mock-data disclaimers inside UI components (`<p>`, `<span>`, `<div>`, `<Alert>`).
+- **Patronizing UI Copy:** Detects obvious, condescending instructions under UI controls (e.g. `<small>Please enter your email</small>`, `Click here to submit`).
+- **Trivial Comment Narration:** Detects syntax play-by-play comments (e.g. `// return result`, `// increment count`, `// check null`, `// import react`).
 - **Speculative Submission Dossiers:** Detects unrequested submission guides or reviewer packets in docs/ (`docs/*submission*.md`, `docs/*dossier*.md`).
 - **Hallucinated Platform URLs:** Catches deprecated or hallucinated plugin submission portals (e.g. `platform.openai.com/plugins`).
 - **Large Diff Scope:** Prompts review when added lines exceed threshold (default 400 lines).
 
 ---
 
-## 📚 Anti-Pattern Catalog (196 Diagnostic Patterns)
+## 📚 Anti-Pattern Catalog (200 Diagnostic Patterns)
 
 The repository includes a detailed diagnostic catalog in [`references/anti-pattern-catalog.md`](references/anti-pattern-catalog.md) covering:
 
 1. **Requirements & Scope:** Speculation, scope creep, imaginary requirements, incomplete migrations.
-2. **Architecture & Abstractions:** Premature microservices, over-abstraction, god objects, wrapper explosion, **manual scaffolding improvisation (`ARC-15`)**, and **code logorrhea (`SIM-15`)**.
+2. **Architecture & Abstractions:** Premature microservices, over-abstraction, god objects, wrapper explosion, **manual scaffolding improvisation (`ARC-15`)**, **code logorrhea (`SIM-15`)**, **tautological docstrings (`SIM-16`)**, and **syntax narration (`SIM-17`)**.
 3. **Duplication & Code Organization:** Copy-paste business logic, shotgun surgery, shadow utility modules.
 4. **Data, State & Persistence:** N+1 queries, unindexed queries, silent transaction rollbacks, leaky caches.
 5. **Security & Boundaries:** Hardcoded credentials, prompt injection vulnerabilities, unsanitized inputs, SSRF, permissive CORS.
 6. **Concurrency & Async:** Race conditions, thread leaks, unhandled task cancellation, un-fenced distributed jobs.
 7. **APIs & Contracts:** Breaking public contracts, missing status codes, untyped responses, lack of pagination.
 8. **Testing & Oracles:** Assert True theater, snapshot overwrite without review, mocking the unit under test, missing failure-path tests.
-9. **Frontend & UI:** Scroll hijacking, accessibility violations, layout thrashing, **dev-notes leaked in UI (`UI-13`)**, **wall-of-text microcopy (`UI-14`)**, **navbar overcrowding (`UI-15`)**, and **compulsive decoration (`UI-16`)**.
+9. **Frontend & UI:** Scroll hijacking, accessibility violations, layout thrashing, **dev-notes leaked in UI (`UI-13`)**, **wall-of-text microcopy (`UI-14`)**, **navbar overcrowding (`UI-15`)**, **compulsive decoration (`UI-16`)**, and **patronizing microcopy (`UI-17`)**.
 10. **Operations & Reliability:** Missing graceful shutdown, unbounded retry storms, blind migrations, unmonitored queues.
 11. **CI, Builds & Release:** Disabling lint rules, flaky test workarounds, missing build locks, **stale or guessed dependency versions (`CI-15`)**.
-12. **Workflow & Review Hygiene:** Mega-PRs, unreviewable diffs, lack of test proof in review notes, **speculative submission guides (`REV-15`)**, **documentation file sprawl (`REV-16`)**, and **doc logorrhea & filler (`REV-17`)**.
+12. **Workflow & Review Hygiene:** Mega-PRs, unreviewable diffs, lack of test proof in review notes, **speculative submission guides (`REV-15`)**, **documentation file sprawl (`REV-16`)**, **doc logorrhea & filler (`REV-17`)**, and **ceremonial documentation truisms (`REV-18`)**.
 13. **Agent Autonomy:** Self-modifying safety boundaries, hallucinated test outputs, speculative code deletions.
 
 ---
@@ -203,7 +206,7 @@ anti-slop-engineering/
 ├── tests/
 │   └── test_diff_guard.py            # Unit tests for the heuristic diff guard
 ├── references/
-│   ├── anti-pattern-catalog.md       # 196 diagnostic anti-patterns across 13 engineering domains
+│   ├── anti-pattern-catalog.md       # 200 diagnostic anti-patterns across 13 engineering domains
 │   ├── test-integrity.md             # The Test Integrity Protocol: protecting test oracles
 │   ├── pr-review.md                  # Evidence-first PR review protocol with severity scales
 │   ├── security-and-operations.md    # Trust boundaries, injection resistance & operational safety

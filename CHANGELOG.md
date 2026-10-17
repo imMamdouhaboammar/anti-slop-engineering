@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-10-17
+
+### Added
+- **The Zero-Obviousness & Anti-Truism Doctrine:** Codified a strict engineering discipline in `SKILL.md` (Operating Priority 12, Gate 3, Gate 5, and Non-Negotiable Anti-Cheating Rules) and `AGENTS.md` (Directive 12) banning trivial syntax narration in comments, tautological docstrings, patronizing UI microcopy, and ceremonial documentation truisms. High engineering discipline values silence over noise.
+- **The Non-Obviousness Test in Engineering Judgment:** Added explicit trade-off guidance in `references/engineering-judgment.md` stating that comments and UI text are justified ONLY if an educated engineer or user cannot deduce the implementation or intent from the types, names, UI affordances, and tests alone.
+- **200 Diagnostic Anti-Pattern Milestone (+4 New Patterns):** Reached a landmark 200 cataloged patterns in `references/anti-pattern-catalog.md`:
+  - `SIM-16 | Tautological docstrings and symbol restatement`: Comments or docstrings merely restating function/variable names without adding invariants or constraints.
+  - `SIM-17 | Syntax play-by-play & obvious code narration`: Line-by-line syntax commentary (`// increment counter`, `// return result`, `// check if null`).
+  - `UI-17 | Patronizing UI microcopy & label restatement`: Redundant instructions beneath obvious controls (`<small>Please enter your email</small>`, `Click here to submit`).
+  - `REV-18 | Ceremonial documentation truisms & prerequisite inflation`: Padding setup guides with trivial prerequisites ("requires computer and keyboard") and obvious truisms.
+- **Automated Diff Guard Detection (`scripts/diff_guard.py`):**
+  - `TRIVIAL_COMMENT_NARRATION`: Detects syntax narration comments in code files (`// return result`, `// increment i`, `# initialize state`, `# check if null`), while preserving valid invariant comments.
+  - `PATRONIZING_UI_COPY`: Flags obvious, condescending instructions in JSX/HTML templates (`"Please enter your..."`, `"Click here to..."`).
+- **Comprehensive Unit Tests (`tests/test_diff_guard.py`):** Added `test_flags_patronizing_ui_microcopy`, `test_flags_trivial_comment_narration`, and `test_permits_meaningful_invariant_comments` (all 14 unit tests passing).
+
 ## [0.1.5] - 2026-10-17
 
 ### Added

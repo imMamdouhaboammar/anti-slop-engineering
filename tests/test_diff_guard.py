@@ -111,6 +111,24 @@ class DiffGuardTests(unittest.TestCase):
         _, report = self.check()
         self.assertIn('HALLUCINATED_DOC_URL', [x['id'] for x in report['findings']])
 
+    def test_flags_patronizing_ui_microcopy(self):
+        (self.repo / 'src' / 'Form.tsx').write_text('export function Form() {\n  return <div><label>Email</label><small>Please enter your email</small></div>;\n}\n')
+        git(self.repo, 'add', 'src/Form.tsx')
+        _, report = self.check()
+        self.assertIn('PATRONIZING_UI_COPY', [x['id'] for x in report['findings']])
+
+    def test_flags_trivial_comment_narration(self):
+        (self.repo / 'src' / 'counter.py').write_text('def add(x):\n    # increment x\n    return x + 1\n')
+        git(self.repo, 'add', 'src/counter.py')
+        _, report = self.check()
+        self.assertIn('TRIVIAL_COMMENT_NARRATION', [x['id'] for x in report['findings']])
+
+    def test_permits_meaningful_invariant_comments(self):
+        (self.repo / 'src' / 'counter.py').write_text('def add(x):\n    # Invariant: x must be non-negative integer\n    return x + 1\n')
+        git(self.repo, 'add', 'src/counter.py')
+        _, report = self.check()
+        self.assertNotIn('TRIVIAL_COMMENT_NARRATION', [x['id'] for x in report['findings']])
+
 
 if __name__ == '__main__':
     unittest.main()

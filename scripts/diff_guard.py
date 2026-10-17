@@ -21,6 +21,8 @@ PATTERNS = [
     ('TYPE_CHECK_SUPPRESSION', 'review', r'(?:@ts-ignore\b|@ts-nocheck\b|type:\s*ignore\b|eslint-disable(?:-next-line)?\b)'),
     ('DYNAMIC_EXECUTION_CANDIDATE', 'review', r'(?i)(?:\beval\s*\(|\bexec\s*\(|\bshell\s*=\s*True\b)'),
     ('DEV_NOTE_IN_UI', 'blocker', r'(?i)<(?:p|span|div|small|Alert|Badge|Text|Label|h[1-6])[^>]*>[^<]*(?:\b(?:note|todo|fixme|agent note|dev note|developer note)\s*:|\bmock data displayed\b|\bplaceholder until\b)[^<]*</'),
+    ('PATRONIZING_UI_COPY', 'review', r'(?i)<(?:p|span|small|div|Label|HelperText)[^>]*>[^<]*(?:\b(?:please enter your|click (?:here|this button) to|this (?:modal|form|button) allows you to)\b)[^<]*</'),
+    ('TRIVIAL_COMMENT_NARRATION', 'review', r'(?i)^\s*(?://|#)\s*(?:(?:increment|decrement)\s+\w+|(?:return|returns)\s+(?:the\s+)?(?:result|response|value|data|error|promise|true|false)|(?:initialize|init)\s+(?:state|variable|array|object|list|dict)|(?:check|verify)\s+if\s+(?:\w+\s+is\s+)?(?:null|undefined|empty|none)|handle\s+(?:click|change|submit|event|button)|(?:constructor|destructor)\b|import\s+(?:modules?|packages?|react|dependencies)|call\s+(?:the\s+)?\w+\s+function)'),
 ]
 COMPILED = [(key, level, re.compile(regex)) for key, level, regex in PATTERNS]
 TEST_PATH = re.compile(r'(?i)(?:^|/)(?:tests?|__tests__|specs?)(?:/|$)|(?:^|/)(?:test_[^/]+\.py|[^/]+\.(?:test|spec)\.[a-z0-9]+)$')
@@ -112,7 +114,9 @@ def scan(repo, base, max_lines=400):
         for key, level, pattern in COMPILED:
             if key in ('SKIPPED_TEST', 'WEAK_ASSERTION') and not TEST_PATH.search(path):
                 continue
-            if key == 'DEV_NOTE_IN_UI' and not UI_PATH.search(path):
+            if key in ('DEV_NOTE_IN_UI', 'PATRONIZING_UI_COPY') and not UI_PATH.search(path):
+                continue
+            if key == 'TRIVIAL_COMMENT_NARRATION' and (TEST_PATH.search(path) or re.search(r'(?i)(?:^|/)references/', path)):
                 continue
             if pattern.search(code_line) and (key, path, new_line) not in seen:
                 seen.add((key, path, new_line))

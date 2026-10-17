@@ -4,7 +4,7 @@ description: Prevent, detect, and repair AI coding slop and dirty engineering in
 author: Mamdouh Aboammar <mamdouhfces1997@gmail.com>
 license: MIT
 metadata:
-  version: "0.1.5"
+  version: "0.2.0"
   focus: "engineering-discipline"
   repository: "https://github.com/imMamdouhaboammar/anti-slop-engineering"
 ---
@@ -26,6 +26,7 @@ metadata:
 9. **Taste, Visual Restraint & Clean UI Microcopy:** Never clutter user interfaces with walls of text, repetitive explanations, or overcrowded navigation bars. Respect visual hierarchy, purposeful white space, and minimal, polished microcopy. Eliminate gratuitous widgets, stat pills, or icon clutter.
 10. **Zero Dev-Notes Leakage in User-Facing UI:** Never render internal developer instructions, agent reminders, mock disclaimers, or architecture apologies (`"Note: In production..."`, `"Mock data displayed"`, `"TODO: Add auth"`) into user-visible DOM/JSX. Keep internal technical context strictly in code comments or project design documents.
 11. **Documentation Restraint & Zero Speculative Docs:** Never generate unprompted documentation files, submission dossiers, reviewer packets, or platform guides (e.g. "Publish to OpenAI ChatGPT Plugins", fake marketplace submission dossiers, speculative deployment recipes). Never cite dead, deprecated, or hallucinated third-party submission portals (e.g. `platform.openai.com/plugins`). Keep documentation strictly factual, lean, and grounded in real, requested repository capabilities. Reject documentation file sprawl and ceremonial note callouts.
+12. **The Zero-Obviousness & Anti-Truism Doctrine:** Strictly eliminate trivial syntax narration, tautological docstrings, patronizing UI microcopy, and ceremonial documentation truisms. Code comments must NEVER narrate what syntax already states (e.g. `// increment count`, `// return result`, `// check if null`). Docstrings must NEVER merely restate the symbol name. UI microcopy must NEVER condescend to the user by narrating self-evident controls (e.g. `"Please enter your email"` under an Email field, or `"Click here to submit"` on a Submit button). Documentation must NEVER pad prerequisites with trivial truisms ("Must have a computer and internet"). Silence and clarity outrank noise.
 
 ## Activation / modes
 
@@ -73,6 +74,7 @@ Create a tiny scope plan: target files, candidate reuse, test points, risk areas
   - Practice visual restraint: prevent crowded navbars, multi-row icon spam, or redundant controls in headers. Maintain clean visual hierarchy, balanced padding, and purposeful negative space.
   - Enforce concise microcopy: avoid walls of explanatory text, repetitive instructions for obvious user actions, and defensive disclaimers. Every string in the UI must be concise and production-grade.
 - **Anti-logorrhea in code & interfaces:** Avoid writing unnecessary boilerplate, sprawling repetitive wrappers, or comments that merely narrate obvious syntax. Never bloat code or copy just to feel comprehensive.
+- **Zero-obviousness & anti-truism:** Reject code comments that narrate obvious syntax (`// return response`, `// increment i`, `// check if null`), tautological docstrings that merely restate symbol names, patronizing UI microcopy under obvious inputs (`"Please enter your email"` under an Email field), and documentation padded with trivial prerequisite truisms ("requires internet and keyboard"). High engineering discipline favors silence over noise.
 - Modify the existing abstraction whenever it fits; do not add parallel services, helpers, frameworks, compatibility layers, or configurable interfaces without a current need.
 - Keep business logic separate from transport and presentation when supported by the architecture; avoid both god objects and needless micro-files.
 - Use existing dependencies and repo conventions. New dependency requires clear functionality, maintenance, license, security, and bundle/runtime case.
@@ -95,7 +97,7 @@ Run `git diff --check` and inspect `git diff --stat`, changed files, changed ass
 python /path/to/anti-slop-engineering/scripts/diff_guard.py --repo . --base "$(git merge-base HEAD origin/main)" --json
 ```
 
-Replace `origin/main` with your actual target branch; if unavailable, compare with a known commit using `--base HEAD`. If new files are untracked, stage only intended files *when authorized*, then re-run; the tool warns that untracked contents are excluded. **Regex flags are candidates for investigation, not confirmed defects.** The tool neither runs tests nor performs SAST.
+Replace `origin/main` with your actual target branch; if unavailable, compare with a known commit using `--base HEAD`. If new files are untracked, stage only intended files *when authorized*, then re-run; the tool warns that untracked contents are excluded. **Regex flags (including trivial comment narration, patronizing UI copy, speculative docs, and dev notes) are candidates for investigation, not confirmed defects.** The tool neither runs tests nor performs SAST.
 
 Ask explicitly: Could a smaller design do the same thing? Did I create two sources of truth? Could I explain each added file? Would existing consumers or tests now change behavior? Can a reviewer understand the causal chain? Did I silently expand scope?
 
@@ -123,6 +125,9 @@ Before proposing merge, report: intent, changed files, exact test evidence, base
 - Do not render developer notes, agent reminders, mock disclaimers, or architectural apologies into user-facing JSX/HTML views.
 - Do not overcrowd headers, navbars, or dashboards with uncurated icons, redundant buttons, or gratuitous widgets that lack visual hierarchy.
 - Do not bloat UI copy with walls of explanatory text, defensive disclaimers, or verbose narration of obvious UI controls.
+- Do not write trivial syntax-narration comments (e.g. `// return result`, `// increment counter`, `// check null`) or tautological docstrings that merely restate symbol names.
+- Do not add patronizing UI microcopy or obvious instructional labels underneath self-evident controls (e.g. `"Please enter your email"`, `"Click here to submit"`).
+- Do not pad documentation, READMEs, or setup guides with obvious truisms, trivial prerequisite lists, or tautological summaries.
 - Do not generate speculative submission dossiers (e.g., `docs/*SUBMISSION*.md`, `docs/*DOSSIER*.md`) or invent publishing guides for unrequested third-party platforms.
 - Do not cite dead, deprecated, or hallucinated platform URLs (e.g., `platform.openai.com/plugins`).
 - Do not sprawl the repository with ceremonial markdown files or pad READMEs with marketing filler, fake prompt examples, or repetitive note callouts.
