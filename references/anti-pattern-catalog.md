@@ -214,6 +214,9 @@ Format: **ID | pattern | how to verify / safer alternative**. Numbers are stable
 - **REV-12 | Unsafe commit hygiene.** Sensitive/unrelated files staged via blanket add; audit exact staged diff.
 - **REV-13 | No ownership after merge.** Change can't be explained/debugged by maintainer; require accountable review.
 - **REV-14 | Cosmetic markers as quality metrics.** Emojis or AI phrasing labeled defect absent impact; focus correctness.
+- **REV-15 | Speculative platform submission & hallucinated distribution guides.** Agent invents unprompted publishing guides, submission dossiers, or reviewer packets for third-party platforms (e.g. "Publish to OpenAI ChatGPT plugins", `docs/OPENAI_SUBMISSION.md`, `platform.openai.com/plugins`), citing dead, deprecated, or fictional URLs and procedures; never create distribution guides or submission dossiers unless explicitly requested by the user and verified against current official documentation.
+- **REV-16 | Documentation file sprawl & markdown inflation.** Sprawling the repository with unprompted, superficial `.md` files in `docs/` or root (e.g. `docs/SUBMISSION.md`, `docs/REVIEWER_PACKET.md`, `docs/NOTES.md`) that nobody asked for; consolidate factual documentation into a single lean README or authorized doc set.
+- **REV-17 | Documentation logorrhea & filler sections.** Stuffing READMEs and docs with excessive note callouts, speculative marketing copy, redundant disclaimers, and fake prompt examples that dilute real technical APIs and contract evidence; maintain high-signal, concise, factual documentation.
 
 ## M. Agent-specific workflow and autonomy failures
 

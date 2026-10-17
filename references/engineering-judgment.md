@@ -21,6 +21,7 @@ A huge mandatory checklist can itself cause excessive code, bureaucracy and agen
 - UI microcopy should be succinct, high-signal, and respectful of the user's attention. Tooltips and helper text should clarify non-obvious interactions, not narrate obvious UI controls.
 - Dev notes, internal TODOs, mock data disclaimers, or notes intended for other agents have zero place in production UI or client DOM. If mock data is required during dev or prototyping, display clean realistic domain data without meta-disclaimers in the UI layout; log diagnostic state to the devtools console or test harnesses instead.
 - Visual hierarchy and restraint in headers, navbars, and toolbars: prioritize the primary task. Not every available action belongs in the navigation bar; cluster secondary actions into clean contextual menus or dedicated sub-views.
+- Documentation must describe existing, verified behavior—not imagined futures or unrequested distribution channels. Creating elaborate submission dossiers, reviewer packets, or platform guides for third-party ecosystems (e.g. deprecated plugin stores like OpenAI plugins) adds negative value: it misleads users with dead links and creates unmaintained clutter. Prefer a single accurate README to ten speculative markdown files.
 
 ## How to classify a suspected smell
 

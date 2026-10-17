@@ -1,7 +1,7 @@
 {
   "$schema": "https://skills.sh/schema.json",
   "name": "anti-slop-engineering",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "An Engineering Discipline Playbook & Guard System for AI Coding Agents",
   "repository": "https://github.com/imMamdouhaboammar/anti-slop-engineering",
   "author": "Mamdouh Aboammar",

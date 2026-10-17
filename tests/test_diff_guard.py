@@ -97,6 +97,20 @@ class DiffGuardTests(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
         self.assertIn('DEV_NOTE_IN_UI', [x['id'] for x in report['findings']])
 
+    def test_flags_speculative_submission_dossier_files(self):
+        docs_dir = self.repo / 'docs'
+        docs_dir.mkdir(parents=True, exist_ok=True)
+        (docs_dir / 'OPENAI_SUBMISSION.md').write_text('# Submission Guide\n')
+        git(self.repo, 'add', 'docs/OPENAI_SUBMISSION.md')
+        _, report = self.check()
+        self.assertIn('SPECULATIVE_DOC_CANDIDATE', [x['id'] for x in report['findings']])
+
+    def test_flags_hallucinated_deprecated_platform_urls(self):
+        (self.repo / 'README.md').write_text('# Plugin\nUpload to https://platform.openai.com/plugins\n')
+        git(self.repo, 'add', 'README.md')
+        _, report = self.check()
+        self.assertIn('HALLUCINATED_DOC_URL', [x['id'] for x in report['findings']])
+
 
 if __name__ == '__main__':
     unittest.main()

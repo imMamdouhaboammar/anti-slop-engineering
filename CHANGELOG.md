@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.5] - 2026-10-17
+
+### Added
+- **Zero Speculative Documentation & File Sprawl Mandate:** Enforced strict prohibitions in `SKILL.md` (Priority 11, Gate 0, and Anti-Cheating Rules) and `AGENTS.md` (Directive 11) forbidding agents from inventing unrequested third-party platform submission guides, reviewer packets, or distribution dossiers (e.g., claiming tools are OpenAI ChatGPT plugins, fabricating `docs/OPENAI_SUBMISSION.md`, or linking to dead submission portals).
+- **Automated Diff Guard Detection (`scripts/diff_guard.py`):**
+  - `SPECULATIVE_DOC_CANDIDATE`: Flags unrequested submission dossiers and reviewer packets created in `docs/` (`docs/*submission*.md`, `docs/*dossier*.md`, `docs/*reviewer_packet*.md`).
+  - `HALLUCINATED_DOC_URL`: Detects deprecated or hallucinated plugin submission URLs (such as `platform.openai.com/plugins` or `developers.openai.com/plugins`).
+- **3 New Anti-Pattern Catalog Entries (193 -> 196):**
+  - `REV-15 | Speculative platform submission & hallucinated distribution guides`: Unprompted creation of third-party submission dossiers and fake reviewer packets with dead URLs.
+  - `REV-16 | Documentation file sprawl & markdown inflation`: Sprawling the repository with dozens of unprompted, superficial markdown files that nobody asked for.
+  - `REV-17 | Documentation logorrhea & filler sections`: Stuffing READMEs and docs with excessive note callouts, speculative marketing copy, redundant disclaimers, and fake prompt examples.
+- **Unit Test Coverage:** Added `test_flags_speculative_submission_dossier_files` and `test_flags_hallucinated_deprecated_platform_urls` in `tests/test_diff_guard.py` (all 11 unit tests passing).
+
 ## [0.1.4] - 2026-10-17
 
 ### Added

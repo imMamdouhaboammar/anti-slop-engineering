@@ -4,7 +4,7 @@ description: Prevent, detect, and repair AI coding slop and dirty engineering in
 author: Mamdouh Aboammar <mamdouhfces1997@gmail.com>
 license: MIT
 metadata:
-  version: "0.1.4"
+  version: "0.1.5"
   focus: "engineering-discipline"
   repository: "https://github.com/imMamdouhaboammar/anti-slop-engineering"
 ---
@@ -25,6 +25,7 @@ metadata:
 8. **Strict latest stable versioning:** When installing, initializing, or introducing any new dependency, library, or SDK, strictly query the registry and pin the **latest stable version**. Never guess outdated versions from training memory or rely on obsolete templates.
 9. **Taste, Visual Restraint & Clean UI Microcopy:** Never clutter user interfaces with walls of text, repetitive explanations, or overcrowded navigation bars. Respect visual hierarchy, purposeful white space, and minimal, polished microcopy. Eliminate gratuitous widgets, stat pills, or icon clutter.
 10. **Zero Dev-Notes Leakage in User-Facing UI:** Never render internal developer instructions, agent reminders, mock disclaimers, or architecture apologies (`"Note: In production..."`, `"Mock data displayed"`, `"TODO: Add auth"`) into user-visible DOM/JSX. Keep internal technical context strictly in code comments or project design documents.
+11. **Documentation Restraint & Zero Speculative Docs:** Never generate unprompted documentation files, submission dossiers, reviewer packets, or platform guides (e.g. "Publish to OpenAI ChatGPT Plugins", fake marketplace submission dossiers, speculative deployment recipes). Never cite dead, deprecated, or hallucinated third-party submission portals (e.g. `platform.openai.com/plugins`). Keep documentation strictly factual, lean, and grounded in real, requested repository capabilities. Reject documentation file sprawl and ceremonial note callouts.
 
 ## Activation / modes
 
@@ -47,7 +48,7 @@ For extensive audits, load [anti-pattern catalog](references/anti-pattern-catalo
 - Read relevant open issues/PRs when available to avoid duplicates or fighting in-flight changes. Do not require network access to proceed when unavailable.
 - Record working tree status; do not overwrite user changes, reset, stash, or modify unrelated files without authorization.
 - Run an appropriate baseline build/test if feasible; label any existing failure as baseline, not caused by this change.
-- For new projects, services, components, or SDK integrations, identify the official installer, CLI generator, and canonical starter boilerplate before writing code. Do not manually assemble configurations or directory trees from memory.
+- For new projects, services, components, or SDK integrations, identify the official installer, CLI generator, and canonical starter boilerplate before writing code. Do not manually assemble configurations or directory trees from memory. Never generate unprompted documentation files, submission dossiers, or speculative third-party platform guides.
 
 ### Gate 1: Establish a change contract
 
@@ -122,6 +123,9 @@ Before proposing merge, report: intent, changed files, exact test evidence, base
 - Do not render developer notes, agent reminders, mock disclaimers, or architectural apologies into user-facing JSX/HTML views.
 - Do not overcrowd headers, navbars, or dashboards with uncurated icons, redundant buttons, or gratuitous widgets that lack visual hierarchy.
 - Do not bloat UI copy with walls of explanatory text, defensive disclaimers, or verbose narration of obvious UI controls.
+- Do not generate speculative submission dossiers (e.g., `docs/*SUBMISSION*.md`, `docs/*DOSSIER*.md`) or invent publishing guides for unrequested third-party platforms.
+- Do not cite dead, deprecated, or hallucinated platform URLs (e.g., `platform.openai.com/plugins`).
+- Do not sprawl the repository with ceremonial markdown files or pad READMEs with marketing filler, fake prompt examples, or repetitive note callouts.
 - Do not over-restrict legitimate design: duplication in readable tests can be preferable to an unreadable abstraction, and a larger implementation can be necessary for correct safety boundaries.
 
 ## Deliverable contract

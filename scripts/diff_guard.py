@@ -27,6 +27,8 @@ TEST_PATH = re.compile(r'(?i)(?:^|/)(?:tests?|__tests__|specs?)(?:/|$)|(?:^|/)(?
 GENERATED_PATH = re.compile(r'(?i)(?:^|/)(?:node_modules|vendor|dist|build|\.next|coverage|generated)(?:/|$)|(?:\.min\.js|\.lock)$')
 DOC_PATH = re.compile(r'(?i)(?:\.(?:md|markdown|rst|txt|adoc)$|(?:^|/)(?:docs?|documentation|\.github/ISSUE_TEMPLATE)/)')
 UI_PATH = re.compile(r'(?i)\.(?:tsx|jsx|html|vue|svelte|astro)$')
+SPECULATIVE_DOC_PATH = re.compile(r'(?i)(?:^|/)docs/.*(?:submission|dossier|reviewer_packet).*\.md$')
+HALLUCINATED_DOC_URL = re.compile(r'(?i)(?:https?://(?:platform|developers)\.openai\.com/plugins|\[[^\]]*\]\([^)]*(?:platform|developers)\.openai\.com/plugins[^)]*\))')
 
 
 def git(repo, *args):
@@ -64,6 +66,12 @@ def scan(repo, base, max_lines=400):
                                  'action': 'Compare old/new assertions with independently approved behavior; do not auto-rebaseline.'})
             else:
                 new_test.append(path)
+        if SPECULATIVE_DOC_PATH.search(path):
+            exists = subprocess.run(['git', '-C', str(repo), 'cat-file', '-e', f'{base}:{path}'], capture_output=True).returncode == 0
+            if not exists:
+                findings.append({'id': 'SPECULATIVE_DOC_CANDIDATE', 'severity': 'review', 'file': path,
+                                 'evidence': f'New speculative submission dossier or platform guide: {path}',
+                                 'action': 'Verify whether this documentation file was explicitly authorized; avoid unprompted submission dossiers.'})
     added_total = sum(a for a, _ in file_counts.values())
     deleted_total = sum(d for _, d in file_counts.values())
     if added_total > max_lines:
@@ -85,7 +93,18 @@ def scan(repo, base, max_lines=400):
             continue
         if not line.startswith('+') or line.startswith('+++'):
             continue
-        if not path or GENERATED_PATH.search(path) or DOC_PATH.search(path):
+        if not path or GENERATED_PATH.search(path):
+            if new_line is not None:
+                new_line += 1
+            continue
+        code_line = line[1:]
+        if not TEST_PATH.search(path) and not re.search(r'(?i)(?:^|/)references/', path) and HALLUCINATED_DOC_URL.search(code_line):
+            if ('HALLUCINATED_DOC_URL', path, new_line) not in seen:
+                seen.add(('HALLUCINATED_DOC_URL', path, new_line))
+                findings.append({'id': 'HALLUCINATED_DOC_URL', 'severity': 'review', 'file': path, 'line': new_line,
+                                 'evidence': code_line.strip()[:180],
+                                 'action': 'Deprecated or hallucinated platform submission URL detected (e.g. OpenAI plugins are deprecated); verify URL and user intent.'})
+        if DOC_PATH.search(path):
             if new_line is not None:
                 new_line += 1
             continue
