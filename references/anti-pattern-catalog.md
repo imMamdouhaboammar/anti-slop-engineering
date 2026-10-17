@@ -35,6 +35,7 @@ Format: **ID | pattern | how to verify / safer alternative**. Numbers are stable
 - **ARC-12 | Inconsistent architectural style.** One route uses separate ORM/query/validation conventions; follow local idioms.
 - **ARC-13 | Inappropriate inheritance.** A shared base class couples unrelated behavior; prefer composition only if it clarifies.
 - **ARC-14 | Leaky plugin architecture.** Dynamic extension point without real callers; reduce indirection.
+- **ARC-15 | Manual scaffolding improvisation.** Hand-crafting directory structures, build configs, and boilerplate files (`tsconfig.json`, `package.json`, `pyproject.toml`, Dockerfiles) from memory instead of using the official framework/language CLI installer, starter template, or generator; introduces missing build flags, non-standard layouts, and broken tooling.
 
 ## C. Simplicity, duplication, and code readability
 
@@ -190,6 +191,7 @@ Format: **ID | pattern | how to verify / safer alternative**. Numbers are stable
 - **CI-12 | Destructive scripts as setup.** Install resets user state or deletes its own executable; sandbox/test safely.
 - **CI-13 | Policy bypass with `--no-verify`.** Hooks skipped to fake readiness; run checks or document exception.
 - **CI-14 | Hidden platform assumptions.** Linux-only paths in cross-platform project; matrix test.
+- **CI-15 | Stale or guessed dependency versions.** Adding new libraries, frameworks, or SDKs with obsolete, pre-cutoff, or hallucinated versions from model memory instead of actively querying the package registry for the latest stable release; introduces known CVEs, outdated APIs, and immediate technical debt.
 
 ## L. Repository hygiene, review, and engineering process
 

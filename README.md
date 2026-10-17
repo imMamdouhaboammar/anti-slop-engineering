@@ -45,6 +45,8 @@ As AI coding agents take on complex multi-step tasks, common pathological failur
 3. **Duplicate Business Rules:** Improvised helper functions scattered across the codebase that replicate existing domain logic with subtle discrepancies.
 4. **Error Swallowing & Security Shortcuts:** Adding broad `except: pass`, `verify=False`, `@ts-ignore`, or disabling authentication gates to avoid errors.
 5. **False Confidence & Hallucinated Passes:** Reporting tests or builds as successful without running or verifying the actual commands against source truth.
+6. **Manual Scaffolding Slop:** Hand-rolling directory structures, build configs, and boilerplate files from memory instead of using the official framework CLI installer or starter template.
+7. **Stale/Guessed Dependency Pinning:** Guessing outdated or deprecated dependency versions from pre-cutoff training memory instead of querying the official registry for the latest stable release.
 
 Anti-Slop Engineering enforces disciplined, evidence-based constraints to prevent these degradations.
 
@@ -91,10 +93,10 @@ When an agent operates in **BUILD**, **FIX**, **REVIEW**, or **CLEANUP** mode, i
 
 | Gate | Phase | Objective |
 |---|---|---|
-| **Gate 0** | **Discover** | Inspect root configs, lockfiles, conventions, and nearby implementations; never improvise repo habits. |
+| **Gate 0** | **Discover** | Inspect root configs, lockfiles, conventions, and nearby implementations. Identify official CLI installers/boilerplates; never improvise repo habits. |
 | **Gate 1** | **Contract** | Define explicitly: *what changes, what must not change, invariants, and rollback requirements*. |
 | **Gate 2** | **Lock Oracle** | Baseline existing tests. Protect assertions. On fixes, write red-state repro before modifying production code. |
-| **Gate 3** | **Implement** | Minimum justified complexity. Extend existing patterns; no duplicate layers or unnecessary dependencies. |
+| **Gate 3** | **Implement** | Minimum justified complexity. Use official scaffolding; strictly resolve and pin latest stable dependencies; no duplicate layers. |
 | **Gate 4** | **Verify** | Execute real tests beyond green badges. Test negative boundaries, concurrency, and contract seams. |
 | **Gate 5** | **Audit Diff** | Run `diff_guard.py` as a skeptical reviewer. Scrutinize scope expansions, test modifications, and hidden leaks. |
 | **Gate 6** | **Evidence** | Issue structured report: `BLOCK`, `REWORK`, `REVIEW`, or `PASS` with exact `file:line` citations and proof. |

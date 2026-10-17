@@ -4,7 +4,7 @@ description: Prevent, detect, and repair AI coding slop and dirty engineering in
 author: Mamdouh Aboammar <mamdouhfces1997@gmail.com>
 license: MIT
 metadata:
-  version: "0.1.0"
+  version: "0.1.1"
   focus: "engineering-discipline"
   repository: "https://github.com/imMamdouhaboammar/anti-slop-engineering"
 ---
@@ -21,6 +21,8 @@ metadata:
 4. Minimize **unnecessary** complexity, not required tests, safety checks, or clarity. A short but incorrect solution fails.
 5. Do not declare a finding without file/line evidence and an impact story. Never invent tool results or test runs.
 6. Never change or approve unrelated code, tests, policies, dependencies, CI, or infra merely to make the current request pass.
+7. **Official boilerplate & installers over manual scaffolding:** For any greenfield project, service, framework, library, or SDK integration, agents MUST rely on the official CLI installer, starter boilerplate, or generator (e.g., `uv init`, `cargo init`, `bun create`, official SDK quickstarts). Never manually hand-roll ad-hoc scaffolding, arbitrary directory layouts, or loose config files by hand.
+8. **Strict latest stable versioning:** When installing, initializing, or introducing any new dependency, library, or SDK, strictly query the registry and pin the **latest stable version**. Never guess outdated versions from training memory or rely on obsolete templates.
 
 ## Activation / modes
 
@@ -42,6 +44,7 @@ For extensive audits, load [anti-pattern catalog](references/anti-pattern-catalo
 - Read relevant open issues/PRs when available to avoid duplicates or fighting in-flight changes. Do not require network access to proceed when unavailable.
 - Record working tree status; do not overwrite user changes, reset, stash, or modify unrelated files without authorization.
 - Run an appropriate baseline build/test if feasible; label any existing failure as baseline, not caused by this change.
+- For new projects, services, components, or SDK integrations, identify the official installer, CLI generator, and canonical starter boilerplate before writing code. Do not manually assemble configurations or directory trees from memory.
 
 ### Gate 1: Establish a change contract
 
@@ -59,6 +62,8 @@ Create a tiny scope plan: target files, candidate reuse, test points, risk areas
 
 ### Gate 3: Implement with minimum justified complexity
 
+- **Official tooling over manual scaffolding:** When initializing an application, module, or SDK integration, invoke the official CLI installer / starter generator rather than manually typing out build configurations (`tsconfig.json`, `package.json`, `pyproject.toml`, Dockerfiles, etc.).
+- **Strict latest stable dependency pinning:** When adding new dependencies or SDKs, always query the package manager or registry to install the latest stable release (e.g. `bun add <pkg>@latest`, `uv add <pkg>`). Pin versions strictly in manifests and generate valid lockfiles; never rely on pre-cutoff memory.
 - Modify the existing abstraction whenever it fits; do not add parallel services, helpers, frameworks, compatibility layers, or configurable interfaces without a current need.
 - Keep business logic separate from transport and presentation when supported by the architecture; avoid both god objects and needless micro-files.
 - Use existing dependencies and repo conventions. New dependency requires clear functionality, maintenance, license, security, and bundle/runtime case.
@@ -104,6 +109,8 @@ Before proposing merge, report: intent, changed files, exact test evidence, base
 - Do not weaken lint/type/security/branch protection/CI policies simply to achieve success.
 - Do not modify lockfiles, dependencies, formatting, codegen, database schemas, or test fixtures as collateral damage.
 - Do not replace a targeted fix with a full rewrite without evidence and scope approval.
+- Do not manually scaffold project skeletons or hand-stitch configuration files when official language, framework, or SDK installers and boilerplates are available.
+- Do not pin outdated, deprecated, or guessed dependency versions from model training memory; always resolve and enforce the latest stable version from the official registry.
 - Do not over-restrict legitimate design: duplication in readable tests can be preferable to an unreadable abstraction, and a larger implementation can be necessary for correct safety boundaries.
 
 ## Deliverable contract

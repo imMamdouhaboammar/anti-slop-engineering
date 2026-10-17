@@ -16,3 +16,5 @@ Anti-Slop Engineering is an open-source playbook, agent skill, and lightweight t
    - All tests in `tests/test_diff_guard.py` must remain green.
 4. **Self-Diff Verification:** Run `python3 scripts/diff_guard.py --base HEAD` before concluding any work session.
 5. **No Hallucinated Pass Badges:** Only report tests and checks that were executed and verified against real terminal outputs.
+6. **Official Boilerplate & Generators First:** When scaffolding new projects, services, components, or SDKs, use the official CLI installer / generator (e.g. `uv init`, `cargo init`, `bun create`). Never hand-roll ad-hoc scaffolding from memory.
+7. **Strict Latest Stable Dependency Pinning:** When adding new libraries or SDKs, strictly query the registry and pin the latest stable release. Never guess obsolete versions based on training cutoff dates.
