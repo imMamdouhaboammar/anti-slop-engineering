@@ -18,3 +18,6 @@ Anti-Slop Engineering is an open-source playbook, agent skill, and lightweight t
 5. **No Hallucinated Pass Badges:** Only report tests and checks that were executed and verified against real terminal outputs.
 6. **Official Boilerplate & Generators First:** When scaffolding new projects, services, components, or SDKs, use the official CLI installer / generator (e.g. `uv init`, `cargo init`, `bun create`). Never hand-roll ad-hoc scaffolding from memory.
 7. **Strict Latest Stable Dependency Pinning:** When adding new libraries or SDKs, strictly query the registry and pin the latest stable release. Never guess obsolete versions based on training cutoff dates.
+8. **Zero Dev-Notes Leakage in User-Facing UI:** Never leak developer notes, TODOs, agent reminders, or "mock data displayed" banners into user-facing DOM, JSX, templates, or UI components. Keep internal coordination in commit messages, devtools logs, or test fixtures.
+9. **Visual Taste & Layout Restraint:** Never overcrowd headers, navbars, or toolbars with unnecessary icons, repetitive buttons, or redundant badges. Maintain whitespace, visual hierarchy, and breathing room.
+10. **Anti-Logorrhea in Code & UI:** Strip away conversational chatter, redundant text blocks, over-explanatory tooltips, and obvious code narration. Let clean interfaces and self-explanatory code speak for themselves.

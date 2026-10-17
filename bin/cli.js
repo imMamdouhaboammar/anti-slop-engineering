@@ -17,7 +17,7 @@ const args = process.argv.slice(2);
 
 function printBanner() {
   console.log(`
-🛡️  Anti-Slop Engineering CLI (v0.1.2)
+🛡️  Anti-Slop Engineering CLI (v0.1.3)
    An Engineering Discipline Playbook & Guard System for AI Coding Agents
    Author: Mamdouh Aboammar <mamdouhfces1997@gmail.com>
    Repo:   https://github.com/imMamdouhaboammar/anti-slop-engineering
@@ -39,7 +39,7 @@ Seven Gates of Anti-Slop:
   Gate 0: Discover; do not improvise the repo (Use official boilerplates & installers)
   Gate 1: Establish an explicit change contract (what changes vs what stays invariant)
   Gate 2: Lock baseline tests & protect test oracles (repro first, never tamper assertions)
-  Gate 3: Implement with minimum justified complexity (strictly pin latest stable dependencies)
+  Gate 3: Implement minimum complexity (pin latest dependencies, zero dev-notes in UI, visual taste)
   Gate 4: Verify beyond green tests (test negative paths, contracts, and regressions)
   Gate 5: Audit diff as a skeptical reviewer (run diff_guard triage)
   Gate 6: Evidence & structured release decision (BLOCK / REWORK / REVIEW / PASS)

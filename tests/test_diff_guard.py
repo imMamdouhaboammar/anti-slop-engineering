@@ -81,6 +81,13 @@ class DiffGuardTests(unittest.TestCase):
         self.assertEqual(report['summary']['changed_files'], 1)
         self.assertEqual(report['findings'], [])
 
+    def test_flags_dev_notes_leaked_in_ui_components(self):
+        (self.repo / 'src' / 'Component.tsx').write_text('export function View() {\n  return <p className="desc">Note: In production this connects to DB</p>;\n}\n')
+        git(self.repo, 'add', 'src/Component.tsx')
+        result, report = self.check('--fail-on-blocker')
+        self.assertEqual(result.returncode, 2)
+        self.assertIn('DEV_NOTE_IN_UI', [x['id'] for x in report['findings']])
+
 
 if __name__ == '__main__':
     unittest.main()

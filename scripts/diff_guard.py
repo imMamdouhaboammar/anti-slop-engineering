@@ -20,11 +20,13 @@ PATTERNS = [
     ('ERROR_SWALLOW_CANDIDATE', 'review', r'(?i)(?:\bexcept\s+[^:]+:\s*pass\b|\bcatch\s*\([^)]*\)\s*\{\s*\}|\.catch\s*\(\s*\(\s*\)\s*=>\s*\{\s*\}\s*\))'),
     ('TYPE_CHECK_SUPPRESSION', 'review', r'(?:@ts-ignore\b|@ts-nocheck\b|type:\s*ignore\b|eslint-disable(?:-next-line)?\b)'),
     ('DYNAMIC_EXECUTION_CANDIDATE', 'review', r'(?i)(?:\beval\s*\(|\bexec\s*\(|\bshell\s*=\s*True\b)'),
+    ('DEV_NOTE_IN_UI', 'blocker', r'(?i)<(?:p|span|div|small|Alert|Badge|Text|Label|h[1-6])[^>]*>[^<]*(?:\b(?:note|todo|fixme|agent note|dev note|developer note)\s*:|\bmock data displayed\b|\bplaceholder until\b)[^<]*</'),
 ]
 COMPILED = [(key, level, re.compile(regex)) for key, level, regex in PATTERNS]
 TEST_PATH = re.compile(r'(?i)(?:^|/)(?:tests?|__tests__|specs?)(?:/|$)|(?:^|/)(?:test_[^/]+\.py|[^/]+\.(?:test|spec)\.[a-z0-9]+)$')
 GENERATED_PATH = re.compile(r'(?i)(?:^|/)(?:node_modules|vendor|dist|build|\.next|coverage|generated)(?:/|$)|(?:\.min\.js|\.lock)$')
 DOC_PATH = re.compile(r'(?i)(?:\.(?:md|markdown|rst|txt|adoc)$|(?:^|/)(?:docs?|documentation)/)')
+UI_PATH = re.compile(r'(?i)\.(?:tsx|jsx|html|vue|svelte|astro)$')
 
 
 def git(repo, *args):
@@ -90,6 +92,8 @@ def scan(repo, base, max_lines=400):
         code_line = line[1:]
         for key, level, pattern in COMPILED:
             if key in ('SKIPPED_TEST', 'WEAK_ASSERTION') and not TEST_PATH.search(path):
+                continue
+            if key == 'DEV_NOTE_IN_UI' and not UI_PATH.search(path):
                 continue
             if pattern.search(code_line) and (key, path, new_line) not in seen:
                 seen.add((key, path, new_line))

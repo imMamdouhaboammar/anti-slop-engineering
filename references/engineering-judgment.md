@@ -18,6 +18,9 @@ A huge mandatory checklist can itself cause excessive code, bureaucracy and agen
 - Rule thresholds (file length, diff size, number of files) are prompts for scrutiny, not blockers without measured harm.
 - In existing codebases, preserve established version constraints and lockfile stability without uncoordinated major-version drift. However, when introducing **new** libraries, packages, or SDK integrations, always strictly resolve and pin the **latest stable version** from the official registry rather than guessing outdated versions from model training memory.
 - For greenfield projects, new modules, or SDK integrations, always use the **official boilerplate, CLI installer, or generator** (e.g., `uv init`, `cargo init`, `bun create`, official SDK starters). Hand-rolling ad-hoc scaffolding from memory introduces missing build flags, broken toolchains, and dirty slop.
+- UI microcopy should be succinct, high-signal, and respectful of the user's attention. Tooltips and helper text should clarify non-obvious interactions, not narrate obvious UI controls.
+- Dev notes, internal TODOs, mock data disclaimers, or notes intended for other agents have zero place in production UI or client DOM. If mock data is required during dev or prototyping, display clean realistic domain data without meta-disclaimers in the UI layout; log diagnostic state to the devtools console or test harnesses instead.
+- Visual hierarchy and restraint in headers, navbars, and toolbars: prioritize the primary task. Not every available action belongs in the navigation bar; cluster secondary actions into clean contextual menus or dedicated sub-views.
 
 ## How to classify a suspected smell
 

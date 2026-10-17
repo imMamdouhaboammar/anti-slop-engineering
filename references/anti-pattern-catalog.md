@@ -53,6 +53,7 @@ Format: **ID | pattern | how to verify / safer alternative**. Numbers are stable
 - **SIM-12 | Dead branches or unreachable fallbacks.** Stale paths obscure behavior; prove unused before removal.
 - **SIM-13 | Magic values.** Unexplained retry limits, amounts and thresholds; derive from explicit domain config.
 - **SIM-14 | Broad nullability.** `any`/unknown/nullable masks modeling errors; enforce meaningful types at boundaries.
+- **SIM-15 | Logorrhea and code narration.** Over-explaining every trivial statement with conversational comments narrating obvious syntax, bloated repetitive wrappers, or unnecessary boilerplate; write minimal, idiomatic, self-documenting code.
 
 ## D. Database design, migrations, and data reliability
 
@@ -174,6 +175,10 @@ Format: **ID | pattern | how to verify / safer alternative**. Numbers are stable
 - **UI-10 | Premature optimization breaking readability.** Overmemoization and tangled hooks; measure before change.
 - **UI-11 | Hydration and SSR mismatch.** Client-only values rendered on server; test hydration behavior.
 - **UI-12 | Scroll/interaction regressions.** Pretty static rendering misses sticky/pointer/scroll logic; runtime verify.
+- **UI-13 | Dev-notes and agent instructions leaked in UI.** Rendering developer thoughts, agent reminders, mock disclaimers, or architecture apologies (`"Note: In production this will..."`, `"Mock data displayed until backend is wired"`, `"TODO: add validation"`) directly inside user-facing components; sanitize all internal developer dialogue into code comments or design docs.
+- **UI-14 | Wall-of-text microcopy & over-instruction.** Crowding the interface with paragraphs of obvious instructions, redundant tooltips, and defensive disclaimers explaining basic controls; enforce concise, human, 1-3 word labels and minimal microcopy.
+- **UI-15 | Visual overcrowding & navbar clutter.** Jamming excessive icons, links, theme switches, search bars, and status badges into headers or navbars without optical balance or hierarchy; enforce breathing room, negative space, and single-purpose navigation.
+- **UI-16 | Compulsive decoration & gratuitous widgets.** Adding dummy stats cards, useless progress bars, decorative badges, or unasked widgets to make the UI look complex and busy; remove non-functional clutter.
 
 ## K. Dependencies, builds, CI/CD, and supply chain
 

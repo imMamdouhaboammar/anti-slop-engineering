@@ -4,7 +4,7 @@ description: Prevent, detect, and repair AI coding slop and dirty engineering in
 author: Mamdouh Aboammar <mamdouhfces1997@gmail.com>
 license: MIT
 metadata:
-  version: "0.1.2"
+  version: "0.1.3"
   focus: "engineering-discipline"
   repository: "https://github.com/imMamdouhaboammar/anti-slop-engineering"
 ---
@@ -23,6 +23,8 @@ metadata:
 6. Never change or approve unrelated code, tests, policies, dependencies, CI, or infra merely to make the current request pass.
 7. **Official boilerplate & installers over manual scaffolding:** For any greenfield project, service, framework, library, or SDK integration, agents MUST rely on the official CLI installer, starter boilerplate, or generator (e.g., `uv init`, `cargo init`, `bun create`, official SDK quickstarts). Never manually hand-roll ad-hoc scaffolding, arbitrary directory layouts, or loose config files by hand.
 8. **Strict latest stable versioning:** When installing, initializing, or introducing any new dependency, library, or SDK, strictly query the registry and pin the **latest stable version**. Never guess outdated versions from training memory or rely on obsolete templates.
+9. **Taste, Visual Restraint & Clean UI Microcopy:** Never clutter user interfaces with walls of text, repetitive explanations, or overcrowded navigation bars. Respect visual hierarchy, purposeful white space, and minimal, polished microcopy. Eliminate gratuitous widgets, stat pills, or icon clutter.
+10. **Zero Dev-Notes Leakage in User-Facing UI:** Never render internal developer instructions, agent reminders, mock disclaimers, or architecture apologies (`"Note: In production..."`, `"Mock data displayed"`, `"TODO: Add auth"`) into user-visible DOM/JSX. Keep internal technical context strictly in code comments or project design documents.
 
 ## Activation / modes
 
@@ -64,6 +66,11 @@ Create a tiny scope plan: target files, candidate reuse, test points, risk areas
 
 - **Official tooling over manual scaffolding:** When initializing an application, module, or SDK integration, invoke the official CLI installer / starter generator rather than manually typing out build configurations (`tsconfig.json`, `package.json`, `pyproject.toml`, Dockerfiles, etc.).
 - **Strict latest stable dependency pinning:** When adding new dependencies or SDKs, always query the package manager or registry to install the latest stable release (e.g. `bun add <pkg>@latest`, `uv add <pkg>`). Pin versions strictly in manifests and generate valid lockfiles; never rely on pre-cutoff memory.
+- **Frontend taste & zero dev-notes leakage:**
+  - Strip out all internal developer/agent annotations, reminders, or mock warnings (`"TODO: Wire backend"`, `"Note: Mock data"`, `"Agent notice:"`) from user-visible DOM/JSX.
+  - Practice visual restraint: prevent crowded navbars, multi-row icon spam, or redundant controls in headers. Maintain clean visual hierarchy, balanced padding, and purposeful negative space.
+  - Enforce concise microcopy: avoid walls of explanatory text, repetitive instructions for obvious user actions, and defensive disclaimers. Every string in the UI must be concise and production-grade.
+- **Anti-logorrhea in code & interfaces:** Avoid writing unnecessary boilerplate, sprawling repetitive wrappers, or comments that merely narrate obvious syntax. Never bloat code or copy just to feel comprehensive.
 - Modify the existing abstraction whenever it fits; do not add parallel services, helpers, frameworks, compatibility layers, or configurable interfaces without a current need.
 - Keep business logic separate from transport and presentation when supported by the architecture; avoid both god objects and needless micro-files.
 - Use existing dependencies and repo conventions. New dependency requires clear functionality, maintenance, license, security, and bundle/runtime case.
@@ -111,6 +118,9 @@ Before proposing merge, report: intent, changed files, exact test evidence, base
 - Do not replace a targeted fix with a full rewrite without evidence and scope approval.
 - Do not manually scaffold project skeletons or hand-stitch configuration files when official language, framework, or SDK installers and boilerplates are available.
 - Do not pin outdated, deprecated, or guessed dependency versions from model training memory; always resolve and enforce the latest stable version from the official registry.
+- Do not render developer notes, agent reminders, mock disclaimers, or architectural apologies into user-facing JSX/HTML views.
+- Do not overcrowd headers, navbars, or dashboards with uncurated icons, redundant buttons, or gratuitous widgets that lack visual hierarchy.
+- Do not bloat UI copy with walls of explanatory text, defensive disclaimers, or verbose narration of obvious UI controls.
 - Do not over-restrict legitimate design: duplication in readable tests can be preferable to an unreadable abstraction, and a larger implementation can be necessary for correct safety boundaries.
 
 ## Deliverable contract

@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.3] - 2026-10-17
+
+### Added
+- **UI Anti-Slop Discipline & Zero Dev-Notes Leakage:** Enforced strict prohibitions in `SKILL.md` (Priorities 9 & 10, Gate 3) preventing agents from leaking internal developer notes, TODOs, mock data alerts, or agent instructions into user-facing DOM, JSX, or templates.
+- **Visual Restraint & Clean UI Microcopy:** Added design taste guidelines against navbar/header overcrowding, compulsive widget decoration, and walls of explanatory text.
+- **DEV_NOTE_IN_UI Guard Check:** Added automated heuristic detection in `scripts/diff_guard.py` scoped to UI components (`.tsx`, `.jsx`, `.html`, `.vue`, `.svelte`, `.astro`) that flags leaked dev notes and mock data alerts with exit code 2 blocker severity.
+- **5 New Anti-Pattern Catalog Entries (188 -> 193):**
+  - `SIM-15 | Logorrhea and code narration`: Compulsive verbosity in code comments, obvious line-by-line narration, and bloated wrappers.
+  - `UI-13 | Dev-notes and agent instructions leaked in UI`: Internal developer notes and TODOs rendered into client DOM.
+  - `UI-14 | Wall-of-text microcopy & over-instruction`: Excessive prose, patronizing instructions, and wordy explanations cluttering UI.
+  - `UI-15 | Visual overcrowding & navbar clutter`: Overcrowded headers, navigation bars, and screens with gratuitous icons and widgets.
+  - `UI-16 | Compulsive decoration & gratuitous widgets`: Meaningless stat pills, redundant badges, and fake progress bars.
+- **Unit Test Coverage:** Added `test_flags_dev_notes_leaked_in_ui_components` in `tests/test_diff_guard.py`.
+
 ## [0.1.2] - 2026-10-17
 
 ### Added
