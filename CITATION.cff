@@ -5,7 +5,7 @@ authors:
     given-names: "Mamdouh"
     email: "mamdouhfces1997@gmail.com"
 title: "Anti-Slop Engineering: An Engineering Discipline Playbook and Guard System for AI Coding Agents"
-version: 0.1.1
+version: 0.1.2
 date-released: 2026-10-17
 url: "https://github.com/imMamdouhaboammar/anti-slop-engineering"
 repository-code: "https://github.com/imMamdouhaboammar/anti-slop-engineering"

@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.2] - 2026-10-17
+
+### Added
+- **Universal Multi-Agent Installer (`install.sh`):** Installs Anti-Slop into Claude Code, Antigravity / Gemini CLI, Codex / OpenCode, and Universal Agent Kernel in one shot. Supports both local execution and `curl -fsSL ... | bash`.
+- **Zero-Install CLI (`bin/cli.js`):** Node.js and Bun compatible executable wrapper for fast diff guard triage via `npx anti-slop-engineering` and `bunx anti-slop-engineering`.
+- **Multi-Agent Manifests:** Added `package.json`, `marketplace.json` (Claude plugin marketplace), and `.skills.json` (Skills.sh hub).
+- **High-Presence README:** Redesigned hero header with Shields.io flat-square badges, GitHub-safe Mermaid workflow diagram, and multi-channel installation matrix following `repo-craft-and-distribute` standards.
+- **CI Validation:** Added GitHub Actions jobs for Bun & Node.js CLI execution, universal installer verification, and manifest schema validation.
+
 ## [0.1.1] - 2026-10-17
 
 ### Added

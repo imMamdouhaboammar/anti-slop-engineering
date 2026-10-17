@@ -7,7 +7,7 @@ on:
     branches: [ main, master ]
 
 jobs:
-  test:
+  test-python:
     name: Test (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
     strategy:
@@ -34,3 +34,64 @@ jobs:
 
       - name: Run diff guard against HEAD
         run: python scripts/diff_guard.py --base HEAD
+
+  validate-distribution:
+    name: Validate Universal Distribution & CLI
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Verify CLI Execution with Node.js
+        run: |
+          node ./bin/cli.js --help
+          node ./bin/cli.js --base HEAD
+
+      - name: Verify CLI Execution with Bun
+        run: |
+          bun ./bin/cli.js --help
+          bun ./bin/cli.js --base HEAD
+
+      - name: Verify Universal Installer
+        run: |
+          bash ./install.sh
+
+      - name: Validate Skill & Distribution Manifests
+        run: |
+          python3 -c "
+          import json
+
+          # 1. Validate SKILL.md
+          skill = open('SKILL.md').read()
+          assert skill.startswith('---'), 'Missing YAML frontmatter'
+          assert 'name: anti-slop-engineering' in skill, 'Missing skill name'
+
+          # 2. Validate package.json
+          pkg = json.load(open('package.json'))
+          assert pkg['name'] == 'anti-slop-engineering'
+          assert 'bin' in pkg
+
+          # 3. Validate marketplace.json
+          mkt = json.load(open('marketplace.json'))
+          assert mkt['name'] == 'anti-slop-engineering'
+
+          # 4. Validate .skills.json
+          sk = json.load(open('.skills.json'))
+          assert sk['name'] == 'anti-slop-engineering'
+          print('All multi-agent manifests validated successfully!')
+          "

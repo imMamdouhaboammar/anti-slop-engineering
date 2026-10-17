@@ -1,0 +1,58 @@
+{
+  "name": "anti-slop-engineering",
+  "version": "0.1.2",
+  "description": "An Engineering Discipline Playbook, Agent Skill & Triage Guard for AI Coding Agents",
+  "type": "module",
+  "main": "bin/cli.js",
+  "bin": {
+    "anti-slop-engineering": "./bin/cli.js",
+    "diff-guard": "./bin/cli.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/imMamdouhaboammar/anti-slop-engineering.git"
+  },
+  "bugs": {
+    "url": "https://github.com/imMamdouhaboammar/anti-slop-engineering/issues"
+  },
+  "homepage": "https://github.com/imMamdouhaboammar/anti-slop-engineering#readme",
+  "files": [
+    "bin",
+    "scripts",
+    "references",
+    "assets",
+    "tests",
+    "SKILL.md",
+    "marketplace.json",
+    ".skills.json",
+    "install.sh",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "scripts": {
+    "start": "bun bin/cli.js",
+    "guard": "bun bin/cli.js --base HEAD",
+    "test": "python3 -m unittest discover -s tests -v",
+    "check": "make check"
+  },
+  "keywords": [
+    "agent-skill",
+    "anti-slop",
+    "code-quality",
+    "code-review",
+    "skills.sh",
+    "claude-code",
+    "cursor",
+    "codex",
+    "gemini",
+    "antigravity",
+    "software-engineering",
+    "bun"
+  ],
+  "author": "Mamdouh Aboammar <mamdouhfces1997@gmail.com> (https://github.com/imMamdouhaboammar)",
+  "license": "MIT",
+  "engines": {
+    "bun": ">=1.0.0",
+    "node": ">=18.0.0"
+  }
+}
