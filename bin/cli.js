@@ -13,8 +13,12 @@ const __dirname = dirname(__filename);
 const rootDir = resolve(__dirname, "..");
 const diffGuardScript = resolve(rootDir, "scripts", "diff_guard.py");
 const sreGuardScript = resolve(rootDir, "scripts", "sre_guard.py");
-const rustBinPath = resolve(rootDir, "services", "anti-slop-rust", "target", "release", "anti-slop-rust");
-const goBinPath = resolve(rootDir, "services", "toil-guard-go", "bin", "toil-guard");
+const rustBinPath = existsSync(resolve(rootDir, "dist", "bin", "anti-slop-rust"))
+  ? resolve(rootDir, "dist", "bin", "anti-slop-rust")
+  : resolve(rootDir, "services", "anti-slop-rust", "target", "release", "anti-slop-rust");
+const goBinPath = existsSync(resolve(rootDir, "dist", "bin", "toil-guard"))
+  ? resolve(rootDir, "dist", "bin", "toil-guard")
+  : resolve(rootDir, "services", "toil-guard-go", "bin", "toil-guard");
 
 const args = process.argv.slice(2);
 

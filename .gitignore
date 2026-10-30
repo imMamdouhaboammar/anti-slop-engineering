@@ -67,6 +67,8 @@ Thumbs.db
 # Local tooling & editor caches
 .repowise/
 .claude/
+.agents/
+skills-lock.json
 .mcp.json
 
 # Rust & Cargo

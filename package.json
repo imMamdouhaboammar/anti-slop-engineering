@@ -24,7 +24,6 @@
     "scripts",
     "references",
     "assets",
-    "tests",
     "SKILL.md",
     "marketplace.json",
     ".skills.json",
@@ -34,6 +33,7 @@
   ],
   "scripts": {
     "start": "bun bin/cli.js",
+    "postinstall": "node bin/postinstall.js",
     "build": "bun bin/cli.js build",
     "rust": "bun bin/cli.js rust",
     "toil": "bun bin/cli.js toil",
