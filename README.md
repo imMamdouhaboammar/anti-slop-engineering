@@ -237,6 +237,46 @@ The repository includes a detailed diagnostic catalog in [`references/anti-patte
 
 ---
 
+## ⚡ Native Rust & Go Microservices (Clean-Room Architecture)
+
+Inspired by clean-room reverse-engineering analysis of **Ponytail** (`DietrichGebert/ponytail`), **Stop That Shit** (`lennney/stop-that-shit`), **Ponytail Lite** (`ilindaniel/ponytail-lite`), and **Boring Engineering** (`alvindemesadev/boring-engineering`), Anti-Slop Engineering includes two dedicated high-performance native engines:
+
+### 1. Rust Engine (`services/anti-slop-rust`)
+- **SHIT Boundary Interceptor:** Halts Scope creep (`S`), Hypothetical hardening/companion unread hashes (`H`), Intent violations (`I`), and Task thrashing (`T`).
+- **Senior Dev Ladder & Name-The-Built-In:** Flags custom implementations where platform primitives exist (`crypto.randomUUID()`, `URLSearchParams`, `structuredClone()`).
+- **Practical DRY 3-Point Barrier:** Gates abstractions on real multi-consumer proof and non-conjunction naming.
+- **Axum HTTP Microservice Daemon:** Provides high-speed continuous AST and diff triage via REST API.
+
+```bash
+# Run native Rust triage against git changes:
+bunx anti-slop-engineering rust triage
+
+# Inspect specific diff for SHIT violations:
+bunx anti-slop-engineering rust shit-check --diff patch.diff
+
+# Start background microservice daemon:
+bunx anti-slop-engineering serve-rust --port 9091
+```
+
+### 2. Go SRE Toil Engine (`services/toil-guard-go`)
+- **Google SRE Metric Engine:** High-throughput concurrent audit of KISS nesting depth (<=4), function line limits (<=80), and multi-file DRY sliding-window token hashing.
+- **Toil & Scale Detector:** Flags blind sleep synchronization, fixed retry loops lacking backoff + full jitter, and silent error swallowing.
+- **SLI / SLO Error Budget:** Computes slop index scores and remaining error budgets for agent modifications.
+- **Prometheus Metrics & Microservice Daemon:** Exposes standard `/healthz`, `/metrics`, and `/v1/audit` endpoints.
+
+```bash
+# Run Go SRE audit across repository:
+bunx anti-slop-engineering toil audit
+
+# Stream live git telemetry with continuous error budget tracking:
+bunx anti-slop-engineering toil stream
+
+# Start Go SRE HTTP daemon:
+bunx anti-slop-engineering serve-go --port 9092
+```
+
+---
+
 ## 🛠️ Repository Contents
 
 ```text
@@ -248,6 +288,14 @@ anti-slop-engineering/
 ├── install.sh                        # Universal multi-agent one-liner installer
 ├── bin/
 │   └── cli.js                        # Node/Bun executable CLI entrypoint
+├── services/
+│   ├── anti-slop-rust/               # High-performance Rust Microservice & SHIT Interceptor
+│   │   ├── Cargo.toml
+│   │   └── src/                      # Axum daemon, ShitInterceptor, LadderAuditor
+│   └── toil-guard-go/                # Go SRE Microservice & Toil Stream Engine
+│       ├── go.mod
+│       ├── pkg/                      # SRE complexity, sliding-window DRY, toil, SLI, HTTP server
+│       └── cmd/toil-guard/main.go    # Go CLI entrypoint (audit, stream, serve)
 ├── scripts/
 │   ├── diff_guard.py                 # Pure stdlib Python 3 read-only diff triage guard
 │   └── sre_guard.py                  # Google SRE enforcement engine (KISS, DRY, YAGNI, Scale)
@@ -255,6 +303,7 @@ anti-slop-engineering/
 │   ├── test_diff_guard.py            # Unit tests for the heuristic diff guard
 │   └── test_sre_guard.py             # Unit tests for Google SRE Guard
 ├── references/
+│   ├── clean-room-recon.md           # Clean-room reconnaissance & architectural synthesis
 │   ├── anti-pattern-catalog.md       # 213 diagnostic anti-patterns across 14 engineering domains
 │   ├── google-sre-discipline.md      # Google SRE playbook: KISS, DRY, YAGNI, Scale Invariants & Toil
 │   ├── test-integrity.md             # The Test Integrity Protocol: protecting test oracles

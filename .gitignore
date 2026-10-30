@@ -68,3 +68,11 @@ Thumbs.db
 .repowise/
 .claude/
 .mcp.json
+
+# Rust & Cargo
+target/
+**/*.rs.bk
+
+# Go
+services/toil-guard-go/bin/
+*.exe

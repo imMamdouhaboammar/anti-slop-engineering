@@ -4,14 +4,14 @@ description: Prevent, detect, and repair AI coding slop and dirty engineering in
 author: Mamdouh Aboammar <mamdouhfces1997@gmail.com>
 license: MIT
 metadata:
-  version: "0.3.0"
+  version: "0.4.0"
   focus: "engineering-discipline"
   repository: "https://github.com/imMamdouhaboammar/anti-slop-engineering"
 ---
 
 # Anti-Slop Engineering
 
-**Mission:** Deliver the smallest *coherent, correct, maintainable* change supported by independent evidence. Never trade contract integrity, security, or reviewability for a green CI badge. Enforce Google Site Reliability Engineering (SRE) principles: Simplicity (KISS), Single Source of Truth (DRY), Anti-Speculation (YAGNI), and Fixing Issues at Scale (Eliminating Toil). This skill applies to human and AI-authored changes equally.
+**Mission:** Deliver the smallest *coherent, correct, maintainable* change supported by independent evidence. Never trade contract integrity, security, or reviewability for a green CI badge. Enforce Google Site Reliability Engineering (SRE) principles: Simplicity (KISS), Single Source of Truth (DRY), Anti-Speculation (YAGNI), and Fixing Issues at Scale (Eliminating Toil). Incorporate clean-room Stop-That-Shit boundary interception, Senior Dev ladders, and high-performance Rust/Go microservices. This skill applies to human and AI-authored changes equally.
 
 ## Operating priorities
 
@@ -32,6 +32,11 @@ metadata:
     - **DRY (Single source of truth):** Replicated invariants, duplicated validation patterns, or parallel error structures are reliability hazards. Consolidate into canonical modules.
     - **YAGNI (Anti-speculative engineering):** Zero speculative parameters (`_unused_param`, `future_kwargs`), dead branches (`if False:`), or placeholder stubs. Build for active requirements only.
     - **Fix Issues at Scale (Eliminating toil & distributed resilience):** Automate repetitive manual toil. Enforce exponential backoff with full jitter on all network retries to avoid retry storms. Never use `sleep()` as an async race band-aid. Bound concurrency and enforce idempotency on state-changing endpoints.
+14. **Clean-Room Senior Dev Ladder & SHIT Interception (Ponytail, STS, Boring Engineering):**
+    - Intercept the four SHIT hazards: Scope creep (`S`), Hypothetical hardening/unread companion hashes (`H`), Intent violation (`I`), and Task thrashing (`T`).
+    - Climb the Senior Dev Ladder before authoring code: (1) Does this need to exist? (2) Does it already exist in the codebase? (3) Does the stdlib/platform do it? (4) Does native runtime cover it? (5) Does an existing dependency solve it? (6) Can it be a direct expression? (7) Write only minimal, necessary, tested code.
+    - **Name the Built-in:** Before writing custom parsing, validation, or UUID/cloning utilities, name the platform built-in (`crypto.randomUUID()`, `URLSearchParams`, `structuredClone()`). Hand-rolling standard primitives is a defect.
+    - **Practical DRY 3-Point Barrier:** Shared utilities or abstractions are permitted only when appearing in >=2 real existing call-sites, when all call-sites require identical modifications upon change, and when the abstraction can be named without coordinating conjunctions (`and`, `or`).
 
 ## Activation / modes
 
@@ -96,20 +101,20 @@ Create a tiny scope plan: target files, candidate reuse, test points, risk areas
 
 ### Gate 5: Audit the diff as a skeptical reviewer
 
-Run `git diff --check` and inspect `git diff --stat`, changed files, changed assertions, added dependencies, config, and documentation. If Python 3 and git are available, run read-only triage and Google SRE enforcement:
+Run `git diff --check` and inspect `git diff --stat`, changed files, changed assertions, added dependencies, config, and documentation. Triage can be executed via high-performance native Rust/Go microservices or portable Python scripts:
 
 ```bash
-# General diff hygiene triage:
-python /path/to/anti-slop-engineering/scripts/diff_guard.py --repo . --base "$(git merge-base HEAD origin/main)" --json
+# Native Rust Engine (SHIT Boundary Interceptor & Senior Dev Ladder):
+bunx anti-slop-engineering rust triage
+bunx anti-slop-engineering rust shit-check --diff patch.diff
 
-# Google SRE enforcement (KISS, DRY, YAGNI, Scale Invariants & Toil):
-python /path/to/anti-slop-engineering/scripts/sre_guard.py --repo . --base "$(git merge-base HEAD origin/main)" --strict --json
-```
+# Go High-Throughput SRE Engine (KISS nesting, DRY token window, Toil & Error Budget):
+bunx anti-slop-engineering toil audit
+bunx anti-slop-engineering toil stream
 
-Or execute via universal package runners:
-```bash
-bunx anti-slop-engineering --base HEAD
-bunx anti-slop-engineering sre --base HEAD --strict
+# Zero-dependency Python Core Fallback:
+python scripts/diff_guard.py --base HEAD --json
+python scripts/sre_guard.py --base HEAD --strict --json
 ```
 
 Replace `origin/main` with your actual target branch; if unavailable, compare with a known commit using `--base HEAD`. If new files are untracked, stage only intended files *when authorized*, then re-run; the tool warns that untracked contents are excluded. **Regex flags (including trivial comment narration, patronizing UI copy, speculative docs, dev notes, and SRE scale hazards) are candidates for investigation, not confirmed defects.** The tool neither runs tests nor performs SAST.

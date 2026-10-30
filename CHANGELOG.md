@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-10-30
+
+### Added
+- **Native Rust Microservice Engine (`services/anti-slop-rust` & CLI `bunx anti-slop-engineering rust`):**
+  - High-performance, memory-safe engine inspired by clean-room reverse-engineering analysis of `DietrichGebert/ponytail`, `lennney/stop-that-shit`, `ilindaniel/ponytail-lite`, and `alvindemesadev/boring-engineering`.
+  - **SHIT Boundary Interceptor:** Halts Scope creep (`S`), Hypothetical hardening/unread companion hashes (`H`), Intent violation (`I`), and Task thrashing (`T`).
+  - **Senior Dev Ladder & Name-The-Built-In Auditor:** Audits code additions for platform built-ins (`crypto.randomUUID()`, `URLSearchParams`, `structuredClone()`) and flags hand-rolled reimplementations.
+  - **Practical DRY 3-Point Barrier:** Gates abstractions on multi-consumer necessity and non-conjunction naming.
+  - **Axum Microservice Daemon:** Provides high-speed continuous AST triage via HTTP endpoints `/health`, `/v1/triage`, `/v1/shit-check`, and `/v1/ladder-audit`.
+  - Full Rust unit tests (`cargo test`) with 100% green status.
+- **Native Go SRE Microservice Engine (`services/toil-guard-go` & CLI `bunx anti-slop-engineering toil`):**
+  - High-throughput concurrent engine for Google SRE metric verification and live git diff telemetry.
+  - **KISS Complexity Analyzer:** Verifies control flow nesting depth (<=4) and function line bounds (<=80 lines).
+  - **Cross-File Sliding-Window DRY Scanner:** Detects duplicate logic blocks (>=4 lines) across files using SHA-256 rolling windows.
+  - **Toil & Scale Detector:** Flags blind sleep synchronization, fixed retry loops without exponential backoff + jitter, and diagnostic black hole error swallowing.
+  - **SLI / SLO Error Budget Engine:** Computes slop index metrics and real-time error budget consumption.
+  - **Production Go HTTP Daemon:** Exposes `/healthz`, Prometheus `/metrics`, `/v1/audit`, and `/v1/sli-budget` endpoints with graceful shutdown.
+  - 100% standard library Go implementation with zero third-party dependency bloat.
+  - Full Go unit tests (`go test -v ./...`) with 100% green status.
+- **Clean-Room Reconnaissance Dossier (`references/clean-room-recon.md`):**
+  - Complete architectural mapping, taxonomy synthesis, and attribution ledgers for Ponytail, Stop-That-Shit, Ponytail-Lite, and Boring-Engineering following the `/rea` protocol.
+- **Unified Multi-Engine CLI & Build Automation (`bin/cli.js` & `Makefile`):**
+  - Subcommands `rust`, `toil`, `serve-rust`, `serve-go`, `build`, and transparent fallback to standard library Python guards.
+  - Makefile targets `build-rust`, `build-go`, `build-services`, `test-rust`, `test-go`, `test-all`, `check-all`.
+- **44 Total Verified Tests Across 3 Runtimes:**
+  - 30 Python unit tests + 7 Rust unit tests + 7 Go unit tests passing green.
+
 ## [0.3.0] - 2026-10-30
 
 ### Added

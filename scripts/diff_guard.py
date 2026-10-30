@@ -30,7 +30,7 @@ PATTERNS = [
     ('SRE_YAGNI_DEAD_FLAG', 'blocker', r'(?i)(?:if\s+False\s*:|if\s*\(\s*false\s*\)|if\s*\(\s*0\s*\))\s*(?:#|//.*)?$'),
 ]
 COMPILED = [(key, level, re.compile(regex)) for key, level, regex in PATTERNS]
-TEST_PATH = re.compile(r'(?i)(?:^|/)(?:tests?|__tests__|specs?)(?:/|$)|(?:^|/)(?:test_[^/]+\.py|[^/]+\.(?:test|spec)\.[a-z0-9]+)$')
+TEST_PATH = re.compile(r'(?i)(?:^|/)(?:tests?|__tests__|specs?)(?:/|$)|(?:^|/)(?:test_[^/]+\.py|[^/]+[._](?:test|spec)\.[a-z0-9]+)$')
 GENERATED_PATH = re.compile(r'(?i)(?:^|/)(?:node_modules|vendor|dist|build|\.next|coverage|generated)(?:/|$)|(?:\.min\.js|\.lock)$')
 DOC_PATH = re.compile(r'(?i)(?:\.(?:md|markdown|rst|txt|adoc)$|(?:^|/)(?:docs?|documentation|\.github/ISSUE_TEMPLATE)/)')
 UI_PATH = re.compile(r'(?i)\.(?:tsx|jsx|html|vue|svelte|astro)$')

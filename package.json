@@ -1,13 +1,15 @@
 {
   "name": "anti-slop-engineering",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "An Engineering Discipline Playbook, Agent Skill & Triage Guard for AI Coding Agents",
   "type": "module",
   "main": "bin/cli.js",
   "bin": {
     "anti-slop-engineering": "./bin/cli.js",
     "diff-guard": "./bin/cli.js",
-    "sre-guard": "./bin/cli.js"
+    "sre-guard": "./bin/cli.js",
+    "rust-guard": "./bin/cli.js",
+    "toil-guard": "./bin/cli.js"
   },
   "repository": {
     "type": "git",
@@ -32,11 +34,16 @@
   ],
   "scripts": {
     "start": "bun bin/cli.js",
+    "build": "bun bin/cli.js build",
+    "rust": "bun bin/cli.js rust",
+    "toil": "bun bin/cli.js toil",
     "guard": "bun bin/cli.js --base HEAD",
     "sre": "bun bin/cli.js sre",
     "sre-guard": "bun bin/cli.js sre",
     "test": "python3 -m unittest discover -s tests -v",
-    "check": "make check"
+    "test-all": "make test-all",
+    "check": "make check",
+    "check-all": "make check-all"
   },
   "keywords": [
     "agent-skill",
