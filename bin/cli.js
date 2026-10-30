@@ -161,6 +161,13 @@ Path B: Submit a PR (Problem + Solution Integrated)
     stdio: "inherit",
   });
   pyTest.on("close", (code) => process.exit(code ?? 0));
+} else if (cmd === "test-all") {
+  spawnProcess("make", ["test-all"], "test-all");
+} else if (cmd === "check-all") {
+  spawnProcess("make", ["check-all"], "check-all");
+} else if (cmd === "check") {
+  const forwardArgs = args.slice(1).length > 0 ? args.slice(1) : ["--base", "HEAD"];
+  runPythonScript(diffGuardScript, forwardArgs, "diff_guard");
 } else {
   const forwardArgs = args.length > 0 ? args : ["--base", "HEAD"];
   runPythonScript(diffGuardScript, forwardArgs, "diff_guard");
