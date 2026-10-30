@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-10-30
+
+### Added
+- **Google Site Reliability Engineering (SRE) Guard Engine (`scripts/sre_guard.py` & CLI `bunx anti-slop-engineering sre`):**
+  - Standalone and integrated SRE static analysis engine enforcing Google SRE's four foundational principles: Simplicity (KISS), Single Source of Truth (DRY), Anti-Speculation (YAGNI), and Fixing Issues at Scale (Eliminating Toil).
+  - **KISS Enforcer:** Detects cyclomatic/indentation nesting >4 levels (`KISS_DEEP_NESTING`) with bracket-aware line parsing, and functions exceeding 80 lines (`KISS_FUNCTION_BLOAT`).
+  - **DRY Enforcer:** Detects duplicated logic blocks across codebase files (>=4 lines) using sliding-window hashing (`DRY_CODE_DUPLICATION`) while permitting DAMP in test fixtures.
+  - **YAGNI Enforcer:** Detects speculative placeholder comments (`YAGNI_SPECULATIVE_COMMENT`), dead feature flags like `if False:` (`YAGNI_DEAD_SPECULATIVE_FLAG`), and unreferenced parameters (`YAGNI_SPECULATIVE_PARAMETER`).
+  - **Fix Issues at Scale Enforcer:** Detects flat/unbounded retries without exponential backoff & jitter (`SCALE_UNBOUNDED_OR_FLAT_RETRY`), sleep synchronization band-aids (`SCALE_SLEEP_BAND_AID`), unbounded concurrency mapping (`SCALE_UNBOUNDED_CONCURRENCY`), silent exception swallowing causing operational toil (`SCALE_TOIL_ERROR_SWALLOW`), and misleading health check probes (`SCALE_MISLEADING_HEALTH_CHECK`).
+  - CLI flags: `--strict` (exit code 2 on blockers), `--files`, `--max-nesting`, `--min-dup-lines`, `--max-function-lines`, `--json`.
+- **Diff Guard SRE Heuristics (`scripts/diff_guard.py`):**
+  - Integrated SRE pattern checks (`SRE_SCALE_FLAT_RETRY`, `SRE_SCALE_SLEEP_BAND_AID`, `SRE_SCALE_UNBOUNDED_CONCURRENCY`, `SRE_YAGNI_SPECULATIVE_CODE`, `SRE_YAGNI_DEAD_FLAG`) into standard pre-commit diff triage.
+  - Modularized `scan` into single-responsibility subroutines `audit_file_metadata` and `audit_patch_lines` (fulfilling KISS and DRY).
+- **Google SRE Discipline Playbook (`references/google-sre-discipline.md`):**
+  - Added comprehensive architectural guide covering Simplicity (Google SRE Book Ch. 9), Single Source of Truth, Anti-Speculation, and Fixing Issues at Scale (Google SRE Book Ch. 5: Eliminating Toil), with distributed resilience patterns (exponential backoff with full jitter, circuit breakers, bounded concurrency, idempotency, and liveness vs readiness probes).
+- **12 New SRE Anti-Pattern Catalog Entries (201 -> 213 in `references/anti-pattern-catalog.md`):**
+  - Section N: Google SRE Invariants (`SRE-01` through `SRE-12`).
+- **SKILL.md & AGENTS.md Constitution Updates:**
+  - Added Operating Priority 13, Gate 5 SRE triage, and Agent Directive 14 mandating Google SRE discipline.
+- **Comprehensive Test Suite Expansion:**
+  - Added `tests/test_sre_guard.py` and updated `tests/test_diff_guard.py`, expanding test coverage to 30 unit tests (100% passing).
+
 ## [0.2.1] - 2026-10-17
 
 ### Added

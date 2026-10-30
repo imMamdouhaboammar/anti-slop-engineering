@@ -1,8 +1,8 @@
 {
   "$schema": "https://skills.sh/schema.json",
   "name": "anti-slop-engineering",
-  "version": "0.2.1",
-  "description": "An Engineering Discipline Playbook & Guard System for AI Coding Agents",
+  "version": "0.3.0",
+  "description": "An Engineering Discipline Playbook & Guard System for AI Coding Agents. Enforces Google SRE: KISS, DRY, YAGNI, Fix Issues at Scale.",
   "repository": "https://github.com/imMamdouhaboammar/anti-slop-engineering",
   "author": "Mamdouh Aboammar",
   "license": "MIT",
@@ -13,6 +13,8 @@
     "code-quality",
     "code-review",
     "testing",
-    "engineering-discipline"
+    "engineering-discipline",
+    "sre",
+    "google-sre"
   ]
 }

@@ -141,6 +141,23 @@ class DiffGuardTests(unittest.TestCase):
         _, report = self.check()
         self.assertNotIn('META_PREAMBLE_AND_AFFORDANCE_NARRATION', [x['id'] for x in report['findings']])
 
+    def test_flags_sre_scale_and_yagni_patterns(self):
+        (self.repo / 'src' / 'calc.py').write_text(
+            "def value():\n"
+            "    # TODO(future): optimize\n"
+            "    if False:\n"
+            "        return 99\n"
+            "    time.sleep(1)\n"
+            "    return 1\n"
+        )
+        git(self.repo, 'add', 'src/calc.py')
+        res, report = self.check('--fail-on-blocker')
+        self.assertEqual(res.returncode, 2)
+        finding_ids = [x['id'] for x in report['findings']]
+        self.assertIn('SRE_YAGNI_SPECULATIVE_CODE', finding_ids)
+        self.assertIn('SRE_YAGNI_DEAD_FLAG', finding_ids)
+        self.assertIn('SRE_SCALE_SLEEP_BAND_AID', finding_ids)
+
 
 if __name__ == '__main__':
     unittest.main()

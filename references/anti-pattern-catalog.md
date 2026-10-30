@@ -244,12 +244,27 @@ Format: **ID | pattern | how to verify / safer alternative**. Numbers are stable
 - **AGT-17 | Unbounded agent delegation.** Many reviewers produce contradictory low-signal advice; bounded independent tasks.
 - **AGT-18 | Failure to reconcile final diff.** Agent stops after tests without checking staged changes/status; audit final tree.
 
+## N. Google SRE Invariants (KISS, DRY, YAGNI, Scale & Toil)
+
+- **SRE-01 | KISS: Deep nesting and cyclomatic sprawl.** Code nested >4 levels deep with convoluted branches; flatten with early return guard clauses and cohesive sub-functions.
+- **SRE-02 | KISS: Trivial wrapper chains and indirection layers.** Layered calls passing arguments straight through without transforming data, enforcing policy, or adding context; eliminate intermediate pass-through wrappers.
+- **SRE-03 | DRY: Copy-paste logic and parallel sources of truth.** Replicated invariant checks across endpoints; consolidate into a single authoritative validation module.
+- **SRE-04 | DRY: Fragmented validation and ad-hoc error shapes.** Endpoints defining separate ad-hoc regexes or incompatible error payloads for identical domain types; unify in central schemas.
+- **SRE-05 | YAGNI: Speculative configuration and unused knobs.** Functions or modules with unreferenced parameters, dead configuration flags, or unused stub options; remove unneeded surface area.
+- **SRE-06 | YAGNI: Premature generalization and ghost extension points.** Building multi-tenant abstract plugins or factory hierarchies for a single caller; write concrete, straightforward implementations first.
+- **SRE-07 | SCALE: Hardcoded sleeps and spin-waits (Bandaid engineering).** Arbitrary `sleep()` inserted to patch async race conditions; replace with deterministic condition variables, latches, or bounded event polling.
+- **SRE-08 | SCALE: Blind retries and retry storms (Missing backoff & jitter).** Retrying failures immediately or with flat sleep, causing thundering herds during outages; enforce exponential backoff with full jitter and bounded attempts.
+- **SRE-09 | SCALE: Unbounded concurrency and missing backpressure.** Spawning parallel operations (`Promise.all`, unbounded threads) over unconstrained collections without semaphores or chunking; enforce concurrency limits and backpressure signals.
+- **SRE-10 | SCALE: Operational toil and unautomated manual recovery.** Relying on manual human steps, ad-hoc shell commands, or unrepeatable runbooks; engineer automated, idempotent self-healing systems.
+- **SRE-11 | SCALE: Missing idempotency in mutation endpoints.** State-changing operations lack idempotency keys or unique request IDs; ensure safe re-execution during network retries.
+- **SRE-12 | SCALE: Misleading health checks and liveness/readiness confusion.** Endpoints returning unconditional 200 OK while backends are dead; separate liveness (process alive) from readiness (dependencies verified).
+
 ## Usage by risk, not checklist volume
 
-- **Any feature:** REQ, ARC, SIM, TST, REV, AGT.
-- **Backend/API/database:** DAT, SEC, OPS, CON, API.
+- **Any feature:** REQ, ARC, SIM, TST, REV, AGT, SRE.
+- **Backend/API/database:** DAT, SEC, OPS, CON, API, SRE.
 - **Frontend:** UI, API, SEC and browser runtime evidence.
-- **Infrastructure/deployment:** CI, OPS, SEC, AGT.
-- **Refactor:** behavior preservation, SIM/ARC, diff scope, unchanged test oracle.
+- **Infrastructure/deployment:** CI, OPS, SEC, AGT, SRE.
+- **Refactor:** behavior preservation, SIM/ARC, diff scope, unchanged test oracle, SRE.
 
 **Do not report 100 speculative smells.** Report only material, evidence-backed findings and explicitly state what you did not validate.

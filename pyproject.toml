@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "anti-slop-engineering"
-version = "0.2.1"
+version = "0.3.0"
 description = "An Engineering Discipline Playbook & Guard System for AI Coding Agents"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -21,7 +21,12 @@ keywords = [
   "software-engineering",
   "agent-skills",
   "test-integrity",
-  "diff-guard"
+  "diff-guard",
+  "sre",
+  "site-reliability-engineering",
+  "kiss",
+  "dry",
+  "yagni"
 ]
 classifiers = [
   "Development Status :: 4 - Beta",
@@ -46,6 +51,7 @@ Issues = "https://github.com/imMamdouhaboammar/anti-slop-engineering/issues"
 
 [project.scripts]
 diff-guard = "scripts.diff_guard:main"
+sre-guard = "scripts.sre_guard:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -4,14 +4,14 @@ description: Prevent, detect, and repair AI coding slop and dirty engineering in
 author: Mamdouh Aboammar <mamdouhfces1997@gmail.com>
 license: MIT
 metadata:
-  version: "0.2.1"
+  version: "0.3.0"
   focus: "engineering-discipline"
   repository: "https://github.com/imMamdouhaboammar/anti-slop-engineering"
 ---
 
 # Anti-Slop Engineering
 
-**Mission:** Deliver the smallest *coherent, correct, maintainable* change supported by independent evidence. Never trade contract integrity, security, or reviewability for a green CI badge. This skill applies to human and AI-authored changes equally.
+**Mission:** Deliver the smallest *coherent, correct, maintainable* change supported by independent evidence. Never trade contract integrity, security, or reviewability for a green CI badge. Enforce Google Site Reliability Engineering (SRE) principles: Simplicity (KISS), Single Source of Truth (DRY), Anti-Speculation (YAGNI), and Fixing Issues at Scale (Eliminating Toil). This skill applies to human and AI-authored changes equally.
 
 ## Operating priorities
 
@@ -27,6 +27,11 @@ metadata:
 10. **Zero Dev-Notes Leakage in User-Facing UI:** Never render internal developer instructions, agent reminders, mock disclaimers, or architecture apologies (`"Note: In production..."`, `"Mock data displayed"`, `"TODO: Add auth"`) into user-visible DOM/JSX. Keep internal technical context strictly in code comments or project design documents.
 11. **Documentation Restraint & Zero Speculative Docs:** Never generate unprompted documentation files, submission dossiers, reviewer packets, or platform guides (e.g. "Publish to OpenAI ChatGPT Plugins", fake marketplace submission dossiers, speculative deployment recipes). Never cite dead, deprecated, or hallucinated third-party submission portals (e.g. `platform.openai.com/plugins`). Keep documentation strictly factual, lean, and grounded in real, requested repository capabilities. Reject documentation file sprawl and ceremonial note callouts.
 12. **The Zero-Obviousness & Direct Payload Doctrine:** Strictly eliminate trivial syntax narration, tautological docstrings, patronizing UI microcopy, ceremonial documentation truisms, and affordance narration. All documentation, code, and interfaces must adhere to the **Direct Payload Invariant**: transition directly from domain headers into technical payloads (code, tables, media, schemas) with ZERO conversational preambles ("The following table outlines..."), ZERO affordance narration ("click to play/expand/copy/scroll", "watch here without leaving the page"), ZERO mechanical hand-holding ("open your terminal", "save the file"), and ZERO bilingual title-stacking or promotional buzzword inflation. Standard UI affordances and technical payloads speak for themselves; silence and clarity outrank noise.
+13. **Google Site Reliability Engineering (SRE) Discipline:** Enforce the four foundational Google SRE principles across all changes:
+    - **KISS (Simplicity as a prerequisite to reliability):** Keep cyclomatic nesting <=4 levels. Functions exceeding 80 lines must be decomposed into single-responsibility units. Reject pass-through wrapper chains that add no value.
+    - **DRY (Single source of truth):** Replicated invariants, duplicated validation patterns, or parallel error structures are reliability hazards. Consolidate into canonical modules.
+    - **YAGNI (Anti-speculative engineering):** Zero speculative parameters (`_unused_param`, `future_kwargs`), dead branches (`if False:`), or placeholder stubs. Build for active requirements only.
+    - **Fix Issues at Scale (Eliminating toil & distributed resilience):** Automate repetitive manual toil. Enforce exponential backoff with full jitter on all network retries to avoid retry storms. Never use `sleep()` as an async race band-aid. Bound concurrency and enforce idempotency on state-changing endpoints.
 
 ## Activation / modes
 
@@ -38,7 +43,7 @@ Select the relevant mode and follow the same gates:
 - **CLEANUP:** establish an observable behavior baseline, isolate pure refactors from feature changes, prove no drift.
 - **NOTED_SLOP:** codify newly observed AI slop into a diagnostic catalog pattern, agent directive, and automated diff guard heuristic (see [CONTRIBUTING.md](CONTRIBUTING.md)).
 
-For extensive audits, load [anti-pattern catalog](references/anti-pattern-catalog.md). For any test changes, load [test integrity policy](references/test-integrity.md). For a PR or merge request, load [PR review protocol](references/pr-review.md). For elevated permissions, sensitive code, network access, or deployment, load [security and execution boundaries](references/security-and-operations.md). For project-specific exceptions, load [judgment and exceptions](references/engineering-judgment.md). For community contributions, follow [contributor guidelines](CONTRIBUTING.md).
+For extensive audits, load [anti-pattern catalog](references/anti-pattern-catalog.md). For Google SRE discipline and distributed resilience patterns, load [google-sre-discipline](references/google-sre-discipline.md). For any test changes, load [test integrity policy](references/test-integrity.md). For a PR or merge request, load [PR review protocol](references/pr-review.md). For elevated permissions, sensitive code, network access, or deployment, load [security and execution boundaries](references/security-and-operations.md). For project-specific exceptions, load [judgment and exceptions](references/engineering-judgment.md). For community contributions, follow [contributor guidelines](CONTRIBUTING.md).
 
 ## The seven gates
 
@@ -91,15 +96,25 @@ Create a tiny scope plan: target files, candidate reuse, test points, risk areas
 
 ### Gate 5: Audit the diff as a skeptical reviewer
 
-Run `git diff --check` and inspect `git diff --stat`, changed files, changed assertions, added dependencies, config, and documentation. If Python 3 and git are available, optional read-only triage:
+Run `git diff --check` and inspect `git diff --stat`, changed files, changed assertions, added dependencies, config, and documentation. If Python 3 and git are available, run read-only triage and Google SRE enforcement:
 
 ```bash
+# General diff hygiene triage:
 python /path/to/anti-slop-engineering/scripts/diff_guard.py --repo . --base "$(git merge-base HEAD origin/main)" --json
+
+# Google SRE enforcement (KISS, DRY, YAGNI, Scale Invariants & Toil):
+python /path/to/anti-slop-engineering/scripts/sre_guard.py --repo . --base "$(git merge-base HEAD origin/main)" --strict --json
 ```
 
-Replace `origin/main` with your actual target branch; if unavailable, compare with a known commit using `--base HEAD`. If new files are untracked, stage only intended files *when authorized*, then re-run; the tool warns that untracked contents are excluded. **Regex flags (including trivial comment narration, patronizing UI copy, speculative docs, and dev notes) are candidates for investigation, not confirmed defects.** The tool neither runs tests nor performs SAST.
+Or execute via universal package runners:
+```bash
+bunx anti-slop-engineering --base HEAD
+bunx anti-slop-engineering sre --base HEAD --strict
+```
 
-Ask explicitly: Could a smaller design do the same thing? Did I create two sources of truth? Could I explain each added file? Would existing consumers or tests now change behavior? Can a reviewer understand the causal chain? Did I silently expand scope?
+Replace `origin/main` with your actual target branch; if unavailable, compare with a known commit using `--base HEAD`. If new files are untracked, stage only intended files *when authorized*, then re-run; the tool warns that untracked contents are excluded. **Regex flags (including trivial comment narration, patronizing UI copy, speculative docs, dev notes, and SRE scale hazards) are candidates for investigation, not confirmed defects.** The tool neither runs tests nor performs SAST.
+
+Ask explicitly: Could a smaller design do the same thing (KISS)? Did I create two sources of truth (DRY)? Are all parameters and options actively used (YAGNI)? Will retries trigger thundering herds or retry storms under scale (SCALE)? Did I silently expand scope?
 
 ### Gate 6: Evidence and release decision
 
@@ -132,6 +147,12 @@ Before proposing merge, report: intent, changed files, exact test evidence, base
 - Do not generate speculative submission dossiers (e.g., `docs/*SUBMISSION*.md`, `docs/*DOSSIER*.md`) or invent publishing guides for unrequested third-party platforms.
 - Do not cite dead, deprecated, or hallucinated platform URLs (e.g., `platform.openai.com/plugins`).
 - Do not sprawl the repository with ceremonial markdown files or pad READMEs with marketing filler, fake prompt examples, or repetitive note callouts.
+- Do not use arbitrary `sleep()` or hardcoded delay loops as a synchronization band-aid for async races or flaky tests.
+- Do not retry failing network operations without exponential backoff and randomized full jitter.
+- Do not spawn unbounded parallel tasks, workers, or promises without explicit concurrency limiters or backpressure signals.
+- Do not swallow errors silently with empty `except: pass` or `catch {}` blocks without structured logging or metric counters.
+- Do not introduce speculative parameters (`_unused_param`, `future_kwargs`), dead feature toggles (`if False:`), or unreferenced extension points.
+- Do not duplicate domain invariants, validation rules, or error models across multiple modules; maintain a single authoritative source of truth.
 - Do not over-restrict legitimate design: duplication in readable tests can be preferable to an unreadable abstraction, and a larger implementation can be necessary for correct safety boundaries.
 
 ## Deliverable contract

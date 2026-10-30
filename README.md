@@ -18,7 +18,8 @@
   <a href="#-quickstart--installation">Quickstart</a> •
   <a href="#-the-seven-gates">The Seven Gates</a> •
   <a href="#-heuristic-diff-guard">Diff Guard CLI</a> •
-  <a href="#-anti-pattern-catalog-201-diagnostic-patterns">Anti-Pattern Catalog</a> •
+  <a href="#-google-site-reliability-engineering-sre-guard">Google SRE Guard</a> •
+  <a href="#-anti-pattern-catalog-213-diagnostic-patterns">Anti-Pattern Catalog</a> •
   <a href="#-contributing-noted-slop">Contribute Slop</a> •
   <a href="#-multi-agent-distribution-channels">Distribution Channels</a> •
   <a href="#-license--copyright">License</a>
@@ -52,14 +53,17 @@ npx skills add imMamdouhaboammar/anti-slop-engineering
 
 ### Option 3: Instant Zero-Install CLI (npm / Bun)
 
-Run diff guard triage instantly on any working tree without cloning:
+Run diff guard triage or Google SRE enforcement instantly without cloning:
 
 ```bash
-# Compare staged + tracked edits against HEAD:
-npx anti-slop-engineering --base HEAD
-
-# Or using Bun:
+# General diff hygiene triage:
 bunx anti-slop-engineering --base HEAD
+
+# Google SRE enforcement (KISS, DRY, YAGNI, Scale Invariants & Toil):
+bunx anti-slop-engineering sre --base HEAD --strict
+
+# Or via npx:
+npx anti-slop-engineering sre --base HEAD --strict
 ```
 
 ### Option 4: Python CLI (pipx / uv)
@@ -171,7 +175,48 @@ npx anti-slop-engineering --base HEAD --fail-on-blocker
 
 ---
 
-## 📚 Anti-Pattern Catalog (201 Diagnostic Patterns)
+## ⚙️ Google Site Reliability Engineering (SRE) Guard
+
+A static analysis and diff triage engine (`scripts/sre_guard.py` & CLI subcommand `sre`) implementing Google Site Reliability Engineering principles: **KISS**, **DRY**, **YAGNI**, and **Fix Issues at Scale (Eliminating Toil)**. Zero external dependencies (stdlib Python 3.9+).
+
+```bash
+# Analyze working tree diff against HEAD:
+bunx anti-slop-engineering sre --base HEAD
+
+# Scan arbitrary files or directories:
+bunx anti-slop-engineering sre --files src/ lib/
+
+# Strict CI quality gate (exit code 2 on SRE blockers):
+bunx anti-slop-engineering sre --base HEAD --strict
+
+# Machine-readable JSON output:
+bunx anti-slop-engineering sre --base HEAD --json
+
+# Custom complexity thresholds:
+bunx anti-slop-engineering sre --max-nesting 4 --min-dup-lines 4 --max-function-lines 80
+```
+
+### Google SRE Principles Enforced
+
+| Pillar | Diagnostic Rule | SRE Invariant & Remediation |
+| :--- | :--- | :--- |
+| **KISS (Simplicity)** | `KISS_DEEP_NESTING` | Flag code nested >4 levels deep (`if`/`for`/`while`/`try`). Software simplicity is a prerequisite to reliability (Google SRE Book Ch. 9); flatten with early-return guard clauses. |
+| **KISS (Simplicity)** | `KISS_FUNCTION_BLOAT` | Flag monolithic functions exceeding 80 lines. Split into single-responsibility, cohesive subroutines. |
+| **DRY (Single Source of Truth)** | `DRY_CODE_DUPLICATION` | Detect duplicated logic blocks (>=4 normalized lines) across files via sliding-window hashing. Duplication causes divergent bug fixes in production; extract canonical helpers. |
+| **YAGNI (Anti-Speculation)** | `YAGNI_SPECULATIVE_COMMENT` | Flag comments like `TODO(future)`, `placeholder for v2`, `reserved for future use`. Reject speculative future-proofing. |
+| **YAGNI (Anti-Speculation)** | `YAGNI_DEAD_SPECULATIVE_FLAG` | Blocker on dead branches (`if False:`, `if (false)`). Remove speculative dead code; Git is the historical archive. |
+| **YAGNI (Anti-Speculation)** | `YAGNI_SPECULATIVE_PARAMETER` | Flag unreferenced parameters (`_unused_param`, `future_kwargs`). Keep interface contracts lean and concrete. |
+| **Fix Issues at Scale** | `SCALE_UNBOUNDED_OR_FLAT_RETRY` | Blocker on retries with flat `sleep(N)` or no backoff. Under degraded backends, flat retries cause catastrophic retry storms and thundering herds. Enforce exponential backoff with full jitter. |
+| **Fix Issues at Scale** | `SCALE_SLEEP_BAND_AID` | Flag `sleep()` used as an asynchronous synchronization band-aid. Replace arbitrary delays with condition variables, latches, or bounded event polling. |
+| **Fix Issues at Scale** | `SCALE_UNBOUNDED_CONCURRENCY` | Flag unbounded parallel mapping (`Promise.all(items.map(...))`, `asyncio.gather(*tasks)`). Prevent OOM and thread starvation via worker pools, chunking, or semaphores. |
+| **Fix Issues at Scale** | `SCALE_TOIL_ERROR_SWALLOW` | Blocker on silent exception swallowing (`except Exception: pass`, empty `catch {}`). Silent failures create untracked fleet-wide failures and manual operational toil. Emit structured logs with correlation IDs. |
+| **Fix Issues at Scale** | `SCALE_MISLEADING_HEALTH_CHECK` | Flag static health endpoints returning unconditional `200 OK`. Distinguish liveness from readiness, and probe critical backing dependencies before routing traffic. |
+
+See [`references/google-sre-discipline.md`](references/google-sre-discipline.md) for full engineering guidelines and distributed systems invariants.
+
+---
+
+## 📚 Anti-Pattern Catalog (213 Diagnostic Patterns)
 
 The repository includes a detailed diagnostic catalog in [`references/anti-pattern-catalog.md`](references/anti-pattern-catalog.md) covering:
 
@@ -188,6 +233,7 @@ The repository includes a detailed diagnostic catalog in [`references/anti-patte
 11. **CI, Builds & Release:** Disabling lint rules, flaky test workarounds, missing build locks, **stale or guessed dependency versions (`CI-15`)**.
 12. **Workflow & Review Hygiene:** Mega-PRs, unreviewable diffs, lack of test proof in review notes, **speculative submission guides (`REV-15`)**, **documentation file sprawl (`REV-16`)**, **doc logorrhea & filler (`REV-17`)**, **ceremonial documentation truisms (`REV-18`)**, and **affordance narration & meta-preambles (`REV-19`)**.
 13. **Agent Autonomy:** Self-modifying safety boundaries, hallucinated test outputs, speculative code deletions.
+14. **Google SRE Invariants:** Deep nesting (`SRE-01`), trivial wrapper chains (`SRE-02`), duplicated invariants (`SRE-03`), fragmented schemas (`SRE-04`), speculative knobs (`SRE-05`), premature generalization (`SRE-06`), sleep band-aids (`SRE-07`), retry storms (`SRE-08`), unbounded concurrency (`SRE-09`), operational toil (`SRE-10`), missing idempotency (`SRE-11`), and misleading health checks (`SRE-12`).
 
 ---
 
@@ -203,11 +249,14 @@ anti-slop-engineering/
 ├── bin/
 │   └── cli.js                        # Node/Bun executable CLI entrypoint
 ├── scripts/
-│   └── diff_guard.py                 # Pure stdlib Python 3 read-only diff triage guard
+│   ├── diff_guard.py                 # Pure stdlib Python 3 read-only diff triage guard
+│   └── sre_guard.py                  # Google SRE enforcement engine (KISS, DRY, YAGNI, Scale)
 ├── tests/
-│   └── test_diff_guard.py            # Unit tests for the heuristic diff guard
+│   ├── test_diff_guard.py            # Unit tests for the heuristic diff guard
+│   └── test_sre_guard.py             # Unit tests for Google SRE Guard
 ├── references/
-│   ├── anti-pattern-catalog.md       # 201 diagnostic anti-patterns across 13 engineering domains
+│   ├── anti-pattern-catalog.md       # 213 diagnostic anti-patterns across 14 engineering domains
+│   ├── google-sre-discipline.md      # Google SRE playbook: KISS, DRY, YAGNI, Scale Invariants & Toil
 │   ├── test-integrity.md             # The Test Integrity Protocol: protecting test oracles
 │   ├── pr-review.md                  # Evidence-first PR review protocol with severity scales
 │   ├── security-and-operations.md    # Trust boundaries, injection resistance & operational safety

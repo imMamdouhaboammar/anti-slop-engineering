@@ -23,6 +23,11 @@ PATTERNS = [
     ('DEV_NOTE_IN_UI', 'blocker', r'(?i)<(?:p|span|div|small|Alert|Badge|Text|Label|h[1-6])[^>]*>[^<]*(?:\b(?:note|todo|fixme|agent note|dev note|developer note)\s*:|\bmock data displayed\b|\bplaceholder until\b)[^<]*</'),
     ('PATRONIZING_UI_COPY', 'review', r'(?i)<(?:p|span|small|div|Label|HelperText)[^>]*>[^<]*(?:\b(?:please enter your|click (?:here|this button) to|this (?:modal|form|button) allows you to)\b)[^<]*</'),
     ('TRIVIAL_COMMENT_NARRATION', 'review', r'(?i)^\s*(?://|#)\s*(?:(?:increment|decrement)\s+\w+|(?:return|returns)\s+(?:the\s+)?(?:result|response|value|data|error|promise|true|false)|(?:initialize|init)\s+(?:state|variable|array|object|list|dict)|(?:check|verify)\s+if\s+(?:\w+\s+is\s+)?(?:null|undefined|empty|none)|handle\s+(?:click|change|submit|event|button)|(?:constructor|destructor)\b|import\s+(?:modules?|packages?|react|dependencies)|call\s+(?:the\s+)?\w+\s+function)'),
+    ('SRE_SCALE_FLAT_RETRY', 'review', r'(?i)(?:while\s+True\s*:|while\s*\(\s*true\s*\)|for\s+(?:attempt|retry|i)\s+in\s+range\s*\(\s*\d+\s*\):).*(?:sleep\s*\(\s*[1-9]\d*\s*\))'),
+    ('SRE_SCALE_SLEEP_BAND_AID', 'review', r'(?i)\b(?:time\.sleep\s*\(\s*(?:0?\.[1-9]|[1-9])\d*\s*\)|thread\.sleep\s*\(\s*\d+\s*\)|setTimeout\s*\([^,]+,\s*(?:100|200|500|1000|2000|5000)\s*\))'),
+    ('SRE_SCALE_UNBOUNDED_CONCURRENCY', 'review', r'(?i)(?:Promise\.all\s*\(\s*(?:\w+|\w+\.[a-zA-Z0-9_]+)\.map\s*\(|asyncio\.gather\s*\(\s*\*\s*\[)'),
+    ('SRE_YAGNI_SPECULATIVE_CODE', 'review', r'(?i)(?:#|//|/\*)\s*(?:TODO\s*\(\s*(?:future|later|v2|next)\s*\)|placeholder for (?:future|upcoming|v2)|will be (?:supported|implemented|used) (?:later|in v2)|reserved for future use)'),
+    ('SRE_YAGNI_DEAD_FLAG', 'blocker', r'(?i)(?:if\s+False\s*:|if\s*\(\s*false\s*\)|if\s*\(\s*0\s*\))\s*(?:#|//.*)?$'),
 ]
 COMPILED = [(key, level, re.compile(regex)) for key, level, regex in PATTERNS]
 TEST_PATH = re.compile(r'(?i)(?:^|/)(?:tests?|__tests__|specs?)(?:/|$)|(?:^|/)(?:test_[^/]+\.py|[^/]+\.(?:test|spec)\.[a-z0-9]+)$')
@@ -56,24 +61,12 @@ def git(repo, *args):
     return p.stdout
 
 
-def scan(repo, base, max_lines=400):
-    git(repo, 'rev-parse', '--verify', f'{base}^{{commit}}')
-    diff_info = git(repo, 'diff', '--no-ext-diff', '--no-renames', '--numstat', '-z', base, '--')
-    file_counts = {}
-    for record in diff_info.split(b'\0'):
-        if not record:
-            continue
-        bits = record.split(b'\t', 2)
-        if len(bits) == 3:
-            a, d, name = bits
-            file_counts[name.decode('utf-8', 'replace')] = (int(a) if a.isdigit() else 0, int(d) if d.isdigit() else 0)
-    untracked = [p.decode('utf-8', 'replace') for p in git(repo, 'ls-files', '--others', '--exclude-standard', '-z').split(b'\0') if p]
+def audit_file_metadata(repo, base, file_counts, untracked, max_lines):
+    """Audit diff metadata: test modifications, speculative docs, and line thresholds."""
     findings = []
-    limitations = ['Heuristic review hints only; no semantic or runtime validation performed.']
-    if untracked:
-        limitations.append(f'Untracked files ({len(untracked)}) are excluded from diff scanning; stage them for complete analysis.')
     changed_test = []
     new_test = [p for p in untracked if TEST_PATH.search(p)]
+
     for path in file_counts:
         if TEST_PATH.search(path):
             exists = subprocess.run(['git', '-C', str(repo), 'cat-file', '-e', f'{base}:{path}'], capture_output=True).returncode == 0
@@ -90,16 +83,24 @@ def scan(repo, base, max_lines=400):
                 findings.append({'id': 'SPECULATIVE_DOC_CANDIDATE', 'severity': 'review', 'file': path,
                                  'evidence': f'New speculative submission dossier or platform guide: {path}',
                                  'action': 'Verify whether this documentation file was explicitly authorized; avoid unprompted submission dossiers.'})
+
     added_total = sum(a for a, _ in file_counts.values())
     deleted_total = sum(d for _, d in file_counts.values())
     if added_total > max_lines:
         findings.append({'id': 'LARGE_DIFF_REVIEW', 'severity': 'review', 'file': None,
                          'evidence': f'{added_total} added lines > configurable review prompt {max_lines}.',
                          'action': 'Justify scope or split into coherent, independently reviewable changes; not an automatic failure.'})
-    patch = git(repo, 'diff', '--no-ext-diff', '--no-renames', '--unified=0', base, '--').decode('utf-8', 'replace')
+
+    return findings, changed_test, new_test, added_total, deleted_total
+
+
+def audit_patch_lines(patch):
+    """Audit unified diff patch lines against heuristic patterns."""
+    findings = []
     path = None
     new_line = None
     seen = set()
+
     for line in patch.splitlines():
         if line.startswith('+++ b/'):
             path = line[6:]
@@ -115,6 +116,7 @@ def scan(repo, base, max_lines=400):
             if new_line is not None:
                 new_line += 1
             continue
+
         code_line = line[1:]
         if not TEST_PATH.search(path) and not re.search(r'(?i)(?:^|/)references/', path) and HALLUCINATED_DOC_URL.search(code_line):
             if ('HALLUCINATED_DOC_URL', path, new_line) not in seen:
@@ -122,6 +124,7 @@ def scan(repo, base, max_lines=400):
                 findings.append({'id': 'HALLUCINATED_DOC_URL', 'severity': 'review', 'file': path, 'line': new_line,
                                  'evidence': code_line.strip()[:180],
                                  'action': 'Deprecated or hallucinated platform submission URL detected (e.g. OpenAI plugins are deprecated); verify URL and user intent.'})
+
         if DOC_PATH.search(path):
             if not TEST_PATH.search(path) and not re.search(r'(?i)(?:^|/)references/', path) and not re.search(r'(?i)(?:^|/)(?:SKILL\.md|AGENTS\.md|CHANGELOG\.md)$', path) and META_PREAMBLE_AND_AFFORDANCE_NARRATION.search(code_line):
                 if ('META_PREAMBLE_AND_AFFORDANCE_NARRATION', path, new_line) not in seen:
@@ -132,21 +135,54 @@ def scan(repo, base, max_lines=400):
             if new_line is not None:
                 new_line += 1
             continue
-        code_line = line[1:]
+
         for key, level, pattern in COMPILED:
             if key in ('SKIPPED_TEST', 'WEAK_ASSERTION') and not TEST_PATH.search(path):
                 continue
             if key in ('DEV_NOTE_IN_UI', 'PATRONIZING_UI_COPY') and not UI_PATH.search(path):
                 continue
-            if key == 'TRIVIAL_COMMENT_NARRATION' and (TEST_PATH.search(path) or re.search(r'(?i)(?:^|/)references/', path)):
+            if key in ('TRIVIAL_COMMENT_NARRATION', 'SRE_SCALE_SLEEP_BAND_AID', 'SRE_SCALE_FLAT_RETRY',
+                       'SRE_YAGNI_SPECULATIVE_CODE', 'SRE_SCALE_UNBOUNDED_CONCURRENCY') and (
+                TEST_PATH.search(path) or re.search(r'(?i)(?:^|/)references/', path)
+            ):
                 continue
             if pattern.search(code_line) and (key, path, new_line) not in seen:
                 seen.add((key, path, new_line))
                 findings.append({'id': key, 'severity': level, 'file': path, 'line': new_line,
                                  'evidence': code_line.strip()[:180],
                                  'action': 'Inspect context and justify or fix; regex match is not proof of a defect.'})
+
         if new_line is not None:
             new_line += 1
+
+    return findings
+
+
+def scan(repo, base, max_lines=400):
+    git(repo, 'rev-parse', '--verify', f'{base}^{{commit}}')
+    diff_info = git(repo, 'diff', '--no-ext-diff', '--no-renames', '--numstat', '-z', base, '--')
+    file_counts = {}
+    for record in diff_info.split(b'\0'):
+        if not record:
+            continue
+        bits = record.split(b'\t', 2)
+        if len(bits) == 3:
+            a, d, name = bits
+            file_counts[name.decode('utf-8', 'replace')] = (int(a) if a.isdigit() else 0, int(d) if d.isdigit() else 0)
+
+    untracked = [p.decode('utf-8', 'replace') for p in git(repo, 'ls-files', '--others', '--exclude-standard', '-z').split(b'\0') if p]
+    limitations = ['Heuristic review hints only; no semantic or runtime validation performed.']
+    if untracked:
+        limitations.append(f'Untracked files ({len(untracked)}) are excluded from diff scanning; stage them for complete analysis.')
+
+    meta_findings, changed_test, new_test, added_total, deleted_total = audit_file_metadata(
+        repo, base, file_counts, untracked, max_lines
+    )
+
+    patch = git(repo, 'diff', '--no-ext-diff', '--no-renames', '--unified=0', base, '--').decode('utf-8', 'replace')
+    patch_findings = audit_patch_lines(patch)
+    findings = meta_findings + patch_findings
+
     return {
         'base': base,
         'summary': {'changed_files': len(file_counts), 'added_lines': added_total, 'deleted_lines': deleted_total,
