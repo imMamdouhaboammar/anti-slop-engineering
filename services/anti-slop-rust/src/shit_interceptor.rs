@@ -170,7 +170,7 @@ fn extract_target_file(line: &str) -> Option<String> {
     None
 }
 
-fn extract_hunk_line(line: &str) -> Option<usize> {
+pub(crate) fn extract_hunk_line(line: &str) -> Option<usize> {
     let start = line.strip_prefix("@@")?.split('+').nth(1)?;
     start.split_whitespace().next()?.split(',').next()?.parse().ok()
 }
