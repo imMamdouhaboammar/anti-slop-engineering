@@ -1,9 +1,11 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -170,17 +172,30 @@ func runServe(args []string) {
 	fmt.Printf("Toil Guard SRE daemon running on http://127.0.0.1:%d\n", *port)
 	fmt.Println("Endpoints: /healthz, /metrics, /v1/audit, /v1/sli-budget")
 
+	serverError := make(chan error, 1)
 	go func() {
-		if err := srv.Start(); err != nil {
-			fmt.Fprintf(os.Stderr, "Server stopped: %v\n", err)
-		}
+		serverError <- srv.Start()
 	}()
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-	<-sigChan
-
-	fmt.Println("\nShutting down Toil Guard daemon gracefully...")
+	defer signal.Stop(sigChan)
+	select {
+	case err := <-serverError:
+		if err != nil && err != http.ErrServerClosed {
+			fmt.Fprintf(os.Stderr, "Server failed: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	case <-sigChan:
+		fmt.Println("\nShutting down Toil Guard daemon gracefully...")
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := srv.Shutdown(ctx); err != nil {
+			fmt.Fprintf(os.Stderr, "Server shutdown failed: %v\n", err)
+			os.Exit(1)
+		}
+	}
 }
 
 func runStream(args []string) {
