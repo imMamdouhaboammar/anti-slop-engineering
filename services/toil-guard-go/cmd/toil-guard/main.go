@@ -59,7 +59,11 @@ func runAudit(args []string) {
 	base := fs.String("base", "HEAD", "Git base reference to diff if no files specified")
 	_ = fs.Parse(args)
 
-	fileMap := collectAuditFiles(fs.Args(), *base)
+	fileMap, err := collectAuditFiles(fs.Args(), *base)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "Audit failed:", err)
+		os.Exit(1)
+	}
 	allFindings, sli := sre.AuditFiles(fileMap)
 	report := model.NewAuditReport(allFindings, sli)
 
@@ -70,51 +74,67 @@ func runAudit(args []string) {
 	}
 }
 
-func collectAuditFiles(targets []string, base string) map[string]string {
+func collectAuditFiles(targets []string, base string) (map[string]string, error) {
 	fileMap := make(map[string]string)
-
 	if len(targets) > 0 {
 		for _, target := range targets {
-			_ = filepath.Walk(target, func(path string, info os.FileInfo, err error) error {
-				if err != nil || info.IsDir() || !isAuditable(path) {
+			err := filepath.Walk(target, func(path string, info os.FileInfo, walkErr error) error {
+				if walkErr != nil {
+					return walkErr
+				}
+				if info.IsDir() {
+					if path != target && (info.Name() == ".git" || info.Name() == "node_modules" || info.Name() == "target") {
+						return filepath.SkipDir
+					}
 					return nil
 				}
-				content, readErr := os.ReadFile(path)
-				if readErr == nil {
-					fileMap[path] = string(content)
+				if !isAuditable(path) {
+					return nil
 				}
+				content, err := os.ReadFile(path)
+				if err != nil {
+					return err
+				}
+				fileMap[path] = string(content)
 				return nil
 			})
+			if err != nil {
+				return nil, fmt.Errorf("walking %q: %w", target, err)
+			}
 		}
-		return fileMap
-	}
-
-	cmd := exec.Command("git", "diff", base)
-	out, err := cmd.Output()
-	if err == nil && len(out) > 0 {
-		return parseGitDiff(string(out))
-	}
-
-	statusCmd := exec.Command("git", "status", "--porcelain")
-	statusOut, sErr := statusCmd.Output()
-	if sErr == nil {
-		lines := strings.Split(string(statusOut), "\n")
-		for _, line := range lines {
-			if len(line) <= 3 {
-				continue
+	} else {
+		cmd := exec.Command("git", "diff", base, "--")
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			return nil, fmt.Errorf("git diff %q failed: %w: %s", base, err, strings.TrimSpace(string(out)))
+		}
+		if len(out) > 0 {
+			fileMap = parseGitDiff(string(out))
+		} else {
+			statusOut, statusErr := exec.Command("git", "status", "--porcelain").CombinedOutput()
+			if statusErr != nil {
+				return nil, fmt.Errorf("git status failed: %w: %s", statusErr, strings.TrimSpace(string(statusOut)))
 			}
-			path := strings.TrimSpace(line[3:])
-			if !isAuditable(path) {
-				continue
-			}
-			content, rErr := os.ReadFile(path)
-			if rErr == nil {
+			for _, line := range strings.Split(string(statusOut), "\n") {
+				if len(line) < 4 {
+					continue
+				}
+				path := strings.TrimSpace(line[3:])
+				if !isAuditable(path) {
+					continue
+				}
+				content, err := os.ReadFile(path)
+				if err != nil {
+					return nil, fmt.Errorf("reading %q: %w", path, err)
+				}
 				fileMap[path] = string(content)
 			}
 		}
 	}
-
-	return fileMap
+	if len(fileMap) == 0 {
+		return nil, fmt.Errorf("no auditable files found")
+	}
+	return fileMap, nil
 }
 
 func printAuditReport(report model.AuditReport, format string) {
@@ -178,7 +198,7 @@ func runStream(args []string) {
 			if statStr != "" {
 				fmt.Printf("[%s] Active git diff:\n%s\n", time.Now().Format("15:04:05"), statStr)
 			} else {
-				fmt.Printf("[%s] Working tree clean (Error budget: 100.0%%)\n", time.Now().Format("15:04:05"))
+				fmt.Printf("[%s] Working tree clean (no diff changes)\n", time.Now().Format("15:04:05"))
 			}
 		}
 		time.Sleep(*interval)
