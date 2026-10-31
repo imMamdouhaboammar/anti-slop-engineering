@@ -38,7 +38,7 @@ enum Commands {
 
     /// Audit code additions for Senior Dev Ladder & Boring Built-in compliance
     LadderAudit {
-        /// Target files or directories to inspect
+        /// Target source files to inspect (directories are not supported)
         #[arg(required = true)]
         paths: Vec<String>,
 
@@ -82,7 +82,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             format,
         } => run_shit_check(diff, allowed, read_only, &format)?,
 
-        Commands::LadderAudit { paths, format } => run_ladder_audit(paths, &format),
+        Commands::LadderAudit { paths, format } => run_ladder_audit(paths, &format)?,
 
         Commands::Triage {
             base,
@@ -125,25 +125,31 @@ fn run_shit_check(
     Ok(())
 }
 
-fn run_ladder_audit(paths: Vec<String>, format: &str) {
+fn run_ladder_audit(paths: Vec<String>, format: &str) -> io::Result<()> {
     let auditor = LadderAuditor::new();
     let mut all_findings = Vec::new();
 
     for path in paths {
-        let content = match fs::read_to_string(&path) {
-            Ok(c) => c,
-            Err(_) => continue,
-        };
+        let content = fs::read_to_string(&path).map_err(|e| {
+            io::Error::new(e.kind(), format!("Cannot read '{}': {}", path, e))
+        })?;
         let mut findings = auditor.audit_code(&path, &content);
         all_findings.append(&mut findings);
     }
 
     let report = AuditReport::new("anti-slop-rust-ladder", all_findings);
     finish_with_report(&report, format);
+    Ok(())
 }
 
 fn run_triage(base: &str, read_only: bool, format: &str) -> io::Result<()> {
-    let output = Command::new("git").args(["diff", base]).output()?;
+    let output = Command::new("git").args(["diff", base, "--"]).output()?;
+    if !output.status.success() {
+        return Err(io::Error::new(
+            io::ErrorKind::Other,
+            format!("git diff {} failed: {}", base, String::from_utf8_lossy(&output.stderr)),
+        ));
+    }
     let diff_content = String::from_utf8_lossy(&output.stdout).to_string();
 
     let report = anti_slop_rust::triage_diff(&diff_content, None, read_only);
