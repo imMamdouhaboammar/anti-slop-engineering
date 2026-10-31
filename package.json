@@ -5,11 +5,11 @@
   "type": "module",
   "main": "bin/cli.js",
   "bin": {
-    "anti-slop-engineering": "./bin/cli.js",
-    "diff-guard": "./bin/cli.js",
-    "sre-guard": "./bin/cli.js",
-    "rust-guard": "./bin/cli.js",
-    "toil-guard": "./bin/cli.js"
+    "anti-slop-engineering": "bin/cli.js",
+    "diff-guard": "bin/cli.js",
+    "sre-guard": "bin/cli.js",
+    "rust-guard": "bin/cli.js",
+    "toil-guard": "bin/cli.js"
   },
   "repository": {
     "type": "git",
