@@ -62,3 +62,20 @@ func TestCheckKISSComplexity_FunctionLength(t *testing.T) {
 		t.Errorf("expected SRE-KISS-FUNC-LEN finding")
 	}
 }
+
+
+func TestCheckKISSComplexityOneLineFunctionDoesNotAbsorbFollowingLines(t *testing.T) {
+    lines := []string{"func Clean() {}"}
+    for i := 0; i < 100; i++ { lines = append(lines, "var x = 1") }
+    for _, f := range CheckKISSComplexity("source.go", strings.Join(lines, "\n")) {
+        if f.Code == "SRE-KISS-FUNC-LEN" { t.Fatalf("incorrect length finding: %+v", f) }
+    }
+}
+
+func TestCheckKISSComplexityPythonDedentEndsFunction(t *testing.T) {
+    lines := []string{"def short():", "    return 1"}
+    for i := 0; i < 100; i++ { lines = append(lines, "x = 1") }
+    for _, f := range CheckKISSComplexity("source.py", strings.Join(lines, "\n")) {
+        if f.Code == "SRE-KISS-FUNC-LEN" { t.Fatalf("incorrect Python function length: %+v", f) }
+    }
+}
