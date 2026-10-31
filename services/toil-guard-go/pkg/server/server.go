@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"sync/atomic"
@@ -36,7 +37,7 @@ func NewServer(port int) *Server {
 
 	return &Server{
 		httpServer: &http.Server{
-			Addr:         fmt.Sprintf(":%d", port),
+			Addr:         fmt.Sprintf("127.0.0.1:%d", port),
 			Handler:      mux,
 			ReadTimeout:  15 * time.Second,
 			WriteTimeout: 15 * time.Second,
@@ -89,9 +90,16 @@ func decodeAuditRequest(w http.ResponseWriter, r *http.Request) (*AuditRequest, 
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return nil, false
 	}
+	const maxAuditBodySize = 1 << 20 // 1 MiB
+	r.Body = http.MaxBytesReader(w, r.Body, maxAuditBodySize)
 	var req AuditRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, fmt.Sprintf("invalid json payload: %v", err), http.StatusBadRequest)
+		var maxBytesError *http.MaxBytesError
+		if errors.As(err, &maxBytesError) {
+			http.Error(w, "audit request body too large", http.StatusRequestEntityTooLarge)
+		} else {
+			http.Error(w, fmt.Sprintf("invalid json payload: %v", err), http.StatusBadRequest)
+		}
 		return nil, false
 	}
 	return &req, true
