@@ -59,7 +59,7 @@ No code from any reference repository is copied or decompiled. Only functional m
       |   - Scope Creep Detector     |                    | • Concurrency & Toil Guard   |
       |   - Hypothetical Hardening   |                    | • Sliding-Window DRY Scanner |
       |   - Intent Violation Gate    |                    | • SLI/SLO Error Budget Engine|
-      |   - Task Thrashing Watcher   |                    | • Prometheus /metrics Server |
+      |   - Rule-based diff checks   |                    | • Prometheus /metrics Server |
       | • Senior Dev Ladder Auditor  |                    | • HTTP REST Service (/v1/..) |
       | • Axum REST Server (/v1/..)  |                    +------------------------------+
       +------------------------------+                                   |
@@ -75,19 +75,19 @@ No code from any reference repository is copied or decompiled. Only functional m
 ```
 
 ### 2.1 Rust Microservice (`services/anti-slop-rust`)
-- **Focus:** Ultra-fast AST pattern triage, SHIT boundary violation interception, token waste analysis, and deterministic circuit-breaker protection.
+- **Focus:** Regex-based diff triage for scope, speculative hardening, and read-only intent, plus simple built-in replacement checks.
 - **Key Modules:**
   - `src/shit_interceptor.rs`: Scope creep detection, unread checksum/hash generation checks, speculative try-catch error swallowing, and file boundary guards.
-  - `src/ladder_auditor.rs`: Code reduction ratio auditing, stdlib built-in identification, and 3-point abstraction gate checks.
-  - `src/server.rs`: Lightweight HTTP microservice (`axum` + `tokio`) exposing `/health`, `/v1/triage`, `/v1/shit-check`, and `/v1/ladder`.
+  - `src/ladder_auditor.rs`: Regex-based built-in replacement suggestions and conjunction naming hints.
+  - `src/server.rs`: Lightweight HTTP microservice (`axum` + `tokio`) exposing `/health`, `/v1/triage`, `/v1/shit-check`, and `/v1/ladder-audit`.
   - `src/main.rs`: High-performance CLI interface powered by `clap`.
 
 ### 2.2 Go Microservice (`services/toil-guard-go`)
 - **Focus:** Concurrent repository-wide stream analysis, Google SRE metric verification (KISS, DRY, YAGNI, Scale), automated toil detection, and SLI/SLO budget verification.
 - **Key Modules:**
   - `pkg/sre/complexity.go`: Control flow nesting level (<=4) and function length (<=80 lines) verification.
-  - `pkg/sre/dry_window.go`: Sliding-window token hash scanner across files.
-  - `pkg/sre/toil.go`: SRE anti-pattern heuristics (unbounded concurrency, blind sleep synchronization, missing exponential backoff + jitter).
+  - `pkg/sre/dry.go`: Sliding-window token hash scanner across files.
+  - `pkg/sre/toil.go`: SRE anti-pattern heuristics (blind sleep synchronization, fixed retry loops, and silent error swallowing).
   - `pkg/sre/sli.go`: Error budget calculation and slop index scoring.
-  - `pkg/server/server.go`: Production Go HTTP microservice with graceful shutdown, `/healthz`, `/metrics`, and `/v1/toil-audit`.
+  - `pkg/server/server.go`: Production Go HTTP microservice with graceful shutdown, `/healthz`, `/metrics`, and `/v1/audit`.
   - `cmd/toil-guard/main.go`: Multi-subcommand CLI runner (`audit`, `stream`, `serve`).
