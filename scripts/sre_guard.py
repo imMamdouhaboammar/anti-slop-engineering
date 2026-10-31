@@ -130,7 +130,7 @@ def normalize_line(line):
     stripped = line.strip()
     if not stripped or stripped.startswith(('#', '//', '/*', '*', 'import ', 'from ', 'package ', 'use ')):
         return ''
-    if (stripped.startswith('"') and stripped.endswith('"')) or (stripped.startswith("'") and stripped.endswith("'")):
+    if re.fullmatch(r'''(?:"[^"]*"|'[^']*'),?''', stripped):
         return ''
     if stripped in ('{', '}', '(', ')', '};', '];', ');', 'return', ']', '['):
         return ''
