@@ -22,6 +22,12 @@
   "files": [
     "bin",
     "scripts",
+    "services/anti-slop-rust/Cargo.toml",
+    "services/anti-slop-rust/Cargo.lock",
+    "services/anti-slop-rust/src",
+    "services/toil-guard-go/go.mod",
+    "services/toil-guard-go/cmd",
+    "services/toil-guard-go/pkg",
     "references",
     "assets",
     "SKILL.md",
