@@ -49,7 +49,7 @@ func printUsage() {
 	fmt.Println("Commands:")
 	fmt.Println("  audit   [paths...]     Audit source paths or git changes against KISS, DRY, YAGNI, and Scale")
 	fmt.Println("  serve   [--port 9092]  Start high-throughput HTTP SRE daemon with /healthz, /metrics, /v1/audit")
-	fmt.Println("  stream  [--watch]      Stream live git diff and continuously calculate SRE error budget")
+	fmt.Println("  stream  [--interval 3s]  Stream git diff statistics (not a live error-budget calculation)")
 	fmt.Println("  help                   Show this help message")
 }
 
