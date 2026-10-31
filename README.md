@@ -139,7 +139,7 @@ bunx anti-slop-engineering sre --max-nesting 4 --min-dup-lines 4 --max-function-
 
 ### Rust SHIT Interceptor (`services/anti-slop-rust`)
 
-A high-performance Axum HTTP microservice that audits diffs and source for four categories of agent failure — Scope creep (`S`), Hypothetical hardening (`H`), Intent violation (`I`), and Task thrashing (`T`) — plus the Senior Dev Ladder pattern: detecting custom implementations where platform primitives already exist (`crypto.randomUUID()`, `URLSearchParams`, `structuredClone()`).
+A high-performance Axum HTTP microservice that audits diffs and source for Scope creep (`S`), Hypothetical hardening (`H`), and Intent violation (`I`) in diffs, plus regex-based Senior Dev Ladder checks for hand-rolled alternatives to common platform primitives. Task-thrashing detection is not implemented.
 
 ```bash
 # Triage git changes through Rust engine:
@@ -158,9 +158,9 @@ A concurrent Go microservice for high-throughput SRE metric verification. Runs K
 
 ```bash
 # SRE audit across repository:
-bunx anti-slop-engineering toil audit
+bunx anti-slop-engineering toil audit .
 
-# Live git telemetry with error budget tracking:
+# Live git diff statistics (not a live error-budget calculation):
 bunx anti-slop-engineering toil stream
 
 # Start Go microservice daemon:
