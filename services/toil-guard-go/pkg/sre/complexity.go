@@ -50,6 +50,7 @@ type funcTracker struct {
 	startLine  int
 	lineCount  int
 	indentBase int
+	python bool
 }
 
 func (t *funcTracker) checkLength(filePath string) *model.Finding {
@@ -68,7 +69,7 @@ func CheckKISSComplexity(filePath string, content string) []model.Finding {
 
 	var findings []model.Finding
 	lines := strings.Split(content, "\n")
-	tracker := &funcTracker{}
+	tracker := &funcTracker{python: strings.HasSuffix(strings.ToLower(filePath), ".py")}
 	parenDepth := 0
 
 	for i, line := range lines {
@@ -98,12 +99,22 @@ func CheckKISSComplexity(filePath string, content string) []model.Finding {
 		tracker.processLine(filePath, lineNo, line, trimmed, &findings)
 	}
 
+	if f := tracker.checkLength(filePath); f != nil {
+		findings = append(findings, *f)
+	}
 	return findings
 }
 
 func (t *funcTracker) processLine(filePath string, lineNo int, line, trimmed string, out *[]model.Finding) {
 	matches := funcStartRegex.FindStringSubmatch(line)
 	leadingSpaces := len(line) - len(strings.TrimLeft(line, " \t"))
+
+	if t.inFunc && t.python && trimmed != "" && leadingSpaces <= t.indentBase {
+		if f := t.checkLength(filePath); f != nil {
+			*out = append(*out, *f)
+		}
+		t.inFunc = false
+	}
 
 	if len(matches) > 0 {
 		if f := t.checkLength(filePath); f != nil {
@@ -114,12 +125,16 @@ func (t *funcTracker) processLine(filePath string, lineNo int, line, trimmed str
 		t.lineCount = 1
 		t.indentBase = leadingSpaces
 		t.name = extractFuncName(matches)
+		if !t.python && ((strings.Contains(trimmed, "{") && strings.Contains(trimmed, "}")) ||
+			(strings.Contains(trimmed, "=>") && !strings.Contains(trimmed, "{"))) {
+			t.inFunc = false
+		}
 		return
 	}
 
 	if t.inFunc {
 		t.lineCount++
-		if leadingSpaces <= t.indentBase && (strings.HasPrefix(trimmed, "}") || strings.HasPrefix(trimmed, "return")) {
+		if !t.python && leadingSpaces <= t.indentBase && strings.HasPrefix(trimmed, "}") {
 			if f := t.checkLength(filePath); f != nil {
 				*out = append(*out, *f)
 			}
