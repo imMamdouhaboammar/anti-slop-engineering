@@ -43,3 +43,13 @@ func TestComputeSLIReport_Blocked(t *testing.T) {
 		t.Errorf("expected reduced error budget, got %f", sli.ErrorBudgetLeft)
 	}
 }
+
+
+func TestComputeSLIReportDuplicateRatio(t *testing.T) {
+    files := map[string]string{"one.go": "package main", "two.go": "package main"}
+    findings := []model.Finding{{File: "two.go", Category: model.CategoryDRY, Severity: model.SeverityReview}}
+    sli := ComputeSLIReport(files, findings)
+    if sli.DuplicationRatio != 0.5 {
+        t.Fatalf("expected one of two files duplicated, got %f", sli.DuplicationRatio)
+    }
+}
