@@ -56,3 +56,21 @@ func TestAuditEndpoint(t *testing.T) {
 		t.Errorf("expected findings for bad.go, got 0")
 	}
 }
+
+
+func TestAuditRequestBodySizeLimit(t *testing.T) {
+    body := bytes.Repeat([]byte("x"), 1<<20+1)
+    req := httptest.NewRequest(http.MethodPost, "/v1/audit", bytes.NewReader(body))
+    w := httptest.NewRecorder()
+    _, ok := decodeAuditRequest(w, req)
+    if ok || w.Code != http.StatusRequestEntityTooLarge {
+        t.Fatalf("expected request rejection 413, got status %d, ok=%v", w.Code, ok)
+    }
+}
+
+func TestServerBindsOnlyToLoopback(t *testing.T) {
+    srv := NewServer(9092)
+    if srv.httpServer.Addr != "127.0.0.1:9092" {
+        t.Fatalf("unexpected bind address: %s", srv.httpServer.Addr)
+    }
+}
