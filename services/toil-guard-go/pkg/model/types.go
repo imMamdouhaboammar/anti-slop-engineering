@@ -54,7 +54,7 @@ type AuditReport struct {
 func NewAuditReport(findings []Finding, sli SLIReport) AuditReport {
 	return AuditReport{
 		Engine:   "toil-guard-go",
-		Version:  "0.1.0",
+		Version:  "1.0.0",
 		SLI:      sli,
 		Findings: findings,
 	}

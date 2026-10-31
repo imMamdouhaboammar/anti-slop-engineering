@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0] - 2026-10-31
+
+### Added
+- **General Availability (GA) 1.0.0 Release:**
+  - Production-ready polyglot architecture unifying zero-dependency Python stdlib guards, native Rust AST & Senior Dev engines, and native Go Google SRE toil engines.
+  - Automatic Agent Skill onboarding: npm/bun `postinstall` hook runs `npx skills add imMamdouhaboammar/anti-slop-engineering` to arm coding agents across Claude, Cursor, Codex, OpenCode, and Antigravity automatically.
+  - Multi-engine CLI distribution (`bin/cli.js`) published to npm registry as `anti-slop-engineering` with binary fallbacks and lean production packaging (`dist/`).
+  - Native microservice daemons for continuous development loop integration: Axum HTTP server (`:9091`) and Go SRE HTTP server (`:9092`) with Prometheus metrics and healthz checks.
+  - Complete verification across polyglot test pyramid: 32 Python tests, 10 Rust unit tests, 19 Go unit tests, and 0 diff/SRE violations.
+
 ## [0.4.0] - 2026-10-30
 
 ### Added

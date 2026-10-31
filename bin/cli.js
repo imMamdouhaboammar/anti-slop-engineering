@@ -30,7 +30,7 @@ if (executableAliases[invokedAs]) args.unshift(executableAliases[invokedAs]);
 
 function printBanner() {
   console.log(`
-🛡️  Anti-Slop Engineering CLI (v0.4.0)
+🛡️  Anti-Slop Engineering CLI (v1.0.0)
    Clean-Room AI Coding Guard & High-Performance Polyglot Architecture
    Engines: Standard Library Python Guard | Rust Microservice | Go Toil Guard
    Author: Mamdouh Aboammar <mamdouhfces1997@gmail.com>
@@ -99,31 +99,41 @@ function unsupportedFallback(engine, request) {
   process.exit(1);
 }
 
+function extractCommonFlags(flags, engine, onUnrecognized) {
+  const mapped = [];
+  for (let i = 0; i < flags.length; i++) {
+    const flag = flags[i];
+    if (flag === "--base" && flags[i + 1]) {
+      mapped.push("--base", flags[++i]);
+    } else if (flag === "--format" && flags[i + 1] === "json") {
+      mapped.push("--json");
+      i++;
+    } else if (flag === "--format" && flags[i + 1] === "text") {
+      i++;
+    } else if (onUnrecognized) {
+      onUnrecognized(flag);
+    } else {
+      unsupportedFallback(engine, `option ${flag}`);
+    }
+  }
+  return mapped;
+}
+
 function runRustFallback(request) {
   const [command, ...flags] = request;
   if (command !== "triage") unsupportedFallback("Rust", command);
-  const mapped = ["--fail-on-blocker"];
-  for (let i = 0; i < flags.length; i++) {
-    if (flags[i] === "--base" && flags[i + 1]) mapped.push("--base", flags[++i]);
-    else if (flags[i] === "--format" && flags[i + 1] === "json") { mapped.push("--json"); i++; }
-    else if (flags[i] === "--format" && flags[i + 1] === "text") i++;
-    else unsupportedFallback("Rust", `triage option ${flags[i]}`);
-  }
+  const mapped = ["--fail-on-blocker", ...extractCommonFlags(flags, "Rust")];
   runPythonScript(diffGuardScript, mapped, "diff_guard");
 }
 
 function runGoFallback(request) {
   const [command, ...flags] = request;
   if (command !== "audit") unsupportedFallback("Go", command);
-  const mapped = [];
   const paths = [];
-  for (let i = 0; i < flags.length; i++) {
-    if (flags[i] === "--base" && flags[i + 1]) mapped.push("--base", flags[++i]);
-    else if (flags[i] === "--format" && flags[i + 1] === "json") { mapped.push("--json"); i++; }
-    else if (flags[i] === "--format" && flags[i + 1] === "text") i++;
-    else if (flags[i].startsWith("-")) unsupportedFallback("Go", `audit option ${flags[i]}`);
-    else paths.push(flags[i]);
-  }
+  const mapped = extractCommonFlags(flags, "Go", (flag) => {
+    if (flag.startsWith("-")) unsupportedFallback("Go", `audit option ${flag}`);
+    else paths.push(flag);
+  });
   if (paths.length > 0) {
     if (mapped.includes("--base")) unsupportedFallback("Go", "audit with both --base and paths");
     mapped.push("--files", ...paths);
