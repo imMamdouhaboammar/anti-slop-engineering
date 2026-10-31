@@ -95,3 +95,33 @@ jobs:
           assert sk['name'] == 'anti-slop-engineering'
           print('All multi-agent manifests validated successfully!')
           "
+
+  test-native:
+    name: Test Rust and Go engines
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: services/toil-guard-go/go.mod
+      - name: Rust unit tests
+        working-directory: services/anti-slop-rust
+        run: cargo test --all-targets --locked
+      - name: Go unit tests
+        working-directory: services/toil-guard-go
+        run: go test ./...
+      - name: Native CLI failure contracts
+        run: |
+          if cargo run --manifest-path services/anti-slop-rust/Cargo.toml --locked -- ladder-audit does-not-exist.rs; then exit 1; fi
+          if cargo run --manifest-path services/anti-slop-rust/Cargo.toml --locked -- triage --base nonexistent-revision-123; then exit 1; fi
+          cd services/toil-guard-go
+          if go run ./cmd/toil-guard audit missing-path-go-123; then exit 1; fi
+      - name: npm package includes native sources
+        run: |
+          npm pack --dry-run --json > pack.json
+          node -e 'const f=require("./pack.json")[0].files.map(x=>x.path); for (const p of ["services/anti-slop-rust/Cargo.toml","services/toil-guard-go/go.mod","services/toil-guard-go/cmd/toil-guard/main.go"]) if(!f.includes(p)) process.exitCode=1'
+      - name: CLI and alias regression tests
+        run: |
+          node --check bin/cli.js
+          node --test tests/test_cli.mjs

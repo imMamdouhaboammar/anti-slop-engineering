@@ -29,3 +29,10 @@ Anti-Slop Engineering is an open-source playbook, agent skill, and lightweight t
     - **DRY:** Consolidate duplicate code blocks (>=4 lines) and duplicate validation patterns into canonical modules. Single source of truth is mandatory.
     - **YAGNI:** Ban speculative parameters (`_unused_param`, `future_kwargs`), dead branches (`if False:`), and placeholder comments (`TODO(future)`). Build for current verified contracts only.
     - **Fix Issues at Scale:** Eliminate operational toil through automation. Never use flat retries or blind `sleep()` synchronization band-aids; implement exponential backoff with full jitter. Bound concurrency with pools or semaphores. Ban silent exception swallowing (`except Exception: pass`). Enforce idempotency on state-changing operations.
+15. **The Clean-Room Senior Dev Ladder & SHIT Interceptor Mandate (Ponytail, STS, Boring Engineering):**
+    - Intercept the four SHIT hazards: Scope creep (`S`), Hypothetical hardening/unread companion hashes (`H`), Intent violation (`I`), and Task thrashing (`T`).
+    - Climb the Senior Dev Ladder before generating code: verify necessity, reuse codebase helpers, prioritize standard library built-ins, prefer native platform features, use existing dependencies, and emit minimal sufficient code.
+    - **Name the Built-in:** Never hand-roll primitives provided by the platform/runtime (`crypto.randomUUID()`, `URLSearchParams`, `structuredClone()`, etc.).
+    - **Practical DRY 3-Point Barrier:** Abstract only with >=2 real existing call-sites, identical mutation requirements, and clean non-conjunction naming.
+    - **Polyglot Test Discipline:** All tiers (`python3 -m unittest discover -s tests -v`, `cargo test` in `services/anti-slop-rust`, `go test -v ./...` in `services/toil-guard-go`) must remain 100% green.
+

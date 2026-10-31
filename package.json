@@ -1,13 +1,15 @@
 {
   "name": "anti-slop-engineering",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "An Engineering Discipline Playbook, Agent Skill & Triage Guard for AI Coding Agents",
   "type": "module",
   "main": "bin/cli.js",
   "bin": {
     "anti-slop-engineering": "./bin/cli.js",
     "diff-guard": "./bin/cli.js",
-    "sre-guard": "./bin/cli.js"
+    "sre-guard": "./bin/cli.js",
+    "rust-guard": "./bin/cli.js",
+    "toil-guard": "./bin/cli.js"
   },
   "repository": {
     "type": "git",
@@ -20,9 +22,14 @@
   "files": [
     "bin",
     "scripts",
+    "services/anti-slop-rust/Cargo.toml",
+    "services/anti-slop-rust/Cargo.lock",
+    "services/anti-slop-rust/src",
+    "services/toil-guard-go/go.mod",
+    "services/toil-guard-go/cmd",
+    "services/toil-guard-go/pkg",
     "references",
     "assets",
-    "tests",
     "SKILL.md",
     "marketplace.json",
     ".skills.json",
@@ -32,11 +39,17 @@
   ],
   "scripts": {
     "start": "bun bin/cli.js",
+    "postinstall": "node bin/postinstall.js",
+    "build": "bun bin/cli.js build",
+    "rust": "bun bin/cli.js rust",
+    "toil": "bun bin/cli.js toil",
     "guard": "bun bin/cli.js --base HEAD",
     "sre": "bun bin/cli.js sre",
     "sre-guard": "bun bin/cli.js sre",
     "test": "python3 -m unittest discover -s tests -v",
-    "check": "make check"
+    "test-all": "make test-all",
+    "check": "make check",
+    "check-all": "make check-all"
   },
   "keywords": [
     "agent-skill",

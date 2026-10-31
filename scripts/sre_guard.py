@@ -29,7 +29,7 @@ CODE_EXTENSIONS = {
 }
 
 TEST_PATH_RE = re.compile(
-    r'(?i)(?:^|/)(?:tests?|__tests__|specs?)(?:/|$)|(?:^|/)(?:test_[^/]+\.py|[^/]+\.(?:test|spec)\.[a-z0-9]+)$'
+    r'(?i)(?:^|/)(?:tests?|__tests__|specs?)(?:/|$)|(?:^|/)(?:test_[^/]+\.py|[^/]+[._](?:test|spec)\.[a-z0-9]+)$'
 )
 GENERATED_PATH_RE = re.compile(
     r'(?i)(?:^|/)(?:node_modules|vendor|dist|build|\.next|coverage|generated)(?:/|$)|(?:\.min\.js|\.lock)$'
@@ -128,7 +128,11 @@ def safe_read_file(path_obj):
 def normalize_line(line):
     """Strip whitespace, comments, and import statements for DRY duplicate detection."""
     stripped = line.strip()
-    if not stripped or stripped.startswith(('#', '//', '/*', '*', 'import ', 'from ')):
+    if not stripped or stripped.startswith(('#', '//', '/*', '*', 'import ', 'from ', 'package ', 'use ')):
+        return ''
+    if re.fullmatch(r'''(?:"[^"]*"|'[^']*'),?''', stripped):
+        return ''
+    if stripped in ('{', '}', '(', ')', '};', '];', ');', 'return', ']', '['):
         return ''
     return stripped
 
