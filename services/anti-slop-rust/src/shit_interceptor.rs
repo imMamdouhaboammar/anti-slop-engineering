@@ -45,24 +45,35 @@ impl ShitInterceptor {
         let mut findings = Vec::new();
         let mut current_file = String::new();
         let mut line_no = 0;
+        let mut in_hunk = false;
 
         for line in diff_text.lines() {
-            if let Some(f) = extract_target_file(line) {
-                current_file = f;
+            if line.starts_with("diff --git") {
+                current_file = extract_target_file(line).unwrap_or_default();
                 line_no = 0;
+                in_hunk = false;
                 continue;
             }
-
+            if !in_hunk {
+                if let Some(f) = extract_target_file(line) {
+                    current_file = f;
+                    continue;
+                }
+            }
             if let Some(l) = extract_hunk_line(line) {
                 line_no = l;
+                in_hunk = true;
                 continue;
             }
-
-            if let Some(f) = check_scope_creep(&current_file, line, line_no, allowed_files) {
+            if !in_hunk {
+                continue;
+            }
+            let is_change = line.starts_with('+') || line.starts_with('-');
+            if let Some(f) = check_scope_creep(&current_file, line_no, allowed_files, is_change) {
                 findings.push(f);
             }
 
-            if let Some(f) = check_intent_violation(&current_file, line, line_no, read_only_intent) {
+            if let Some(f) = check_intent_violation(&current_file, line_no, read_only_intent, is_change) {
                 findings.push(f);
             }
 
@@ -75,7 +86,7 @@ impl ShitInterceptor {
                 findings.append(&mut line_findings);
             }
 
-            if line.starts_with('+') || !line.starts_with('-') {
+            if line.starts_with('+') || line.starts_with(' ') {
                 line_no += 1;
             }
         }
@@ -166,11 +177,11 @@ fn extract_hunk_line(line: &str) -> Option<usize> {
 
 fn check_intent_violation(
     file: &str,
-    line: &str,
     line_no: usize,
     read_only: bool,
+    is_change: bool,
 ) -> Option<Finding> {
-    if !read_only || !line.starts_with('+') || line.starts_with("+++") {
+    if !read_only || !is_change {
         return None;
     }
     Some(Finding {
@@ -187,12 +198,12 @@ fn check_intent_violation(
 
 fn check_scope_creep(
     file: &str,
-    line: &str,
     line_no: usize,
     allowed_files: Option<&[&str]>,
+    is_change: bool,
 ) -> Option<Finding> {
     let allowed = allowed_files?;
-    if file.is_empty() || allowed.is_empty() || !line.starts_with('+') || line.starts_with("+++") {
+    if file.is_empty() || allowed.is_empty() || !is_change {
         return None;
     }
     let is_allowed = allowed.iter().any(|prefix| file.starts_with(prefix));
@@ -211,5 +222,26 @@ fn check_scope_creep(
         })
     } else {
         None
+    }
+}
+
+#[cfg(test)]
+mod review_regression_tests {
+    use super::ShitInterceptor;
+
+    #[test]
+    fn deletion_only_changes_trigger_read_only_and_scope_checks() {
+        let diff = "diff --git a/old.rs b/old.rs\n--- a/old.rs\n+++ b/old.rs\n@@ -1 +0,0 @@\n-let old = 1;\n";
+        let findings = ShitInterceptor::new().audit_diff(diff, Some(&["src/"]), true);
+        assert!(findings.iter().any(|f| f.code == "STS-I01"));
+        assert!(findings.iter().any(|f| f.code == "STS-S01"));
+    }
+
+    #[test]
+    fn metadata_and_changed_lines_are_separated() {
+        let diff = "diff --git a/a.rs b/a.rs\n--- a/a.rs\n+++ b/a.rs\n@@ -0,0 +1 @@\n+++not a header\n";
+        let findings = ShitInterceptor::new().audit_diff(diff, Some(&["src/"]), true);
+        assert!(findings.iter().any(|f| f.code == "STS-I01"));
+        assert!(findings.iter().any(|f| f.code == "STS-S01"));
     }
 }
