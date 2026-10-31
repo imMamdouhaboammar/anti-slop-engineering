@@ -59,7 +59,8 @@ func TestAuditEndpoint(t *testing.T) {
 
 
 func TestAuditRequestBodySizeLimit(t *testing.T) {
-    body := bytes.Repeat([]byte("x"), 1<<20+1)
+    body := append([]byte(`{"files":{"large.go":"`), bytes.Repeat([]byte("x"), 1<<20+1)...)
+    body = append(body, []byte(`"}}`)... )
     req := httptest.NewRequest(http.MethodPost, "/v1/audit", bytes.NewReader(body))
     w := httptest.NewRecorder()
     _, ok := decodeAuditRequest(w, req)
