@@ -3,8 +3,8 @@
 // Copyright (c) 2026 Mamdouh Aboammar <mamdouhfces1997@gmail.com> and contributors
 
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { existsSync, mkdirSync } from "node:fs";
+import { basename, dirname, resolve } from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
@@ -13,14 +13,20 @@ const __dirname = dirname(__filename);
 const rootDir = resolve(__dirname, "..");
 const diffGuardScript = resolve(rootDir, "scripts", "diff_guard.py");
 const sreGuardScript = resolve(rootDir, "scripts", "sre_guard.py");
-const rustBinPath = existsSync(resolve(rootDir, "dist", "bin", "anti-slop-rust"))
-  ? resolve(rootDir, "dist", "bin", "anti-slop-rust")
-  : resolve(rootDir, "services", "anti-slop-rust", "target", "release", "anti-slop-rust");
-const goBinPath = existsSync(resolve(rootDir, "dist", "bin", "toil-guard"))
-  ? resolve(rootDir, "dist", "bin", "toil-guard")
-  : resolve(rootDir, "services", "toil-guard-go", "bin", "toil-guard");
+const nativeSuffix = process.platform === "win32" ? ".exe" : "";
+const rustExecutable = "anti-slop-rust" + nativeSuffix;
+const goExecutable = "toil-guard" + nativeSuffix;
+const rustBinPath = existsSync(resolve(rootDir, "dist", "bin", rustExecutable))
+  ? resolve(rootDir, "dist", "bin", rustExecutable)
+  : resolve(rootDir, "services", "anti-slop-rust", "target", "release", rustExecutable);
+const goBinPath = existsSync(resolve(rootDir, "dist", "bin", goExecutable))
+  ? resolve(rootDir, "dist", "bin", goExecutable)
+  : resolve(rootDir, "services", "toil-guard-go", "bin", goExecutable);
 
+const invokedAs = basename(process.argv[1] ?? "").replace(/\.(?:js|cmd|exe)$/i, "");
+const executableAliases = { "sre-guard": "sre", "rust-guard": "rust", "toil-guard": "toil" };
 const args = process.argv.slice(2);
+if (executableAliases[invokedAs]) args.unshift(executableAliases[invokedAs]);
 
 function printBanner() {
   console.log(`
@@ -64,7 +70,7 @@ function spawnProcess(execPath, execArgs, label) {
     process.exit(1);
   });
   child.on("close", (code) => {
-    process.exit(code ?? 0);
+    process.exit(code ?? 1); // Signal termination must never be reported as success.
   });
 }
 
@@ -88,6 +94,44 @@ function runPythonScript(scriptPath, scriptArgs, scriptLabel) {
   spawnProcess("python3", [scriptPath, ...scriptArgs], scriptLabel);
 }
 
+function unsupportedFallback(engine, request) {
+  console.error(`Error: ${engine} native binary is required for ${request}. Run 'anti-slop-engineering build'.`);
+  process.exit(1);
+}
+
+function runRustFallback(request) {
+  const [command, ...flags] = request;
+  if (command !== "triage") unsupportedFallback("Rust", command);
+  const mapped = ["--fail-on-blocker"];
+  for (let i = 0; i < flags.length; i++) {
+    if (flags[i] === "--base" && flags[i + 1]) mapped.push("--base", flags[++i]);
+    else if (flags[i] === "--format" && flags[i + 1] === "json") { mapped.push("--json"); i++; }
+    else if (flags[i] === "--format" && flags[i + 1] === "text") i++;
+    else unsupportedFallback("Rust", `triage option ${flags[i]}`);
+  }
+  runPythonScript(diffGuardScript, mapped, "diff_guard");
+}
+
+function runGoFallback(request) {
+  const [command, ...flags] = request;
+  if (command !== "audit") unsupportedFallback("Go", command);
+  const mapped = [];
+  const paths = [];
+  for (let i = 0; i < flags.length; i++) {
+    if (flags[i] === "--base" && flags[i + 1]) mapped.push("--base", flags[++i]);
+    else if (flags[i] === "--format" && flags[i + 1] === "json") { mapped.push("--json"); i++; }
+    else if (flags[i] === "--format" && flags[i + 1] === "text") i++;
+    else if (flags[i].startsWith("-")) unsupportedFallback("Go", `audit option ${flags[i]}`);
+    else paths.push(flags[i]);
+  }
+  if (paths.length > 0) {
+    if (mapped.includes("--base")) unsupportedFallback("Go", "audit with both --base and paths");
+    mapped.push("--files", ...paths);
+  } else if (!mapped.includes("--base")) mapped.push("--base", "HEAD");
+  mapped.push("--strict");
+  runPythonScript(sreGuardScript, mapped, "sre_guard");
+}
+
 function runBuild() {
   console.log("Compiling Rust microservice...");
   const cargo = spawn("cargo", ["build", "--release"], {
@@ -102,7 +146,8 @@ function runBuild() {
     }
 
     console.log("Compiling Go microservice...");
-    const goBuild = spawn("go", ["build", "-o", "bin/toil-guard", "./cmd/toil-guard"], {
+    mkdirSync(resolve(rootDir, "services", "toil-guard-go", "bin"), { recursive: true });
+    const goBuild = spawn("go", ["build", "-o", "bin/" + goExecutable, "./cmd/toil-guard"], {
       cwd: resolve(rootDir, "services", "toil-guard-go"),
       stdio: "inherit",
     });
@@ -125,15 +170,11 @@ if (cmd === "build") {
 } else if (cmd === "rust" || cmd === "rust-guard" || cmd === "sts") {
   const subArgs = args.slice(1);
   const forwardArgs = subArgs.length > 0 ? subArgs : ["triage"];
-  runBinary(rustBinPath, forwardArgs, "anti-slop-rust", () => {
-    runPythonScript(diffGuardScript, ["--base", "HEAD"], "diff_guard");
-  });
+  runBinary(rustBinPath, forwardArgs, "anti-slop-rust", () => runRustFallback(forwardArgs));
 } else if (cmd === "toil" || cmd === "toil-guard" || cmd === "go-guard") {
   const subArgs = args.slice(1);
   const forwardArgs = subArgs.length > 0 ? subArgs : ["audit"];
-  runBinary(goBinPath, forwardArgs, "toil-guard-go", () => {
-    runPythonScript(sreGuardScript, ["--base", "HEAD"], "sre_guard");
-  });
+  runBinary(goBinPath, forwardArgs, "toil-guard-go", () => runGoFallback(forwardArgs));
 } else if (cmd === "serve-rust") {
   runBinary(rustBinPath, ["serve", ...args.slice(1)], "anti-slop-rust daemon", null);
 } else if (cmd === "serve-go") {
@@ -164,7 +205,7 @@ Path B: Submit a PR (Problem + Solution Integrated)
     cwd: rootDir,
     stdio: "inherit",
   });
-  pyTest.on("close", (code) => process.exit(code ?? 0));
+  pyTest.on("close", (code) => process.exit(code ?? 1));
 } else if (cmd === "test-all") {
   spawnProcess("make", ["test-all"], "test-all");
 } else if (cmd === "check-all") {
