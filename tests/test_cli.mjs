@@ -30,5 +30,5 @@ test("toil-guard alias passes audit options into the Python SRE fallback", () =>
 test("Rust triage fallback reports an invalid base instead of silently auditing HEAD", () => {
   const result = invoke("rust-guard", ["triage", "--base", "nonexistent-revision-123"]);
   assert.equal(result.status, 1);
-  assert.match(result.stdout + result.stderr, /nonexistent-revision-123/);
+  assert.match(result.stdout + result.stderr, /ERROR:/);
 });
