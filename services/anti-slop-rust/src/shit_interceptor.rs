@@ -172,7 +172,7 @@ fn extract_target_file(line: &str) -> Option<String> {
 
 fn extract_hunk_line(line: &str) -> Option<usize> {
     let start = line.strip_prefix("@@")?.split('+').nth(1)?;
-    start.split(',').next()?.trim().parse().ok()
+    start.split_whitespace().next()?.split(',').next()?.parse().ok()
 }
 
 fn check_intent_violation(
