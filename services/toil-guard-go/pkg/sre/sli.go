@@ -17,6 +17,7 @@ func ComputeSLIReport(files map[string]string, findings []model.Finding) model.S
 	blockers := 0
 	reviews := 0
 	toilCount := 0
+	duplicateFiles := make(map[string]struct{})
 
 	for _, f := range findings {
 		if f.Severity == model.SeverityBlocker {
@@ -27,6 +28,9 @@ func ComputeSLIReport(files map[string]string, findings []model.Finding) model.S
 		if f.Category == model.CategoryScale {
 			toilCount++
 		}
+		if f.Category == model.CategoryDRY {
+			duplicateFiles[f.File] = struct{}{}
+		}
 	}
 
 	complexityScore := 0.0
@@ -35,6 +39,11 @@ func ComputeSLIReport(files map[string]string, findings []model.Finding) model.S
 		if complexityScore > 1.0 {
 			complexityScore = 1.0
 		}
+	}
+
+	duplicationRatio := 0.0
+	if totalFiles > 0 {
+		duplicationRatio = float64(len(duplicateFiles)) / float64(totalFiles)
 	}
 
 	// Slop index penalty calculation
@@ -59,7 +68,7 @@ func ComputeSLIReport(files map[string]string, findings []model.Finding) model.S
 		TotalFiles:       totalFiles,
 		TotalLines:       totalLines,
 		ComplexityScore:  complexityScore,
-		DuplicationRatio: 0.0,
+		DuplicationRatio: duplicationRatio,
 		ToilIncidents:    toilCount,
 		SlopIndex:        slopIndex,
 		ErrorBudgetLeft:  errorBudgetLeft,
