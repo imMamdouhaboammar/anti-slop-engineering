@@ -4,6 +4,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/imMamdouhaboammar/anti-slop-engineering/services/toil-guard-go/pkg/model"
@@ -12,14 +14,16 @@ import (
 type blockLocation struct {
 	file string
 	line int
+	idx int
 }
 
 // IsTestFile returns true if the file path represents a test suite or fixture
 func IsTestFile(path string) bool {
-	lower := strings.ToLower(path)
+	lower := strings.ToLower(filepath.ToSlash(path))
+	base := strings.ToLower(filepath.Base(path))
 	return strings.Contains(lower, "/tests/") || strings.HasPrefix(lower, "tests/") ||
 		strings.Contains(lower, "_test.") || strings.Contains(lower, ".test.") ||
-		strings.Contains(lower, ".spec.") || strings.Contains(lower, "test_")
+		strings.Contains(lower, ".spec.") || strings.HasPrefix(base, "test_")
 }
 
 func filterCleanLines(content string) ([]string, []int) {
@@ -43,7 +47,7 @@ func isIgnoredLine(trimmed string) bool {
 		strings.HasPrefix(trimmed, "/*") || strings.HasPrefix(trimmed, "*") ||
 		strings.HasPrefix(trimmed, "import ") || strings.HasPrefix(trimmed, "package ") ||
 		strings.HasPrefix(trimmed, "use ") ||
-		(strings.HasPrefix(trimmed, "\"") && strings.HasSuffix(trimmed, "\"")) ||
+		(strings.HasPrefix(trimmed, "\"") && strings.Count(trimmed, "\"") == 2 && (strings.HasSuffix(trimmed, "\"") || strings.HasSuffix(trimmed, "\","))) ||
 		trimmed == "}" || trimmed == "{" || trimmed == "return" || trimmed == "};" ||
 		trimmed == ");" || trimmed == ")" || trimmed == "]" || trimmed == "]);"
 }
@@ -54,7 +58,13 @@ func CheckDRYDuplicates(files map[string]string) []model.Finding {
 	var findings []model.Finding
 	blockRegistry := make(map[string]blockLocation)
 
-	for file, content := range files {
+	paths := make([]string, 0, len(files))
+	for file := range files {
+		paths = append(paths, file)
+	}
+	sort.Strings(paths)
+	for _, file := range paths {
+		content := files[file]
 		if IsTestFile(file) {
 			continue // DAMP is permitted in test files
 		}
@@ -71,11 +81,11 @@ func CheckDRYDuplicates(files map[string]string) []model.Finding {
 
 			loc, exists := blockRegistry[hash]
 			if !exists {
-				blockRegistry[hash] = blockLocation{file: file, line: lineMap[i]}
+				blockRegistry[hash] = blockLocation{file: file, line: lineMap[i], idx: i}
 				continue
 			}
 
-			if loc.file != file || (loc.file == file && i+1-loc.line >= windowSize) {
+			if loc.file != file || (loc.file == file && i-loc.idx >= windowSize) {
 				findings = append(findings, model.Finding{
 					File:       file,
 					Line:       lineMap[i],
