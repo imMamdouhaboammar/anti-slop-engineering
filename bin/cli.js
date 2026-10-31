@@ -41,7 +41,7 @@ Usage:
   bunx anti-slop-engineering [command] [options]
 
 Commands:
-  rust, sts              Run native Rust Engine (Scope Creep, Hypothetical Hardening, Intent, Task Thrashing, Senior Dev Ladder)
+  rust, sts              Run native Rust Engine (Scope Creep, Hypothetical Hardening, Intent, Senior Dev Ladder)
   toil, go-guard         Run Go SRE Engine (KISS nesting, DRY token window, Toil & Error Budget)
   serve-rust             Start background Rust HTTP microservice daemon (default: :9091)
   serve-go               Start background Go HTTP SRE microservice daemon (default: :9092)
