@@ -8,9 +8,8 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 
-use crate::ladder_auditor::LadderAuditor;
 use crate::model::AuditReport;
-use crate::shit_interceptor::ShitInterceptor;
+use crate::{LADDER_AUDITOR, SHIT_INTERCEPTOR};
 
 #[derive(Serialize)]
 struct HealthResponse {
@@ -54,10 +53,9 @@ fn map_allowed_refs(allowed: Option<&Vec<String>>) -> Option<Vec<&str>> {
 }
 
 async fn shit_check_handler(Json(payload): Json<ShitCheckRequest>) -> impl IntoResponse {
-    let interceptor = ShitInterceptor::new();
     let allowed_refs = map_allowed_refs(payload.allowed_files.as_ref());
 
-    let findings = interceptor.audit_diff(
+    let findings = SHIT_INTERCEPTOR.audit_diff(
         &payload.diff,
         allowed_refs.as_deref(),
         payload.read_only,
@@ -68,8 +66,7 @@ async fn shit_check_handler(Json(payload): Json<ShitCheckRequest>) -> impl IntoR
 }
 
 async fn ladder_audit_handler(Json(payload): Json<LadderAuditRequest>) -> impl IntoResponse {
-    let auditor = LadderAuditor::new();
-    let findings = auditor.audit_code(&payload.file, &payload.content);
+    let findings = LADDER_AUDITOR.audit_code(&payload.file, &payload.content);
     let report = AuditReport::new("anti-slop-rust-ladder", findings);
     (StatusCode::OK, Json(report))
 }
