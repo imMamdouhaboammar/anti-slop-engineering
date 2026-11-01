@@ -41,7 +41,7 @@ build-services: build-rust build-go
 test-all: test-verbose test-rust test-go
 
 lint:
-	$(PYTHON) -m py_compile scripts/diff_guard.py scripts/sre_guard.py tests/test_diff_guard.py tests/test_sre_guard.py
+	$(PYTHON) -m py_compile scripts/diff_guard.py scripts/sre_guard.py scripts/decision_guard.py tests/test_diff_guard.py tests/test_sre_guard.py tests/test_decision_guard.py
 
 guard:
 	$(PYTHON) scripts/diff_guard.py --base HEAD

@@ -69,6 +69,7 @@ Thumbs.db
 .claude/
 /.agents/
 /plans/
+/teardowns/
 skills-lock.json
 .mcp.json
 

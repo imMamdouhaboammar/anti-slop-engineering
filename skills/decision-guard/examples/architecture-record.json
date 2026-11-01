@@ -1,0 +1,35 @@
+{
+  "kind": "architecture",
+  "goal": "Run an authenticated analytics app with long background calculations",
+  "proposal": "Use Next.js, Vercel and Supabase",
+  "evidence": [
+    {"source": "Illustrative product brief", "finding": "Most routes are behind login; long background jobs are required", "level": "observed"}
+  ],
+  "direct_check": {
+    "status": "not_found",
+    "source": "Illustrative service inventory",
+    "finding": "No existing app directly meets these product requirements"
+  },
+  "assumptions": [
+    {"claim": "A maintainer can manage production PostgreSQL", "state": "unverified", "basis": "Operational ownership not yet assigned"}
+  ],
+  "decision_axes": [
+    {"name": "frontend", "considered": ["Vite SPA", "TanStack Start", "Next.js"], "selected": "Vite SPA"},
+    {"name": "hosting", "considered": ["VPS", "Managed runtime"], "selected": "VPS"},
+    {"name": "database", "considered": ["Self-managed PostgreSQL", "Managed PostgreSQL"], "selected": "Self-managed PostgreSQL"}
+  ],
+  "alternatives": [
+    {"name": "VPS and local PostgreSQL", "benefit": "Predictable fixed infrastructure", "risk": "Shared failure domain and operational burden", "reversal": "Export and restore to external DB"},
+    {"name": "Managed runtime and managed PostgreSQL", "benefit": "Lower direct administration", "risk": "Usage-dependent costs and provider integration", "reversal": "Portable application with database export"}
+  ],
+  "horizons": [
+    {"stage": "now", "scenario": "Low initial concurrency", "consequence": "Simple single-node deployment possible"},
+    {"stage": "later", "scenario": "Database grows and server fails", "consequence": "Offsite recovery and isolation become critical"}
+  ],
+  "decision": {
+    "action": "pause",
+    "choice": "VPS and local PostgreSQL, conditional",
+    "reason": "Needs named operator and tested backup recovery before approval",
+    "invalidated_by": "No operations ownership or inadequate recovery time"
+  }
+}

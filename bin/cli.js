@@ -13,15 +13,17 @@ const __dirname = dirname(__filename);
 const rootDir = resolve(__dirname, "..");
 const diffGuardScript = resolve(rootDir, "scripts", "diff_guard.py");
 const sreGuardScript = resolve(rootDir, "scripts", "sre_guard.py");
+const decisionGuardScript = resolve(rootDir, "scripts", "decision_guard.py");
 const nativeSuffix = process.platform === "win32" ? ".exe" : "";
 const rustExecutable = "anti-slop-rust" + nativeSuffix;
 const goExecutable = "toil-guard" + nativeSuffix;
-const rustBinPath = existsSync(resolve(rootDir, "dist", "bin", rustExecutable))
+const disableNative = process.env.ANTI_SLOP_DISABLE_NATIVE === "1" || process.env.ANTI_SLOP_FORCE_FALLBACK === "1";
+const rustBinPath = !disableNative && existsSync(resolve(rootDir, "dist", "bin", rustExecutable))
   ? resolve(rootDir, "dist", "bin", rustExecutable)
-  : resolve(rootDir, "services", "anti-slop-rust", "target", "release", rustExecutable);
-const goBinPath = existsSync(resolve(rootDir, "dist", "bin", goExecutable))
+  : (!disableNative ? resolve(rootDir, "services", "anti-slop-rust", "target", "release", rustExecutable) : "");
+const goBinPath = !disableNative && existsSync(resolve(rootDir, "dist", "bin", goExecutable))
   ? resolve(rootDir, "dist", "bin", goExecutable)
-  : resolve(rootDir, "services", "toil-guard-go", "bin", goExecutable);
+  : (!disableNative ? resolve(rootDir, "services", "toil-guard-go", "bin", goExecutable) : "");
 
 const invokedAs = basename(process.argv[1] ?? "").replace(/\.(?:js|cmd|exe)$/i, "");
 const executableAliases = { "sre-guard": "sre", "rust-guard": "rust", "toil-guard": "toil" };
@@ -47,6 +49,7 @@ Commands:
   serve-go               Start background Go HTTP SRE microservice daemon (default: :9092)
   build                  Compile both Rust and Go microservices
   sre, sre-guard         Run Python Google SRE Guard (zero-dependency stdlib fallback)
+  decision audit <file>  Check a Decision Guard JSON record for missing evidence and trade-offs
   test                   Run unit test suite
   contribute             Print guidelines on reporting noted slop or opening PRs
 
@@ -191,6 +194,8 @@ if (cmd === "build") {
   runBinary(goBinPath, ["serve", ...args.slice(1)], "toil-guard-go daemon", null);
 } else if (cmd === "sre" || cmd === "sre-guard") {
   runPythonScript(sreGuardScript, args.slice(1), "sre_guard");
+} else if (cmd === "decision") {
+  runPythonScript(decisionGuardScript, args.slice(1), "decision_guard");
 } else if (args.includes("--help") || args.includes("-h")) {
   printBanner();
   process.exit(0);

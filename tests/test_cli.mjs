@@ -6,11 +6,12 @@ import test from "node:test";
 
 const cli = pathToFileURL(resolve("bin/cli.js")).href;
 
-function invoke(alias, args) {
+function invoke(alias, args, extraEnv = {}) {
   const code = `process.argv=[process.execPath,${JSON.stringify(resolve("bin", alias))},...${JSON.stringify(args)}]; await import(${JSON.stringify(cli)});`;
   return spawnSync(process.execPath, ["--input-type=module", "--eval", code], {
     cwd: process.cwd(),
     encoding: "utf8",
+    env: { ...process.env, ANTI_SLOP_DISABLE_NATIVE: "1", ...extraEnv },
   });
 }
 
@@ -31,4 +32,14 @@ test("Rust triage fallback reports an invalid base instead of silently auditing 
   const result = invoke("rust-guard", ["triage", "--base", "nonexistent-revision-123"]);
   assert.equal(result.status, 1);
   assert.match(result.stdout + result.stderr, /ERROR:/);
+});
+
+test("decision audit command routes to the stdlib decision guard", () => {
+  const example = resolve("skills/decision-guard/examples/architecture-record.json");
+  const result = invoke("anti-slop-engineering", ["decision", "audit", example, "--json"]);
+  assert.equal(result.status, 0, result.stderr);
+  const output = JSON.parse(result.stdout);
+  assert.equal(output.record_status, "complete");
+  assert.equal(output.decision_action, "pause");
+  assert.equal(output.machine_check_only, true);
 });

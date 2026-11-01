@@ -27,13 +27,15 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Verify Python syntax
-        run: python -m py_compile scripts/diff_guard.py tests/test_diff_guard.py
+        run: python -m py_compile scripts/diff_guard.py scripts/sre_guard.py scripts/decision_guard.py tests/test_diff_guard.py tests/test_sre_guard.py tests/test_decision_guard.py
 
       - name: Run unit test suite
         run: python -m unittest discover -s tests -v
 
       - name: Run diff guard against HEAD
         run: python scripts/diff_guard.py --base HEAD
+      - name: Validate bundled decision example
+        run: python scripts/decision_guard.py audit skills/decision-guard/examples/architecture-record.json --json
 
   validate-distribution:
     name: Validate Universal Distribution & CLI
@@ -120,7 +122,7 @@ jobs:
       - name: npm package includes native sources
         run: |
           npm pack --dry-run --json > pack.json
-          node -e 'const f=require("./pack.json")[0].files.map(x=>x.path); for (const p of ["services/anti-slop-rust/Cargo.toml","services/toil-guard-go/go.mod","services/toil-guard-go/cmd/toil-guard/main.go"]) if(!f.includes(p)) process.exitCode=1'
+          node -e 'const f=require("./pack.json")[0].files.map(x=>x.path); for (const p of ["services/anti-slop-rust/Cargo.toml","services/toil-guard-go/go.mod","services/toil-guard-go/cmd/toil-guard/main.go","skills/decision-guard/SKILL.md","scripts/decision_guard.py"]) if(!f.includes(p)) process.exitCode=1'
       - name: CLI and alias regression tests
         run: |
           node --check bin/cli.js

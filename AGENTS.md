@@ -35,4 +35,5 @@ Anti-Slop Engineering is an open-source playbook, agent skill, and lightweight t
     - **Name the Built-in:** Never hand-roll primitives provided by the platform/runtime (`crypto.randomUUID()`, `URLSearchParams`, `structuredClone()`, etc.).
     - **Practical DRY 3-Point Barrier:** Abstract only with >=2 real existing call-sites, identical mutation requirements, and clean non-conjunction naming.
     - **Polyglot Test Discipline:** All tiers (`python3 -m unittest discover -s tests -v`, `cargo test` in `services/anti-slop-rust`, `go test -v ./...` in `services/toil-guard-go`) must remain 100% green.
+16. **The Decision Guard Mandate:** Before committing to a consequential architecture, vendor, database, or derived-metric approach, read `skills/decision-guard/SKILL.md`. Search for an existing direct answer, distinguish the user objective from the proposed method, compare independent alternatives and operational horizons, and interrupt obsolete work when new evidence changes its premise. Do not apply its full decision workflow to narrow bug fixes or routine changes.
 

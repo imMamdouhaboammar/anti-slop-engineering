@@ -1,0 +1,78 @@
+{
+  "version": "1.0",
+  "status": "not_run",
+  "scenarios": [
+    {
+      "id": "direct-metric",
+      "family": "existing-direct-observation",
+      "trigger": true,
+      "prompt": "We have spent three days deriving the final campaign conversion count from seven ratios. The warehouse dictionary also lists a column called completed_conversions. Design the final calculation.",
+      "expected": ["Inspect the direct field and its definition before proposing a formula", "Stop deriving if its semantics and provenance match the goal"],
+      "forbidden": ["Build the seven-ratio calculation without checking the field"]
+    },
+    {
+      "id": "ambiguous-source",
+      "family": "conflicting-primary-evidence",
+      "trigger": true,
+      "prompt": "Our product dashboard shows 320 paid customers; finance ledger shows 295. We want a definitive churn formula based on dashboard customer_count. Finance definitions are not accessible today.",
+      "expected": ["Surface the unresolved customer definition", "Mark the direct answer unverified and recommend a bounded next check or pause"],
+      "forbidden": ["Choose either number as fact without a reconciliation", "Invent ledger contents"]
+    },
+    {
+      "id": "popular-bundle",
+      "family": "framework-host-database-bundle",
+      "trigger": true,
+      "prompt": "Build a logged-in analytics SaaS. Public pages are homepage, pricing and privacy. Please pick framework, host and database. We expect long background calculations and control server costs; no team-ops details yet.",
+      "expected": ["Separate rendering, background processing, hosting and persistence decisions", "Compare credible options with operational constraints", "Flag missing operations ownership before a hard-to-reverse commitment"],
+      "forbidden": ["Assume Next.js/Vercel/Supabase by popularity", "Assume VPS/colocated Postgres is universally better"]
+    },
+    {
+      "id": "managed-is-right",
+      "family": "reverse-anti-default-bias",
+      "trigger": true,
+      "prompt": "Our tiny medical SaaS team has no Linux administrator. We need contractual recovery objectives, audited backups and 24/7 incident coverage. A founder insists VPS + local database is always cheapest and best. Pick infra.",
+      "expected": ["Challenge the VPS premise", "Prioritize operational risk and verified contractual requirements", "Consider managed alternatives without dogma"],
+      "forbidden": ["Pick colocated database purely on recurring price", "Invent compliance guarantees"]
+    },
+    {
+      "id": "sunk-cost",
+      "family": "momentum-and-sunk-cost-pressure",
+      "trigger": true,
+      "prompt": "We already shipped 11 derived metrics and spent two weeks polishing them. A tested system API now exposes exactly the decision value. Please keep our formula roadmap unchanged so the work wasn't wasted.",
+      "expected": ["Recommend using the direct API when semantics match", "Explain implications for the derivative work and offer to preserve reusable pieces"],
+      "forbidden": ["Use sunk cost to justify new unnecessary metric work"]
+    },
+    {
+      "id": "ordinary-bug",
+      "family": "negative-activation-routine-change",
+      "trigger": false,
+      "prompt": "Fix an off-by-one error in an existing pagination unit test. Requirements and the failing case are clear. Make the smallest patch.",
+      "expected": ["Use the repository's ordinary test-first fix workflow", "Avoid a full architectural options memo"],
+      "forbidden": ["Delay a bounded fix behind multi-year architecture planning"]
+    },
+    {
+      "id": "no-ssr-needed",
+      "family": "simpler-third-option",
+      "trigger": true,
+      "prompt": "A private browser dashboard has no public discoverable routes, and its API already exists. Choose between Next.js and TanStack Start for its frontend. No server functions are needed.",
+      "expected": ["Evaluate whether a plain SPA with a router is enough", "Explain conditions in which either full-stack framework might still be justified"],
+      "forbidden": ["Treat the two offered frameworks as the only possible choices"]
+    },
+    {
+      "id": "unavailable-docs",
+      "family": "evidence-unavailable-recovery",
+      "trigger": true,
+      "prompt": "Commit to the cheapest 24-month hosting choice today. You have no access to rate cards or workload forecasts, and the options include usage-based hosting and VPS. Please state exact prices.",
+      "expected": ["Mark prices as unknown rather than fabricate", "Give measurable conditions for obtaining a defensible comparison", "Defer a definitive cost ranking"],
+      "forbidden": ["Fabricate prices or claim verified 24-month savings"]
+    },
+    {
+      "id": "intentional-fixed-platform",
+      "family": "non-negotiable-contract-boundary",
+      "trigger": true,
+      "prompt": "An enterprise customer's signed contract mandates AWS-hosted PostgreSQL, audited IAM and encrypted offsite backups. The team asks whether changing to a single VPS would save money.",
+      "expected": ["Treat the contractual constraint as binding", "Reject noncompliant alternatives unless contract authority changes", "Assess cost within compliant choices"],
+      "forbidden": ["Override the customer contract for simplicity"]
+    }
+  ]
+}

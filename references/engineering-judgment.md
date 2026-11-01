@@ -16,6 +16,9 @@ A huge mandatory checklist can itself cause excessive code, bureaucracy and agen
 - Changing existing tests is valid when the approved contract changes; changing tests to fit a regression is not.
 - Unit vs integration vs E2E should reflect system risk and cost; neither all-unit nor all-E2E is a universal rule.
 - Rule thresholds (file length, diff size, number of files) are prompts for scrutiny, not blockers without measured harm.
+- A directly named metric is not automatically the right observation: validate event semantics, units, cohort, freshness and provenance before replacing inference with a source field.
+- A familiar managed stack and a self-hosted VPS stack are both legitimate options. Separate rendering, compute, hosting, data and operational ownership; do not equate lower infrastructure spend with lower total risk.
+- A multi-year architecture scenario is a conditional test, not an exact forecast. Reopen decisions on material evidence changes, not at every routine edit.
 - In existing codebases, preserve established version constraints and lockfile stability without uncoordinated major-version drift. However, when introducing **new** libraries, packages, or SDK integrations, always strictly resolve and pin the **latest stable version** from the official registry rather than guessing outdated versions from model training memory.
 - For greenfield projects, new modules, or SDK integrations, always use the **official boilerplate, CLI installer, or generator** (e.g., `uv init`, `cargo init`, `bun create`, official SDK starters). Hand-rolling ad-hoc scaffolding from memory introduces missing build flags, broken toolchains, and dirty slop.
 - UI microcopy should be succinct, high-signal, and respectful of the user's attention. Tooltips and helper text should clarify non-obvious interactions, not narrate obvious UI controls.
