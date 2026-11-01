@@ -12,7 +12,7 @@
 [![Skills.sh](https://img.shields.io/badge/Skills.sh-Compatible-000000?style=flat-square&logo=vercel&logoColor=white)](https://skills.sh)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-Certified%20Skill-D97706?style=flat-square&logo=anthropic&logoColor=white)](https://claude.ai)
 
-[Install](#install) · [What it catches](#what-it-catches) · [Engines](#engines) · [Agent skill](#agent-skill) · [Anti-pattern catalog](#anti-pattern-catalog-213-patterns)
+[Install](#install) · [What it catches](#what-it-catches) · [Engines](#engines) · [Decision Guard](#decision-guard) · [Agent skill](#agent-skill) · [Anti-pattern catalog](#anti-pattern-catalog-215-patterns)
 
 </div>
 
@@ -201,6 +201,29 @@ flowchart TD
 
 ---
 
+## Decision Guard
+
+The [Decision Guard module](skills/decision-guard/SKILL.md) addresses two decisions the code diff cannot catch: deriving an answer that already exists directly, and choosing a familiar technology stack without testing the product's actual requirements and future operating costs.
+
+| Situation | Agent behavior |
+| --- | --- |
+| Seven metrics infer a value present in a source field | Verify the field's semantics and propose using the direct answer |
+| A logged-in app triggers an automatic Next.js/Vercel/database bundle | Separate rendering, jobs, hosting, persistence and operations choices |
+| VPS appears cheaper than managed infrastructure | Compare recovery, maintenance, on-call, migration and actual workload |
+| New evidence invalidates days of prior work | Interrupt, explain the change and offer the smallest corrected path |
+
+The module is loaded selectively during Gate 0/1 for consequential decisions. It includes a portable skill, two focused workflows, decision references, nine evaluation scenarios and a standard-library JSON record checker.
+
+```bash
+node bin/cli.js decision audit skills/decision-guard/examples/architecture-record.json --json
+# Or, using the package CLI:
+anti-slop-engineering decision audit path/to/decision.json --json
+```
+
+Exit `0` means the record is structurally complete, `2` means required decision evidence is missing, and `1` means unreadable or malformed input. These are **not** claims that the chosen architecture is correct or that sources were verified. A complete record can intentionally recommend `pause` or `stop`.
+
+---
+
 ## Agent skill
 
 The agent skill wires Anti-Slop Engineering into your AI coding agent's context. Once installed, every code change the agent generates is governed by the Seven Gates, the 213-pattern anti-pattern catalog, and the Google SRE enforcement rules.
@@ -223,9 +246,9 @@ When installed via `npm install anti-slop-engineering` or `bun add anti-slop-eng
 
 ---
 
-## Anti-pattern catalog (213 patterns)
+## Anti-pattern catalog (215 patterns)
 
-The catalog in [`references/anti-pattern-catalog.md`](references/anti-pattern-catalog.md) documents 213 diagnostic patterns across 14 engineering domains, each with a canonical ID, symptom, root cause, and remediation.
+The catalog in [`references/anti-pattern-catalog.md`](references/anti-pattern-catalog.md) documents 215 diagnostic patterns across 14 engineering domains, each with a canonical ID, symptom, root cause, and remediation.
 
 **Domains covered:**
 

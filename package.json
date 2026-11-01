@@ -22,6 +22,7 @@
   "files": [
     "bin",
     "scripts",
+    "skills",
     "services/anti-slop-rust/Cargo.toml",
     "services/anti-slop-rust/Cargo.lock",
     "services/anti-slop-rust/src",

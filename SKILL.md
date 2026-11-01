@@ -37,6 +37,7 @@ metadata:
     - Climb the Senior Dev Ladder before authoring code: (1) Does this need to exist? (2) Does it already exist in the codebase? (3) Does the stdlib/platform do it? (4) Does native runtime cover it? (5) Does an existing dependency solve it? (6) Can it be a direct expression? (7) Write only minimal, necessary, tested code.
     - **Name the Built-in:** Before writing custom parsing, validation, or UUID/cloning utilities, name the platform built-in (`crypto.randomUUID()`, `URLSearchParams`, `structuredClone()`). Hand-rolling standard primitives is a defect.
     - **Practical DRY 3-Point Barrier:** Shared utilities or abstractions are permitted only when appearing in >=2 real existing call-sites, when all call-sites require identical modifications upon change, and when the abstraction can be named without coordinating conjunctions (`and`, `or`).
+15. **Decision Guard before consequential commitments:** When the task proposes derived metrics, an architectural stack, infrastructure, persistence, or a difficult-to-reverse engineering decision, read [Decision Guard](skills/decision-guard/SKILL.md). Check direct evidence and independent alternatives before treating the proposed method as necessary. Never substitute the decision record's structural check for source verification.
 
 ## Activation / modes
 
@@ -47,6 +48,7 @@ Select the relevant mode and follow the same gates:
 - **REVIEW:** read-only diff and repository-context audit; report findings with severity, evidence, and counterfactual.
 - **CLEANUP:** establish an observable behavior baseline, isolate pure refactors from feature changes, prove no drift.
 - **NOTED_SLOP:** codify newly observed AI slop into a diagnostic catalog pattern, agent directive, and automated diff guard heuristic (see [CONTRIBUTING.md](CONTRIBUTING.md)).
+- **DECIDE:** when premises, direct answers or long-term architecture choices are materially uncertain, follow [Decision Guard](skills/decision-guard/SKILL.md) before BUILD. Return to ordinary modes after a decision; skip the extra protocol for routine repairs.
 
 For extensive audits, load [anti-pattern catalog](references/anti-pattern-catalog.md). For Google SRE discipline and distributed resilience patterns, load [google-sre-discipline](references/google-sre-discipline.md). For any test changes, load [test integrity policy](references/test-integrity.md). For a PR or merge request, load [PR review protocol](references/pr-review.md). For elevated permissions, sensitive code, network access, or deployment, load [security and execution boundaries](references/security-and-operations.md). For project-specific exceptions, load [judgment and exceptions](references/engineering-judgment.md). For community contributions, follow [contributor guidelines](CONTRIBUTING.md).
 
@@ -59,6 +61,7 @@ For extensive audits, load [anti-pattern catalog](references/anti-pattern-catalo
 - Read relevant open issues/PRs when available to avoid duplicates or fighting in-flight changes. Do not require network access to proceed when unavailable.
 - Record working tree status; do not overwrite user changes, reset, stash, or modify unrelated files without authorization.
 - Run an appropriate baseline build/test if feasible; label any existing failure as baseline, not caused by this change.
+- For a derived-answer task, inspect existing direct sources before constructing proxies. For an architectural commitment, inspect the product's actual rendering, workload, operations and persistence needs instead of defaulting to a familiar provider bundle. Load `skills/decision-guard/SKILL.md` only when this uncertainty is material.
 - For new projects, services, components, or SDK integrations, identify the official installer, CLI generator, and canonical starter boilerplate before writing code. Do not manually assemble configurations or directory trees from memory. Never generate unprompted documentation files, submission dossiers, or speculative third-party platform guides.
 
 ### Gate 1: Establish a change contract

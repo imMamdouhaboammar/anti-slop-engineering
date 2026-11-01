@@ -18,6 +18,7 @@ Format: **ID | pattern | how to verify / safer alternative**. Numbers are stable
 - **REQ-10 | Skipped acceptance criteria.** PR satisfies prose loosely but not contract; maintain acceptance evidence mapping.
 - **REQ-11 | Incorrect partial-success semantics.** Batch reports complete when only half succeeded; model outcomes and retryable failures.
 - **REQ-12 | Placeholder leakage.** Temporary behavior, fake data, TODO 'later' shipped as final; enumerate and resolve release blockers.
+- **REQ-13 | Indirect-answer tunnel.** Agent constructs proxy metrics or inference chains while the answer already exists in an accessible source; inspect direct fields and their semantics before calculating.
 
 ## B. Architecture, boundaries, and repository consistency
 
@@ -36,6 +37,7 @@ Format: **ID | pattern | how to verify / safer alternative**. Numbers are stable
 - **ARC-13 | Inappropriate inheritance.** A shared base class couples unrelated behavior; prefer composition only if it clarifies.
 - **ARC-14 | Leaky plugin architecture.** Dynamic extension point without real callers; reduce indirection.
 - **ARC-15 | Manual scaffolding improvisation.** Hand-crafting directory structures, build configs, and boilerplate files (`tsconfig.json`, `package.json`, `pyproject.toml`, Dockerfiles) from memory instead of using the official framework/language CLI installer, starter template, or generator; introduces missing build flags, non-standard layouts, and broken tooling.
+- **ARC-16 | Familiar-stack default and short-horizon choice.** Agent bundles framework, host and database by popularity without testing actual workload, operations, recovery, exit paths or credible future states; compare independent axes, constraints and reversibility. Managed services and VPS are each legitimate where evidence supports them.
 
 ## C. Simplicity, duplication, and code readability
 
