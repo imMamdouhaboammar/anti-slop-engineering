@@ -39,8 +39,19 @@ install_to() {
   # Ensure scripts are executable
   chmod +x "$dest/bin/cli.js" 2>/dev/null || true
   chmod +x "$dest/scripts/diff_guard.py" 2>/dev/null || true
+  chmod +x "$dest/scripts/sre_guard.py" 2>/dev/null || true
+  chmod +x "$dest/scripts/decision_guard.py" 2>/dev/null || true
   chmod +x "$dest/install.sh" 2>/dev/null || true
-  echo "  ✅ Installed for ${label} -> ${dest}"
+  echo "  ✅ Installed anti-slop-engineering for ${label} -> ${dest}"
+
+  # Install bundled decision-guard skill as top-level skill in the same skill root
+  if [ -d "$SOURCE_DIR/skills/decision-guard" ]; then
+    local dg_dest="$(dirname "$dest")/decision-guard"
+    rm -rf "$dg_dest"
+    mkdir -p "$dg_dest"
+    cp -R "$SOURCE_DIR/skills/decision-guard/"* "$dg_dest/"
+    echo "  ✅ Installed decision-guard for ${label} -> ${dg_dest}"
+  fi
 }
 
 INSTALLED_COUNT=0
@@ -71,6 +82,15 @@ INSTALLED_COUNT=$((INSTALLED_COUNT + 1))
 if [ "$1" = "--local" ] || [ "$1" = "--project" ]; then
   install_to "./.agents/skills/${TARGET_NAME}" "Local Project (.agents/skills)"
   INSTALLED_COUNT=$((INSTALLED_COUNT + 1))
+fi
+
+# 6. Global CLI symlinks in ~/.local/bin
+if [ -d "$HOME/.local/bin" ]; then
+  mkdir -p "$HOME/.local/bin"
+  for bin_name in anti-slop-engineering diff-guard sre-guard rust-guard toil-guard; do
+    ln -sf "$HOME/.gemini/config/skills/${TARGET_NAME}/bin/cli.js" "$HOME/.local/bin/$bin_name" 2>/dev/null || true
+  done
+  echo "  ✅ Linked CLI binaries in ~/.local/bin"
 fi
 
 echo ""
