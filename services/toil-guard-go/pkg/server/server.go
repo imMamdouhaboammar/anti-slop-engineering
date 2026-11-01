@@ -62,7 +62,7 @@ func handleHealthz(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]string{
 		"status":  "healthy",
 		"service": "toil-guard-go",
-		"version": "1.0.0",
+		"version": "1.1.0",
 	})
 }
 

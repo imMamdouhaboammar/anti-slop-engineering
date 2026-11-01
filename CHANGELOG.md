@@ -5,11 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.1.0] - 2026-11-01
 
 ### Added
-- Decision Guard agentic module for direct-answer discovery, assumption checks, independent architecture comparison, operational horizons and premise-changing interruptions.
-- Zero-dependency `decision audit` CLI check, example record, semantic evaluation cases and regression tests. Structural validation does not certify decision correctness.
+- **Decision Guard Module (`skills/decision-guard`):**
+  - Selectively activated agentic decision guard for direct-answer discovery, assumption checks, independent architecture axis comparison, operational horizons, and premise-changing interruptions.
+  - Zero-dependency standard-library JSON decision-record validator (`scripts/decision_guard.py` & CLI `anti-slop-engineering decision audit <file> --json`).
+  - Diagnostic anti-patterns `REQ-13` (Indirect-answer tunnel) and `ARC-16` (Familiar-stack default and short-horizon choice).
+  - 9 semantic evaluation scenarios, portable sample record, 15 focused unit tests, and Node CLI alias integration tests.
+  - Environment-controlled fallback testing hook (`ANTI_SLOP_DISABLE_NATIVE=1`) for deterministic testing across hybrid polyglot environments.
 
 ## [1.0.0] - 2026-10-31
 
