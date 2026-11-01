@@ -14,7 +14,7 @@ The JSON format is a portable checkpoint for consequential decisions. It is not 
 | `horizons[]` | Architecture only: current and later `stage`, each with `scenario` and `consequence` |
 | `decision` | `action` (`proceed`, `pause`, `stop`), `choice`, `reason`, `invalidated_by` |
 
-When a direct answer is found and execution continues, add `decision.direct_path_handling` (`use` or `bypass`). A bypass also needs `decision.direct_override_reason`. Recording an unsupported reason does not make it true. When hard constraints eliminate alternatives, an axis or decision may specify a single candidate with `constraint_rationale`; eliminated candidates do not count as credible options. For an investigation that ends in `stop`, architectural alternatives and horizons are unnecessary.
+When a direct answer is found and execution continues, add `decision.direct_path_handling` (`use` or `bypass`). A bypass also needs `decision.direct_override_reason`. Recording an unsupported reason does not make it true. When hard constraints eliminate alternatives, an axis specifies a single candidate with `constraint_rationale` directly on that axis. For an architecture-wide single-candidate decision, specify `single_candidate: true` and `constraint_rationale` at the record's top level (not under `decision`); eliminated candidates do not count as credible options. For an investigation that ends in `stop`, architectural alternatives and horizons are unnecessary.
 
 The checker intentionally allows `pause` with `direct_check.status = unknown`. It blocks `proceed` with an unknown direct-path status and detects absent architectural comparisons. It checks for structurally present evidence, not whether source citations are authentic or projections make sense.
 

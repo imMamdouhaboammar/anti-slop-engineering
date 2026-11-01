@@ -223,6 +223,21 @@ class DecisionGuardTests(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
         self.assertIn("INVALID_DECISION_AXIS", [item["code"] for item in output["findings"]])
 
+    def test_architecture_two_active_candidates_with_rationale_fails_single_candidate_branch(self):
+        """Verify that two active candidates with a rationale cannot bypass the two-candidate check."""
+        packet = architecture_packet()
+        packet["decision_axes"] = [
+            {
+                "name": "database",
+                "considered": ["On-prem Postgres", "Cloud SQL"],
+                "selected": "On-prem Postgres",
+                "constraint_rationale": "Hardware security preference.",
+            }
+        ]
+        result, output = audit(packet)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("INVALID_DECISION_AXIS", [item["code"] for item in output["findings"]])
+
     def test_architecture_eliminated_candidates_do_not_count_toward_credible_options(self):
         """Verify that eliminated candidates do not satisfy the minimum alternative requirement."""
         packet = architecture_packet()

@@ -33,35 +33,46 @@ def _audit_architecture(packet, require):
             eliminated_set = set(map(str, eliminated))
             active_considered = [c for c in considered if str(c) not in eliminated_set] if isinstance(considered, list) else []
             constraint_rationale = axis.get("constraint_rationale")
-            single_candidate = axis.get("single_candidate") is True or bool(constraint_rationale)
+            has_single_flag = axis.get("single_candidate") is True
+            has_rationale = filled(constraint_rationale)
+            is_single_candidate = has_single_flag or has_rationale
 
-            if single_candidate:
+            if is_single_candidate:
                 valid = (filled(name) and isinstance(considered, list)
-                         and len(active_considered) >= 1
-                         and all(filled(v) for v in active_considered)
-                         and filled(selected) and selected in active_considered
-                         and filled(constraint_rationale))
+                         and len(active_considered) == 1
+                         and filled(active_considered[0])
+                         and filled(selected) and selected == active_considered[0]
+                         and has_rationale)
+                require(valid, "INVALID_DECISION_AXIS", f"decision_axes[{index}] single candidate requires exactly one active candidate with constraint_rationale")
             else:
                 valid = (filled(name) and isinstance(considered, list)
                          and len(set(map(str, active_considered))) >= 2
                          and all(filled(v) for v in active_considered)
                          and filled(selected) and selected in active_considered)
-            require(valid, "INVALID_DECISION_AXIS", f"decision_axes[{index}] must compare >=2 distinct candidates or provide constraint_rationale for single candidate")
+                require(valid, "INVALID_DECISION_AXIS", f"decision_axes[{index}] must compare >=2 distinct candidates and select one")
 
     alternatives = packet.get("alternatives")
     has_alts_list = isinstance(alternatives, list)
     alt_names = [item.get("name").strip() for item in alternatives if isinstance(item, dict) and filled(item.get("name"))] if has_alts_list else []
     distinct_alt_names = set(alt_names)
-    is_single_alt = packet.get("single_candidate") is True or filled(packet.get("constraint_rationale"))
-    min_alts = 1 if is_single_alt else 2
+    packet_rationale = packet.get("constraint_rationale")
+    if not packet_rationale and isinstance(packet.get("decision"), dict):
+        packet_rationale = packet.get("decision", {}).get("constraint_rationale")
+    is_single_alt = packet.get("single_candidate") is True or filled(packet_rationale)
 
-    require(
-        has_alts_list and len(alternatives) >= min_alts and len(distinct_alt_names) >= min_alts and len(alt_names) == len(alternatives),
-        "MISSING_ALTERNATIVES",
-        "Compare at least two distinct architectural alternatives" if not is_single_alt else "Record at least one architectural alternative with constraint rationale"
-    )
     if is_single_alt:
-        require(filled(packet.get("constraint_rationale")), "MISSING_CONSTRAINT_RATIONALE", "Single candidate requires constraint_rationale explaining eliminated alternatives")
+        require(
+            has_alts_list and len(alternatives) == 1 and len(distinct_alt_names) == 1 and len(alt_names) == 1,
+            "MISSING_ALTERNATIVES",
+            "Single candidate architecture record must contain exactly one alternative"
+        )
+        require(filled(packet_rationale), "MISSING_CONSTRAINT_RATIONALE", "Single candidate requires constraint_rationale explaining eliminated alternatives")
+    else:
+        require(
+            has_alts_list and len(alternatives) >= 2 and len(distinct_alt_names) >= 2 and len(alt_names) == len(alternatives),
+            "MISSING_ALTERNATIVES",
+            "Compare at least two distinct architectural alternatives"
+        )
     if has_alts_list:
         for index, item in enumerate(alternatives):
             valid = isinstance(item, dict) and all(filled(item.get(key)) for key in ("name", "benefit", "risk", "reversal"))
