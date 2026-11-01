@@ -6,11 +6,12 @@ import test from "node:test";
 
 const cli = pathToFileURL(resolve("bin/cli.js")).href;
 
-function invoke(alias, args) {
+function invoke(alias, args, extraEnv = {}) {
   const code = `process.argv=[process.execPath,${JSON.stringify(resolve("bin", alias))},...${JSON.stringify(args)}]; await import(${JSON.stringify(cli)});`;
   return spawnSync(process.execPath, ["--input-type=module", "--eval", code], {
     cwd: process.cwd(),
     encoding: "utf8",
+    env: { ...process.env, ANTI_SLOP_DISABLE_NATIVE: "1", ...extraEnv },
   });
 }
 

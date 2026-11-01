@@ -17,12 +17,13 @@ const decisionGuardScript = resolve(rootDir, "scripts", "decision_guard.py");
 const nativeSuffix = process.platform === "win32" ? ".exe" : "";
 const rustExecutable = "anti-slop-rust" + nativeSuffix;
 const goExecutable = "toil-guard" + nativeSuffix;
-const rustBinPath = existsSync(resolve(rootDir, "dist", "bin", rustExecutable))
+const disableNative = process.env.ANTI_SLOP_DISABLE_NATIVE === "1" || process.env.ANTI_SLOP_FORCE_FALLBACK === "1";
+const rustBinPath = !disableNative && existsSync(resolve(rootDir, "dist", "bin", rustExecutable))
   ? resolve(rootDir, "dist", "bin", rustExecutable)
-  : resolve(rootDir, "services", "anti-slop-rust", "target", "release", rustExecutable);
-const goBinPath = existsSync(resolve(rootDir, "dist", "bin", goExecutable))
+  : (!disableNative ? resolve(rootDir, "services", "anti-slop-rust", "target", "release", rustExecutable) : "");
+const goBinPath = !disableNative && existsSync(resolve(rootDir, "dist", "bin", goExecutable))
   ? resolve(rootDir, "dist", "bin", goExecutable)
-  : resolve(rootDir, "services", "toil-guard-go", "bin", goExecutable);
+  : (!disableNative ? resolve(rootDir, "services", "toil-guard-go", "bin", goExecutable) : "");
 
 const invokedAs = basename(process.argv[1] ?? "").replace(/\.(?:js|cmd|exe)$/i, "");
 const executableAliases = { "sre-guard": "sre", "rust-guard": "rust", "toil-guard": "toil" };
