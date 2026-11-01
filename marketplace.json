@@ -2,7 +2,7 @@
   "$schema": "https://json.schemastore.org/claude-plugin-manifest.json",
   "name": "anti-slop-engineering",
   "displayName": "Anti-Slop Engineering",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "An Engineering Discipline Playbook, Agent Skill & Triage Guard for AI Coding Agents. Enforces behavioral contracts, focused diffs, test integrity, Google SRE principles, and native Rust/Go clean-room microservices.",
   "author": {
     "name": "Mamdouh Aboammar",

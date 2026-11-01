@@ -4,7 +4,7 @@ description: Prevent, detect, and repair AI coding slop and dirty engineering in
 author: Mamdouh Aboammar <mamdouhfces1997@gmail.com>
 license: MIT
 metadata:
-  version: "1.1.0"
+  version: "1.1.1"
   focus: "engineering-discipline"
   repository: "https://github.com/imMamdouhaboammar/anti-slop-engineering"
 ---
