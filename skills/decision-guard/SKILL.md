@@ -73,7 +73,7 @@ Present the decision in this order:
 4. **Reasoning boundary**: facts, assumptions, operational owner, downside, reversibility, stress/revisit trigger.
 5. **Handoff**: what can execute, what requires user authority, and what evidence remains unverified.
 
-When the decision is consequential or likely to be revisited, save a JSON decision record following [record contract](references/decision-record.md). Audit it with `python3 scripts/decision_guard.py audit <record.json> --json` from the repository root (or the installed module's equivalent root). Exit 0 means structurally complete, exit 2 means incomplete; neither proves the underlying recommendation. Do not create a record for trivial tasks.
+When the decision is consequential or likely to be revisited, save a JSON decision record following [record contract](references/decision-record.md). Audit it with `npx anti-slop-engineering decision audit <record.json> --json` (or `python3 scripts/decision_guard.py audit <record.json> --json` from the repository root). Exit 0 means structurally complete, exit 2 means incomplete; neither proves the underlying recommendation. Do not create a record for trivial tasks.
 
 ## Domain References
 

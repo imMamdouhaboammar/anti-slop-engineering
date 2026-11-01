@@ -217,7 +217,7 @@ The module is loaded selectively during Gate 0/1 for consequential decisions. It
 ```bash
 node bin/cli.js decision audit skills/decision-guard/examples/architecture-record.json --json
 # Or, using the package CLI:
-anti-slop-engineering decision audit path/to/decision.json --json
+npx anti-slop-engineering decision audit path/to/decision.json --json
 ```
 
 Exit `0` means the record is structurally complete, `2` means required decision evidence is missing, and `1` means unreadable or malformed input. These are **not** claims that the chosen architecture is correct or that sources were verified. A complete record can intentionally recommend `pause` or `stop`.
