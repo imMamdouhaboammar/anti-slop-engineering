@@ -5,12 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.3.0] - 2026-11-02
 
 ### Added
-- **Future-Scale Gate (`skills/future-scale-gate`):** Evidence-ranked future operating envelope, irreversible-decision assessment, lifecycle alternative comparison, bounded evolution proofs and explicit triggers for deferred capacity. Includes a portable agentic skill, two operational workflows, architecture/record references, ten proposed semantic evaluation cases and a synthetic record.
-- **Structural audit:** Zero-dependency Python `future_scale_guard.py` and CLI `future-scale audit <file> --json`, with regression tests. A complete record is not a guarantee of scalability or correct future forecasts.
-- **Diagnostic catalog:** `ARC-18` identifies present-only foundation assumptions and their opposite, speculative capacity theater.
+- **Future-Scale Gate Module (`skills/future-scale-gate` & `scripts/future_scale_guard.py`):**
+  - Selective agentic skill addressing present-state architectural choices that block credible future evolution without advocating speculative distributed infrastructure.
+  - Evidence-ranked future operating envelope, irreversible-decision assessment, lifecycle alternative comparison, bounded evolution proofs and explicit triggers for deferred capacity.
+  - Zero-dependency Python standard library validator (`scripts/future_scale_guard.py`) and CLI integration (`anti-slop-engineering future-scale audit <file> --json`).
+  - Diagnostic anti-pattern `ARC-18` (Present-only foundation assumptions and speculative capacity theater).
+  - 10 semantic evaluation scenarios, synthetic runtime-envelope record, focused unit tests, and Node/Bun CLI alias integration tests.
+- **Automated Multi-Manifest Version Bumper Tooling (`scripts/bump_version.py`):**
+  - Zero-dependency automation synchronizing SemVer versioning across all 10 repository manifest locations (`package.json`, `pyproject.toml`, `.skills.json`, `marketplace.json`, `SKILL.md`, `bin/cli.js`, `CITATION.cff`, `Cargo.toml`, Go `types.go`, and Go `server.go`).
+  - Added CLI command `anti-slop-engineering bump [patch|minor|major]` and `bun run bump`.
+  - Automatic `Cargo.lock` synchronization via `cargo check` and cryptographic SHA-256 seal recalculation in `.fable/heal-attestation.json`.
+  - Comprehensive unit test suite in `tests/test_bump_version.py` and CLI routing tests in `tests/test_cli.mjs`.
+
+### Security
+- **Defensive Hardening via Bug Killer (`bk`):**
+  - Resolved `BK-AI-DOS-001` in `scripts/future_scale_guard.py` with explicit recursion and verification depth bounding.
+  - Hardened regular expression compilation against `BK-AI-INJ-015` (ReDoS) across `scripts/bump_version.py` using standard-library `sre_compile.compile` and bounded quantifier ranges.
+  - Maintained 100% clean security status (`0 findings` across all 181 files assessed).
 
 ## [1.2.0] - 2026-11-02
 
