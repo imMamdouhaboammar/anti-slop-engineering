@@ -47,8 +47,8 @@ def check_surface(record, proceeding, require):
     plan = record.get("planned_changes")
     require(isinstance(plan, list), "INVALID_CHANGE_PLAN", "planned_changes must be a list")
     if not isinstance(plan, list):
-        return set()
-    paths = set()
+        return {}
+    paths = {}
     has_owner = False
     valid_count = 0
     for index, item in enumerate(plan):
@@ -57,7 +57,7 @@ def check_surface(record, proceeding, require):
                  and filled(item.get("reason")))
         require(valid, "INVALID_PLANNED_CHANGE", "planned_changes[%d] needs safe path, role and reason" % index)
         if valid:
-            paths.add(item["path"])
+            paths[item["path"]] = item["role"]
             has_owner |= item["role"] == "owner"
             valid_count += 1
     require(len(paths) == valid_count,
@@ -135,7 +135,7 @@ def inspect_git_diff(repo, base):
     if base.startswith("-"):
         raise ValueError("Git base must be a revision, not a flag")
     changed = []
-    for git_args in (["diff", "--name-only", "-z", base, "--"],
+    for git_args in (["diff", "--no-renames", "--name-only", "-z", base, "--"],
                      ["ls-files", "--others", "--exclude-standard", "-z", "--"]):
         result = subprocess.run(["git", "-C", str(repo), *git_args], capture_output=True, check=False)
         if result.returncode != 0:
@@ -147,11 +147,15 @@ def inspect_git_diff(repo, base):
 def attach_git_diff(result, planned, changed):
     result["diff_status"] = "checked"
     result["changed_files"] = len(changed)
-    unexpected = sorted(changed - planned)
+    unexpected = sorted(changed - set(planned))
     if unexpected:
         sample = ", ".join(unexpected[:8])
         result["findings"].append({"code": "UNPLANNED_CHANGE", "severity": "review",
                                    "message": "%d paths absent from the plan: %s" % (len(unexpected), sample)})
+    owner_paths = sorted(path for path, role in planned.items() if role == "owner")
+    if result["decision_action"] == "proceed" and owner_paths and not changed.intersection(owner_paths):
+        result["findings"].append({"code": "OWNER_CHANGE_NOT_OBSERVED", "severity": "review",
+                                   "message": "No planned owner path changed: %s" % ", ".join(owner_paths[:8])})
     if len(changed) > 8:
         result["findings"].append({"code": "WIDE_CHANGE_SURFACE", "severity": "review",
                                    "message": "%d changed paths require a causal ownership review, not an automatic rejection" % len(changed)})

@@ -157,6 +157,53 @@ class RootFixGuardTests(unittest.TestCase):
             self.assertEqual(output["changed_files"], 2)
             self.assertIn("UNPLANNED_CHANGE", {item["code"] for item in output["findings"]})
 
+    def test_git_diff_reports_both_paths_of_a_staged_rename(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
+            subprocess.run(["git", "init", "-q", str(repo)], check=True)
+            subprocess.run(["git", "-C", str(repo), "config", "user.name", "Test"], check=True)
+            subprocess.run(["git", "-C", str(repo), "config", "user.email", "test@example.invalid"], check=True)
+            model_dir = repo / "app" / "models"
+            model_dir.mkdir(parents=True)
+            old = model_dir / "user.py"
+            old.write_text("user_email = None\n", encoding="utf-8")
+            subprocess.run(["git", "-C", str(repo), "add", "app/models/user.py"], check=True)
+            subprocess.run(["git", "-C", str(repo), "commit", "-qm", "baseline"], check=True)
+            old.rename(model_dir / "identity.py")
+            subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
+            packet = example_packet()
+            packet["planned_changes"][0]["path"] = "app/models/identity.py"
+            result, output = audit(packet, ["--repo", str(repo), "--base", "HEAD"])
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(output["changed_files"], 2)
+            unplanned = [item for item in output["findings"] if item["code"] == "UNPLANNED_CHANGE"]
+            self.assertEqual(len(unplanned), 1)
+            self.assertIn("app/models/user.py", unplanned[0]["message"])
+
+    def test_git_diff_warns_when_planned_owner_did_not_change(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
+            subprocess.run(["git", "init", "-q", str(repo)], check=True)
+            subprocess.run(["git", "-C", str(repo), "config", "user.name", "Test"], check=True)
+            subprocess.run(["git", "-C", str(repo), "config", "user.email", "test@example.invalid"], check=True)
+            model_dir = repo / "app" / "models"
+            model_dir.mkdir(parents=True)
+            (model_dir / "user.py").write_text("email = 'required'\n", encoding="utf-8")
+            consumer = repo / "app" / "controllers.py"
+            consumer.write_text("email = user.email\n", encoding="utf-8")
+            subprocess.run(["git", "-C", str(repo), "add", "app"], check=True)
+            subprocess.run(["git", "-C", str(repo), "commit", "-qm", "baseline"], check=True)
+            consumer.write_text("email = None\n", encoding="utf-8")
+            packet = example_packet()
+            packet["planned_changes"][1] = {
+                "path": "app/controllers.py", "role": "consumer", "reason": "Update downstream profile display"
+            }
+            result, output = audit(packet, ["--repo", str(repo), "--base", "HEAD"])
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(output["changed_files"], 1)
+            self.assertIn("OWNER_CHANGE_NOT_OBSERVED", {item["code"] for item in output["findings"]})
+            self.assertNotIn("UNPLANNED_CHANGE", {item["code"] for item in output["findings"]})
+
     def test_invalid_git_base_is_an_error_not_a_clean_diff(self):
         result, output = audit(example_packet(), ["--base", "not-a-real-commit-123"])
         self.assertEqual(result.returncode, 1)
