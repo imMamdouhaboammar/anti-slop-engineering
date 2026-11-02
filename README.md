@@ -12,7 +12,7 @@
 [![Skills.sh](https://img.shields.io/badge/Skills.sh-Compatible-000000?style=flat-square&logo=vercel&logoColor=white)](https://skills.sh)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-Certified%20Skill-D97706?style=flat-square&logo=anthropic&logoColor=white)](https://claude.ai)
 
-[Install](#install) · [What it catches](#what-it-catches) · [Engines](#engines) · [Decision Guard](#decision-guard) · [Agent skill](#agent-skill) · [Anti-pattern catalog](#anti-pattern-catalog-215-patterns)
+[Install](#install) · [What it catches](#what-it-catches) · [Engines](#engines) · [Decision Guard](#decision-guard) · [Root-Fix Gate](#root-fix-gate) · [Agent skill](#agent-skill) · [Anti-pattern catalog](#anti-pattern-catalog-216-patterns)
 
 </div>
 
@@ -224,9 +224,30 @@ Exit `0` means the record is structurally complete, `2` means required decision 
 
 ---
 
+## Root-Fix Gate
+
+The [Root-Fix Gate module](skills/root-fix-gate/SKILL.md) interrupts scattered symptom patches before they harden into permanent architecture. It traces the source-of-truth owner, compares a coherent boundary correction against repeated consumer workarounds, and checks whether the eventual change surface matches the causal plan.
+
+| Situation | Agent action |
+| --- | --- |
+| Email hidden separately in twenty profile controllers | Inspect the identity, checkout and serialization contracts before editing consumers |
+| A proposed `User.email = null` fix could affect account recovery | Test auth and data boundaries, and pause destructive changes without authority |
+| A valid migration touches many consumers and tests | Keep necessary changes; explain each path instead of enforcing a file-count limit |
+| A narrow, reversible change already has a verified owner | Skip the extra protocol and resume BUILD/FIX |
+
+```bash
+node bin/cli.js root-fix audit skills/root-fix-gate/examples/email-checkout-record.json --json
+# Against an actual project diff, using a prepared root-fix record:
+node bin/cli.js root-fix audit path/to/root-fix.json --json --repo . --base HEAD
+```
+
+The JSON checker uses only Python standard library and Git when diff inspection is requested. It checks record completeness, flags undeclared paths for review, and never certifies a root-cause hypothesis or grants permission to delete user data. The package CLI equivalent becomes available when a release containing this module is published.
+
+---
+
 ## Agent skill
 
-The agent skill wires Anti-Slop Engineering into your AI coding agent's context. Once installed, every code change the agent generates is governed by the Seven Gates, the 213-pattern anti-pattern catalog, and the Google SRE enforcement rules.
+The agent skill wires Anti-Slop Engineering into your AI coding agent's context. Once installed, code changes are guided by the Seven Gates, the 216-pattern anti-pattern catalog, and the Google SRE enforcement rules.
 
 **Supported environments:**
 
@@ -246,15 +267,15 @@ When installed via `npm install anti-slop-engineering` or `bun add anti-slop-eng
 
 ---
 
-## Anti-pattern catalog (215 patterns)
+## Anti-pattern catalog (216 patterns)
 
-The catalog in [`references/anti-pattern-catalog.md`](references/anti-pattern-catalog.md) documents 215 diagnostic patterns across 14 engineering domains, each with a canonical ID, symptom, root cause, and remediation.
+The catalog in [`references/anti-pattern-catalog.md`](references/anti-pattern-catalog.md) documents 216 diagnostic patterns across 14 engineering domains, each with a canonical ID, symptom, root cause, and remediation.
 
 **Domains covered:**
 
 Requirements and scope · Architecture and abstractions · Duplication and code organization · Data, state, and persistence · Security and trust boundaries · Concurrency and async · APIs and contracts · Testing and oracles · Frontend and UI · Operations and reliability · CI, builds, and release · Workflow and review hygiene · Agent autonomy · Google SRE invariants
 
-Notable catalog entries: `ARC-15` (manual scaffolding improvisation), `TST-12` (snapshot overwrite without review), `UI-13` (dev-notes leaked in UI), `SRE-08` (retry storms), `CI-15` (stale dependency pinning), `REV-19` (affordance narration in docs).
+Notable catalog entries: `ARC-15` (manual scaffolding improvisation), `ARC-17` (wrong-layer symptom fan-out), `TST-12` (snapshot overwrite without review), `UI-13` (dev-notes leaked in UI), `SRE-08` (retry storms), `CI-15` (stale dependency pinning), `REV-19` (affordance narration in docs).
 
 ---
 

@@ -1,0 +1,44 @@
+{
+  "problem": "Ask for contact email when placing an order, not when creating an account",
+  "symptom": "An agent proposed hiding email independently in each profile controller",
+  "root_cause": {
+    "cause": "The identity and checkout contact purposes may have been conflated",
+    "owner": "Unknown until the identity provider and order data contract are inspected",
+    "evidence": [
+      {
+        "source": "Illustrative project hypothesis, not repository evidence",
+        "finding": "The registration rule may require email despite checkout owning contact details",
+        "level": "inferred"
+      }
+    ]
+  },
+  "options": [
+    {
+      "approach": "Hide email separately in profile controllers",
+      "tradeoff": "Leaves registration and persistence policy unchanged",
+      "selected": false
+    },
+    {
+      "approach": "Clarify identity and order email ownership",
+      "tradeoff": "Requires auth, migration, order and retention evidence",
+      "selected": false
+    }
+  ],
+  "planned_changes": [],
+  "invariants": [
+    {
+      "rule": "Account recovery must continue to work",
+      "proof": "Run existing authentication integration tests after verifying identity requirements"
+    },
+    {
+      "rule": "Order contact email remains available for receipts",
+      "proof": "Run order receipt contract test after identifying the contact data owner"
+    }
+  ],
+  "data_impact": {"mode": "none"},
+  "decision": {
+    "action": "pause",
+    "reason": "Identity and order ownership are not established by source evidence",
+    "invalidated_by": "Verified auth and checkout contracts that establish the appropriate boundary"
+  }
+}

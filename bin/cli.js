@@ -14,6 +14,7 @@ const rootDir = resolve(__dirname, "..");
 const diffGuardScript = resolve(rootDir, "scripts", "diff_guard.py");
 const sreGuardScript = resolve(rootDir, "scripts", "sre_guard.py");
 const decisionGuardScript = resolve(rootDir, "scripts", "decision_guard.py");
+const rootFixGuardScript = resolve(rootDir, "scripts", "root_fix_guard.py");
 const nativeSuffix = process.platform === "win32" ? ".exe" : "";
 const rustExecutable = "anti-slop-rust" + nativeSuffix;
 const goExecutable = "toil-guard" + nativeSuffix;
@@ -50,6 +51,7 @@ Commands:
   build                  Compile both Rust and Go microservices
   sre, sre-guard         Run Python Google SRE Guard (zero-dependency stdlib fallback)
   decision audit <file>  Check a Decision Guard JSON record for missing evidence and trade-offs
+  root-fix audit <file>  Check root-cause ownership, change plan and optional Git diff
   test                   Run unit test suite
   contribute             Print guidelines on reporting noted slop or opening PRs
 
@@ -196,6 +198,8 @@ if (cmd === "build") {
   runPythonScript(sreGuardScript, args.slice(1), "sre_guard");
 } else if (cmd === "decision") {
   runPythonScript(decisionGuardScript, args.slice(1), "decision_guard");
+} else if (cmd === "root-fix") {
+  runPythonScript(rootFixGuardScript, args.slice(1), "root_fix_guard");
 } else if (args.includes("--help") || args.includes("-h")) {
   printBanner();
   process.exit(0);
