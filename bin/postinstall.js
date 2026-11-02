@@ -8,9 +8,9 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const rootDir = resolve(__dirname, "..");
 
-function log(msg) {
+const log = (msg) => {
   console.log(`[anti-slop] ${msg}`);
-}
+};
 
 function installSkills() {
   log("Auto-installing agent skill via skills.sh...");

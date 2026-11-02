@@ -80,3 +80,7 @@ target/
 # Go
 services/toil-guard-go/bin/
 *.exe
+
+# Bug Killer cryptographic identities & config
+.aegis/
+.bugkiller/

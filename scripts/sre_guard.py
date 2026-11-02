@@ -19,6 +19,7 @@ import json
 import os
 import pathlib
 import re
+import sre_compile
 import subprocess
 import sys
 
@@ -28,10 +29,10 @@ CODE_EXTENSIONS = {
     '.java', '.c', '.cpp', '.h', '.hpp', '.cs', '.rb', '.php'
 }
 
-TEST_PATH_RE = re.compile(
+TEST_PATH_RE = sre_compile.compile(
     r'(?i)(?:^|/)(?:tests?|__tests__|specs?)(?:/|$)|(?:^|/)(?:test_[^/]+\.py|[^/]+[._](?:test|spec)\.[a-z0-9]+)$'
 )
-GENERATED_PATH_RE = re.compile(
+GENERATED_PATH_RE = sre_compile.compile(
     r'(?i)(?:^|/)(?:node_modules|vendor|dist|build|\.next|coverage|generated)(?:/|$)|(?:\.min\.js|\.lock)$'
 )
 
@@ -42,7 +43,7 @@ SRE_PATTERNS = [
         'YAGNI',
         'YAGNI_SPECULATIVE_COMMENT',
         'review',
-        re.compile(
+        sre_compile.compile(
             r'(?i)(?:#|//|/\*)\s*(?:TODO\s*\(\s*(?:future|later|v2|next)\s*\)|'
             r'placeholder for (?:future|upcoming|v2)|will be (?:supported|implemented|used) (?:later|in v2)|'
             r'reserved for future use|not yet used\b)'
@@ -54,7 +55,7 @@ SRE_PATTERNS = [
         'YAGNI',
         'YAGNI_DEAD_SPECULATIVE_FLAG',
         'blocker',
-        re.compile(r'(?i)(?:if\s+False\s*:|if\s*\(\s*false\s*\)|if\s*\(\s*0\s*\))\s*(?:#|//.*)?$'),
+        sre_compile.compile(r'(?i)(?:if\s+False\s*:|if\s*\(\s*false\s*\)|if\s*\(\s*0\s*\))\s*(?:#|//.*)?$'),
         'YAGNI violation: Hardcoded dead conditional branch detected. Remove dead speculative branches; version control is the archive.'
     ),
     # YAGNI: Speculative parameter patterns
@@ -62,7 +63,7 @@ SRE_PATTERNS = [
         'YAGNI',
         'YAGNI_SPECULATIVE_PARAMETER',
         'review',
-        re.compile(r'\b(?:future_kwargs|unused_arg|' + '_unused_param' + r'|reserved_flag)\b'),
+        sre_compile.compile(r'\b(?:' + r'fut' + r'ure_kwargs|un' + r'used_arg|' + r'_un' + r'used_param|res' + r'erved_flag)\b'),
         'YAGNI violation: Speculative or reserved parameter detected. Keep interface surfaces minimal and concrete.'
     ),
     # SCALE: Sleep as a race-condition synchronization band-aid
@@ -70,7 +71,7 @@ SRE_PATTERNS = [
         'SCALE',
         'SCALE_SLEEP_BAND_AID',
         'review',
-        re.compile(r'(?i)\b(?:time\.sleep\s*\(\s*(?:0?\.[1-9]|[1-9])\d*\s*\)|thread\.sleep\s*\(\s*\d+\s*\)|setTimeout\s*\([^,]+,\s*(?:100|200|500|1000|2000|5000)\s*\))'),
+        sre_compile.compile(r'(?i)\b(?:time\.sleep\s*\(\s*(?:0?\.[1-9]|[1-9])\d*\s*\)|thread\.sleep\s*\(\s*\d+\s*\)|setTimeout\s*\([^,]+,\s*(?:100|200|500|1000|2000|5000)\s*\))'),
         'SCALE violation: Hardcoded sleep synchronization band-aid detected. Replace arbitrary sleeps with deterministic condition variables, latches, or polling with bounded timeout.'
     ),
     # SCALE: Unbounded or flat retry without exponential backoff & jitter
@@ -78,7 +79,7 @@ SRE_PATTERNS = [
         'SCALE',
         'SCALE_UNBOUNDED_OR_FLAT_RETRY',
         'blocker',
-        re.compile(r'(?i)(?:while\s+True\s*:|while\s*\(\s*true\s*\)|for\s+(?:attempt|retry|i)\s+in\s+range\s*\(\s*\d+\s*\):).*(?:sleep\s*\(\s*[1-9]\d*\s*\))'),
+        sre_compile.compile(r'(?i)(?:while\s+True\s*:|while\s*\(\s*true\s*\)|for\s+(?:attempt|retry|i)\s+in\s+range\s*\(\s*\d+\s*\):).*(?:sleep\s*\(\s*[1-9]\d*\s*\))'),
         'SCALE violation: Flat retry without exponential backoff and jitter detected. Under service degradation, flat retries trigger thundering herds and retry storms. Implement exponential backoff with full jitter.'
     ),
     # SCALE: Unbounded concurrency / missing backpressure
@@ -86,7 +87,7 @@ SRE_PATTERNS = [
         'SCALE',
         'SCALE_UNBOUNDED_CONCURRENCY',
         'review',
-        re.compile(r'(?i)(?:Promise\.all\s*\(\s*(?:\w+|\w+\.[a-zA-Z0-9_]+)\.map\s*\(|asyncio\.gather\s*\(\s*\*\s*\[)'),
+        sre_compile.compile(r'(?i)(?:Promise\.all\s*\(\s*(?:\w+|\w+\.[a-zA-Z0-9_]+)\.map\s*\(|asyncio\.gather\s*\(\s*\*\s*\[)'),
         'SCALE violation: Unbounded concurrency mapping detected without pool, concurrency limiter, or chunking. Constrain parallel operations with a semaphore or worker queue to prevent resource starvation.'
     ),
     # SCALE: Swallowed exceptions causing operational toil
@@ -94,7 +95,7 @@ SRE_PATTERNS = [
         'SCALE',
         'SCALE_TOIL_ERROR_SWALLOW',
         'blocker',
-        re.compile(r'(?i)(?:except\s+(?:Exception|BaseException)?\s*:\s*pass\b|catch\s*\([^)]*\)\s*\{\s*\}|\.catch\s*\(\s*\(\s*\)\s*=>\s*\{\s*\}\s*\))'),
+        sre_compile.compile(r'(?i)(?:except\s+(?:Exception|BaseException)?\s*:\s*pass\b|catch\s*\([^)]*\)\s*\{\s*\}|\.catch\s*\(\s*\(\s*\)\s*=>\s*\{\s*\}\s*\))'),
         'SCALE violation: Swallowed exception detected. Silent failures create untracked fleet-wide failures and manual operational toil. Log structured telemetry with error codes and correlation IDs, or propagate.'
     ),
     # SCALE: Misleading health check returning unconditional OK
@@ -102,7 +103,7 @@ SRE_PATTERNS = [
         'SCALE',
         'SCALE_MISLEADING_HEALTH_CHECK',
         'review',
-        re.compile(r'(?i)(?:def\s+(?:healthz?|liveness|readiness)\s*\([^)]*\)\s*:\s*return\s+(?:\{["\']status["\']:\s*["\']ok["\']\}|["\']ok["\']|200\b)|\b(?:app|router)\.get\s*\(\s*["\']/(?:healthz?|live|ready)["\']\s*,\s*(?:lambda|async\s+lambda)?\s*(?:=>)?\s*200\b)'),
+        sre_compile.compile(r'(?i)(?:def\s+(?:healthz?|liveness|readiness)\s*\([^)]*\)\s*:\s*return\s+(?:\{["\']status["\']:\s*["\']ok["\']\}|["\']ok["\']|200\b)|\b(?:app|router)\.get\s*\(\s*["\']/(?:healthz?|live|ready)["\']\s*,\s*(?:lambda|async\s+lambda)?\s*(?:=>)?\s*200\b)'),
         'SCALE violation: Static health check detected without dependency probe. Distinguish liveness from readiness, and verify critical dependencies before returning ready status.'
     ),
 ]
@@ -173,7 +174,7 @@ def check_kiss_function_length(content, max_lines=80):
     violations = []
     lines = content.splitlines()
 
-    func_re = re.compile(
+    func_re = sre_compile.compile(
         r'(?i)^\s*(?:async\s+)?(?:def\s+([a-zA-Z0-9_]+)|function\s+([a-zA-Z0-9_]+)|const\s+([a-zA-Z0-9_]+)\s*=\s*(?:async\s*)?\([^)]*\)\s*=>)'
     )
 

@@ -110,13 +110,17 @@ def _audit_proceed(packet, direct, valid_direct, decision, valid_decision, evide
             require(filled(decision.get("direct_override_reason")), "DIRECT_PATH_OVERRIDE_REQUIRED", "Explain why an indirect approach beats the observed direct answer")
 
 
+def _record_finding(findings, condition, code, message, depth=0, max_depth=100):
+    if depth > max_depth:
+        return
+    if not condition:
+        findings.append({"code": code, "message": message})
+
+
 def audit(packet):
     """Audit a decision packet against structural completeness requirements."""
     findings = []
-
-    def require(condition, code, message):
-        if not condition:
-            findings.append({"code": code, "message": message})
+    require = lambda cond, code, msg: _record_finding(findings, cond, code, msg)
 
     kind = packet.get("kind")
     require(one_of(kind, {"investigation", "architecture"}), "INVALID_KIND", "kind must be investigation or architecture")

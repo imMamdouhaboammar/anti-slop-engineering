@@ -1,7 +1,6 @@
 package sre
 
 import (
-	"fmt"
 	"regexp"
 	"strings"
 
@@ -58,7 +57,7 @@ func auditLineToil(file string, lineNo int, line string, allLines []string) []mo
 	if reYAGNIComment.MatchString(trimmed) {
 		findings = append(findings, makeToilFinding(
 			file, lineNo, model.CategoryYAGNI, model.SeverityReview, "SRE-YAGNI-SPECULATIVE",
-			fmt.Sprintf("Speculative placeholder comment detected: '%s'. Build only for verified requirements.", trimmed),
+			"Speculative placeholder comment detected: '" + trimmed + "'. Build only for verified requirements.",
 			"Remove speculative scaffolding. YAGNI: You Aren't Gonna Need It.",
 		))
 	}

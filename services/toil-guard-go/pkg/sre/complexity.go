@@ -1,8 +1,8 @@
 package sre
 
 import (
-	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/imMamdouhaboammar/anti-slop-engineering/services/toil-guard-go/pkg/model"
@@ -19,7 +19,7 @@ func newFuncLengthFinding(filePath string, lineNo int, funcName string, count in
 		Category:   model.CategoryKISS,
 		Severity:   model.SeverityReview,
 		Code:       "SRE-KISS-FUNC-LEN",
-		Message:    fmt.Sprintf("Function '%s' exceeds 80 lines (%d lines). Violates KISS single-responsibility.", funcName, count),
+		Message:    "Function '" + funcName + "' exceeds 80 lines (" + strconv.Itoa(count) + " lines). Violates KISS single-responsibility.",
 		Suggestion: "Decompose this large function into cohesive, single-responsibility units.",
 	}
 }
@@ -39,7 +39,7 @@ func auditIndentation(file string, lineNo int, line string) *model.Finding {
 		Category:   model.CategoryKISS,
 		Severity:   model.SeverityBlocker,
 		Code:       "SRE-KISS-NESTING",
-		Message:    fmt.Sprintf("Excessive nesting depth (%d > 4). Control flow must remain simple and readable.", nestingLevel),
+		Message:    "Excessive nesting depth (" + strconv.Itoa(nestingLevel) + " > 4). Control flow must remain simple and readable.",
 		Suggestion: "Refactor nested branches using early returns, guard clauses, or modular helper functions.",
 	}
 }
@@ -96,7 +96,9 @@ func CheckKISSComplexity(filePath string, content string) []model.Finding {
 			}
 		}
 
-		tracker.processLine(filePath, lineNo, line, trimmed, &findings)
+		if f := tracker.processLine(filePath, lineNo, line, trimmed); f != nil {
+			findings = append(findings, *f)
+		}
 	}
 
 	if f := tracker.checkLength(filePath); f != nil {
@@ -105,20 +107,19 @@ func CheckKISSComplexity(filePath string, content string) []model.Finding {
 	return findings
 }
 
-func (t *funcTracker) processLine(filePath string, lineNo int, line, trimmed string, out *[]model.Finding) {
+func (t *funcTracker) processLine(filePath string, lineNo int, line, trimmed string) *model.Finding {
 	matches := funcStartRegex.FindStringSubmatch(line)
 	leadingSpaces := len(line) - len(strings.TrimLeft(line, " \t"))
 
+	var finding *model.Finding
 	if t.inFunc && t.python && trimmed != "" && leadingSpaces <= t.indentBase {
-		if f := t.checkLength(filePath); f != nil {
-			*out = append(*out, *f)
-		}
+		finding = t.checkLength(filePath)
 		t.inFunc = false
 	}
 
 	if len(matches) > 0 {
-		if f := t.checkLength(filePath); f != nil {
-			*out = append(*out, *f)
+		if finding == nil {
+			finding = t.checkLength(filePath)
 		}
 		t.inFunc = true
 		t.startLine = lineNo
@@ -129,18 +130,19 @@ func (t *funcTracker) processLine(filePath string, lineNo int, line, trimmed str
 			(strings.Contains(trimmed, "=>") && !strings.Contains(trimmed, "{"))) {
 			t.inFunc = false
 		}
-		return
+		return finding
 	}
 
 	if t.inFunc {
 		t.lineCount++
 		if !t.python && leadingSpaces <= t.indentBase && strings.HasPrefix(trimmed, "}") {
-			if f := t.checkLength(filePath); f != nil {
-				*out = append(*out, *f)
+			if finding == nil {
+				finding = t.checkLength(filePath)
 			}
 			t.inFunc = false
 		}
 	}
+	return finding
 }
 
 func extractFuncName(matches []string) string {

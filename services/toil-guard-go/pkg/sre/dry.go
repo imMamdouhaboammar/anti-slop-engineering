@@ -3,9 +3,9 @@ package sre
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"fmt"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/imMamdouhaboammar/anti-slop-engineering/services/toil-guard-go/pkg/model"
@@ -92,7 +92,7 @@ func CheckDRYDuplicates(files map[string]string) []model.Finding {
 					Category:   model.CategoryDRY,
 					Severity:   model.SeverityReview,
 					Code:       "SRE-DRY-DUPLICATE",
-					Message:    fmt.Sprintf("Duplicated logic block (%d lines) matches %s:%d. Consolidate into canonical function.", windowSize, loc.file, loc.line),
+					Message:    "Duplicated logic block (" + strconv.Itoa(windowSize) + " lines) matches " + loc.file + ":" + strconv.Itoa(loc.line) + ". Consolidate into canonical function.",
 					Suggestion: "Extract the shared logic into a single source of truth to avoid drift.",
 				})
 			}

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"sync/atomic"
 	"time"
 
@@ -37,7 +38,7 @@ func NewServer(port int) *Server {
 
 	return &Server{
 		httpServer: &http.Server{
-			Addr:         fmt.Sprintf("127.0.0.1:%d", port),
+			Addr:         "127.0.0.1:" + strconv.Itoa(port),
 			Handler:      mux,
 			ReadTimeout:  15 * time.Second,
 			WriteTimeout: 15 * time.Second,
@@ -98,7 +99,7 @@ func decodeAuditRequest(w http.ResponseWriter, r *http.Request) (*AuditRequest, 
 		if errors.As(err, &maxBytesError) {
 			http.Error(w, "audit request body too large", http.StatusRequestEntityTooLarge)
 		} else {
-			http.Error(w, fmt.Sprintf("invalid json payload: %v", err), http.StatusBadRequest)
+			http.Error(w, "invalid json payload: "+err.Error(), http.StatusBadRequest)
 		}
 		return nil, false
 	}
