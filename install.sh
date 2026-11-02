@@ -35,7 +35,12 @@ install_to() {
   mkdir -p "$(dirname "$dest")"
   rm -rf "$dest"
   mkdir -p "$dest"
-  cp -R "$SOURCE_DIR/"* "$dest/"
+  if command -v rsync >/dev/null 2>&1; then
+    rsync -a --exclude 'target' --exclude 'node_modules' --exclude '.git' "$SOURCE_DIR/" "$dest/"
+  else
+    cp -R "$SOURCE_DIR/"* "$dest/"
+    rm -rf "$dest/services/anti-slop-rust/target" "$dest/node_modules" 2>/dev/null || true
+  fi
   # Ensure scripts are executable
   chmod +x "$dest/bin/cli.js" 2>/dev/null || true
   chmod +x "$dest/scripts/diff_guard.py" 2>/dev/null || true
