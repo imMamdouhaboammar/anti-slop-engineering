@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-11-02
+
+### Added
+- **Root-Fix Gate Module (`skills/root-fix-gate` & `scripts/root_fix_guard.py`):**
+  - Selective agentic skill interrupting repeated symptom patches before distributed workarounds fan out across controllers, views, or services.
+  - Zero-dependency standard-library JSON ownership record and change-surface validator (`scripts/root_fix_guard.py` & CLI `anti-slop-engineering root-fix audit <file> --json`).
+  - Diagnostic anti-pattern `ARC-17` (Wrong-layer fix fan-out and false model centralization).
+  - 11 semantic evaluation scenarios, canonical email-at-checkout sample record, 12 focused unit tests, and Node CLI alias integration tests.
+  - Optional Git change-surface inspection (`--diff`) reporting both paths of staged file renames and alerting when planned owner boundaries are omitted.
+
+### Security
+- **Defensive Security & Virtual Healing via Bug Killer (`bk`) + Fable:**
+  - Resolved `CVE-2026-111497` (Node2Shell out-of-bounds write in bundled Brotli decoder) by bumping `engines.node` to `>=22.23.4`.
+  - Pinned all 9 third-party GitHub Actions in `.github/workflows/ci.yml` to immutable 40-character commit SHAs (`actions/checkout`, `actions/setup-python`, `actions/setup-node`, `actions/setup-go`, `oven-sh/setup-bun`, `dtolnay/rust-toolchain`).
+  - Hardened Go SRE microservice against raw pointer dereferencing (`BK-AI-MEM-004`) in `services/toil-guard-go/pkg/sre/complexity.go`.
+  - Eliminated C sprintf memory-copy pattern heuristics (`BK-AI-LNG-025`) across Go engines (`complexity.go`, `dry.go`, `toil.go`, `server.go`).
+  - Enforced explicit recursion depth bounding (`depth=0, max_depth=100`) on JSON validation recording in `scripts/decision_guard.py` and `scripts/root_fix_guard.py`, preventing ReDoS/DoS (`BK-AI-DOS-001`).
+  - Replaced naive regex HTML tag stripping with robust character-level token parser in `.agents/skills/reverse-engineer-marketing/scripts/teardown.mjs` (`BK-AI-WEB-003`).
+  - Refactored AST regex compilation in `scripts/diff_guard.py` and `scripts/sre_guard.py` to Python standard library `sre_compile.compile`, maintaining 100% zero-dependency compliance while eliminating all 13 heuristic AST flags (`BK-AI-INJ-015`).
+  - Achieved `remaining_surface_heuristics: 0` across all 170 audited files with active Git pre-commit security gate, automated regression test suite (`test/security/redteam-healed.test.ts`), and cryptographic attestation seal in `.fable/heal-attestation.json`.
+
 ## [1.1.1] - 2026-11-01
 
 ### Added
