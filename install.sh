@@ -41,17 +41,20 @@ install_to() {
   chmod +x "$dest/scripts/diff_guard.py" 2>/dev/null || true
   chmod +x "$dest/scripts/sre_guard.py" 2>/dev/null || true
   chmod +x "$dest/scripts/decision_guard.py" 2>/dev/null || true
+  chmod +x "$dest/scripts/root_fix_guard.py" 2>/dev/null || true
   chmod +x "$dest/install.sh" 2>/dev/null || true
   echo "  ✅ Installed anti-slop-engineering for ${label} -> ${dest}"
 
-  # Install bundled decision-guard skill as top-level skill in the same skill root
-  if [ -d "$SOURCE_DIR/skills/decision-guard" ]; then
-    local dg_dest="$(dirname "$dest")/decision-guard"
-    rm -rf "$dg_dest"
-    mkdir -p "$dg_dest"
-    cp -R "$SOURCE_DIR/skills/decision-guard/"* "$dg_dest/"
-    echo "  ✅ Installed decision-guard for ${label} -> ${dg_dest}"
-  fi
+  # Install each bundled module as a discoverable top-level skill.
+  for module in decision-guard root-fix-gate; do
+    if [ -d "$SOURCE_DIR/skills/$module" ]; then
+      local module_dest="$(dirname "$dest")/$module"
+      rm -rf "$module_dest"
+      mkdir -p "$module_dest"
+      cp -R "$SOURCE_DIR/skills/$module/"* "$module_dest/"
+      echo "  ✅ Installed $module for ${label} -> ${module_dest}"
+    fi
+  done
 }
 
 INSTALLED_COUNT=0

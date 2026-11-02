@@ -43,3 +43,13 @@ test("decision audit command routes to the stdlib decision guard", () => {
   assert.equal(output.decision_action, "pause");
   assert.equal(output.machine_check_only, true);
 });
+
+test("root-fix audit command routes to the ownership and diff guard", () => {
+  const example = resolve("skills/root-fix-gate/examples/email-checkout-record.json");
+  const result = invoke("anti-slop-engineering", ["root-fix", "audit", example, "--json"]);
+  assert.equal(result.status, 0, result.stderr);
+  const output = JSON.parse(result.stdout);
+  assert.equal(output.record_status, "complete");
+  assert.equal(output.decision_action, "pause");
+  assert.equal(output.machine_check_only, true);
+});

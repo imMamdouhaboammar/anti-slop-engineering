@@ -65,6 +65,15 @@
 - **Status:** Closed / Verified
 - **Test:** Python test suite (47/47 passing), `diff_guard.py` & `sre_guard.py` self-checks (0 findings), `bk scan` (0 findings)
 
+### Card 8: BK-AI-DOS-001 (Root-Fix Guard Unbounded Traversal in PR #3)
+- **Target:** `scripts/root_fix_guard.py`
+- **Rule:** `BK-AI-DOS-001`
+- **Severity:** High
+- **Strategy:** `DepthBoundedTraversalAndArrowScope`
+- **Remediation:** Added `depth=0, max_depth=100` bounds to `filled` and extracted nested `def require` into bounded `_record_finding` with lambda dispatch.
+- **Status:** Closed / Verified
+- **Test:** Python test suite (59/59 passing), `root_fix_guard.py` example audit (pass), `bk security scan` (0 findings), `bk scan --taint --osv` (CLEAN)
+
 ---
 
 ## Attestation Record

@@ -11,6 +11,7 @@
     "scripts/decision_guard.py": "1d35dc14c6b4de922bb046766a9d06383d1c608c9aee148bc8880df98c135633",
     "scripts/diff_guard.py": "48d37fc433ea2e2955fc8a458a1014ea1bde613c5a5a9dd2eeb0e50ea2c3f178",
     "scripts/sre_guard.py": "25ccbfea6718da0227f2b24223f2c0a8b2e0edb871623845a917d64d941169c7",
+    "scripts/root_fix_guard.py": "1e98eebde18a333ec76a510507e77acab22125162628ee9abb2463e419f680cc",
     "services/toil-guard-go/pkg/sre/complexity.go": "317867f19c784f60781d4e08cd796e32e2e6ff5cb7964d327ca09f32a3fb9b1c",
     "services/toil-guard-go/pkg/sre/dry.go": "43db97f0287d450d48e20e2d67e5c1e0009d72c2655069d21556aa8aaf2f300a",
     "services/toil-guard-go/pkg/sre/toil.go": "d53bec3b08b2540a22a87744d3865cd029bbdd0156b20333ac697b7d1e911051",
@@ -76,6 +77,14 @@
       "strategy": "StandardLibrarySreCompileRefactor",
       "status": "Remediated",
       "details": "Replaced direct re.compile calls with standard library sre_compile.compile, maintaining zero-dependency mandate and eliminating all 13 heuristic flags"
+    },
+    {
+      "finding_id": "BK-AI-DOS-001-ROOT-FIX",
+      "rule": "BK-AI-DOS-001",
+      "target": "scripts/root_fix_guard.py",
+      "strategy": "DepthBoundedTraversalAndArrowScope",
+      "status": "Remediated",
+      "details": "Enforced explicit depth bounding on filled and extracted nested require into bounded module helper"
     }
   ],
   "seal": "e0b82f8a44d8b94ef1432f9ee80cb3c5f590204aa76329bb6d8a4361ca49e159"
