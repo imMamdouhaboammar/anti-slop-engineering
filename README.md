@@ -12,7 +12,7 @@
 [![Skills.sh](https://img.shields.io/badge/Skills.sh-Compatible-000000?style=flat-square&logo=vercel&logoColor=white)](https://skills.sh)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-Certified%20Skill-D97706?style=flat-square&logo=anthropic&logoColor=white)](https://claude.ai)
 
-[Install](#install) · [What it catches](#what-it-catches) · [Engines](#engines) · [Decision Guard](#decision-guard) · [Root-Fix Gate](#root-fix-gate) · [Agent skill](#agent-skill) · [Anti-pattern catalog](#anti-pattern-catalog-216-patterns)
+[Install](#install) · [What it catches](#what-it-catches) · [Engines](#engines) · [Decision Guard](#decision-guard) · [Root-Fix Gate](#root-fix-gate) · [Future-Scale Gate](#future-scale-gate) · [Agent skill](#agent-skill) · [Anti-pattern catalog](#anti-pattern-catalog-217-patterns)
 
 </div>
 
@@ -245,9 +245,30 @@ The JSON checker uses only Python standard library and Git when diff inspection 
 
 ---
 
+## Future-Scale Gate
+
+The [Future-Scale Gate](skills/future-scale-gate/SKILL.md) protects long-lived systems against two opposite failures: locking a core contract to today's workload, and implementing expensive infrastructure for an unverified hypothetical future.
+
+| Question | Required evidence |
+| --- | --- |
+| What changes over the product's lifetime? | Credible scenarios with sources, stress axes and failure consequences |
+| Which foundation would be costly to change later? | Reversal cost, alternative designs and migration/exit path |
+| What must be established now? | Small stable boundary and a representative evolution test |
+| What should wait? | Deferred capacity with a concrete revisit trigger |
+
+Examples include a simulation language keeping its semantics portable across runtimes, a versioned public data format, or a future tenant-isolation constraint. The Gate does not require microservices, Rust, distributed systems or a provider bundle by default.
+
+```bash
+node bin/cli.js future-scale audit skills/future-scale-gate/examples/runtime-envelope-record.json --json
+```
+
+The bundled example intentionally recommends `pause` because its alternate-engine experiment has not been run. The zero-dependency checker validates record completeness, not forecast accuracy or actual scalability. The ten semantic evaluation scenarios are proposed tests, not measured model effectiveness.
+
+---
+
 ## Agent skill
 
-The agent skill wires Anti-Slop Engineering into your AI coding agent's context. Once installed, code changes are guided by the Seven Gates, the 216-pattern anti-pattern catalog, and the Google SRE enforcement rules.
+The agent skill wires Anti-Slop Engineering into your AI coding agent's context. Once installed, code changes are guided by the Seven Gates, the 217-pattern anti-pattern catalog, and the Google SRE enforcement rules.
 
 **Supported environments:**
 
@@ -267,9 +288,9 @@ When installed via `npm install anti-slop-engineering` or `bun add anti-slop-eng
 
 ---
 
-## Anti-pattern catalog (216 patterns)
+## Anti-pattern catalog (217 patterns)
 
-The catalog in [`references/anti-pattern-catalog.md`](references/anti-pattern-catalog.md) documents 216 diagnostic patterns across 14 engineering domains, each with a canonical ID, symptom, root cause, and remediation.
+The catalog in [`references/anti-pattern-catalog.md`](references/anti-pattern-catalog.md) documents 217 diagnostic patterns across 14 engineering domains, each with a canonical ID, symptom, root cause, and remediation.
 
 **Domains covered:**
 
