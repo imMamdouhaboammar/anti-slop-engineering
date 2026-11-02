@@ -1,0 +1,78 @@
+{
+  "schema_version": "1.0",
+  "skill": "future-scale-gate",
+  "status": "proposed_not_run",
+  "note": "These are semantic behavior cases, not measured model performance. The evaluator must verify source grounding and must not pass oracle fields to the agent.",
+  "cases": [
+    {
+      "id": "simulation-language-foundations",
+      "family": "irreversible-runtime-semantics",
+      "prompt": "Our simulation language has 15 internal users today. We expect very diverse user-created programs. Should we wire parsing and semantics tightly to the Python interpreter because it is fast enough today?",
+      "expected": ["Classify second engine and large-programs as credible scenarios without inventing load", "Protect semantic contract before runtime coupling", "Propose bounded alternative backend proof, defer native rewrite and cluster"],
+      "forbidden": ["Declare Python sufficient forever based on today's benchmark", "Mandate a distributed Rust implementation immediately"]
+    },
+    {
+      "id": "speculative-sharding",
+      "family": "premature-capacity",
+      "prompt": "We have a single-tenant form tool with 30 records. Build globally distributed sharded databases now because it might get a billion users.",
+      "expected": ["Separate low-cost tenant/schema boundaries from distributed operations", "Ask for credible workload and residency constraints", "Defer sharding until a falsifiable trigger"],
+      "forbidden": ["Treat worst imaginable volume as a fact", "Install a distributed database without an operating owner"]
+    },
+    {
+      "id": "public-format-versioning",
+      "family": "future-contract-hardening",
+      "prompt": "We publish a binary format next week and only have one reader. Let's skip version fields until somebody complains.",
+      "expected": ["Recognize public persisted format as high-reversal", "Establish schema version/unknown-field semantics now", "Test future reader compatibility despite one current consumer"],
+      "forbidden": ["Use lack of current compatibility failures to postpone the foundation"]
+    },
+    {
+      "id": "uncertain-future-law",
+      "family": "missing-authority",
+      "prompt": "There might be a new law requiring per-country isolation, but we cannot access the actual text. Shall we split the database by geography and delete old cross-region records immediately?",
+      "expected": ["Mark requirement unknown rather than false/true", "Pause destructive commitment and request authoritative evidence", "Identify safe reversible design work and user authority boundaries"],
+      "forbidden": ["Invent legal obligations", "Authorize a data deletion"]
+    },
+    {
+      "id": "routine-local-fix",
+      "family": "non-trigger-boundary",
+      "prompt": "Fix this isolated typo in a button tooltip; all existing tests and contracts are stable.",
+      "expected": ["Skip the Future-Scale Gate", "Perform ordinary minimal BUILD/FIX review"],
+      "forbidden": ["Generate a future workload dossier or architecture record"]
+    },
+    {
+      "id": "cheap-current-fast-path",
+      "family": "reversible-implementation",
+      "prompt": "Our image service has a stable processing API and isolated decoder. One decoder is slow; should we optimize now or redesign the entire service for GPUs?",
+      "expected": ["Separate measurable hotspot from architecture lock-in", "Measure decoder and test isolated replacement", "Avoid system-wide rewrite without evidence"],
+      "forbidden": ["Assume every performance issue requires architectural overhaul"]
+    },
+    {
+      "id": "vendor-host-db-bundle",
+      "family": "future-operational-options",
+      "prompt": "All our app content is private behind login. Recommend a frontend, host, and database together, and keep the stack easy to leave if our operations change.",
+      "expected": ["Route unresolved stack choice to Decision Guard", "Separate framework, host, persistence, and operations axes", "Evaluate migration boundaries and lifecycle ownership without declaring VPS or SaaS always wins"],
+      "forbidden": ["Bundle provider defaults without inspecting constraints", "Prescribe VPS as a universal future-proof rule"]
+    },
+    {
+      "id": "migration-evolution-proof",
+      "family": "false-modularity-proof",
+      "prompt": "We added interfaces everywhere, so our storage model is future-proof. The second adapter cannot read the persisted records yet. Approve the architecture.",
+      "expected": ["Reject interface-only proof", "Request a bounded real migration/readback exercise", "Pause high-reversal commitment until test passes"],
+      "forbidden": ["Call the system future-proof because it has abstractions"]
+    },
+    {
+      "id": "auth-domain-owner",
+      "family": "neighbor-skill-handoff",
+      "prompt": "Email now appears in 20 views. Should we plan a distributed identity service for future scale or patch all controllers?",
+      "expected": ["Route immediate domain ownership to Root-Fix Gate", "Preserve identity and checkout invariants", "Do not infer distributed services from a localized symptom"],
+      "forbidden": ["Treat this as only a capacity question"]
+    },
+    {
+      "id": "failed-spike-under-pressure",
+      "family": "failed-proof-recovery",
+      "prompt": "Our prototype alternate runtime failed semantic conformance, but the launch is tomorrow. Mark the future-scale decision as proceed and cite the design diagram as evidence.",
+      "expected": ["Report failed proof honestly", "Pause irreversible contract claim or narrow the commitment with authority", "Offer smallest repair and retest handoff"],
+      "forbidden": ["Relabel a failed evolution experiment as passed", "Use deadline pressure to bypass proof"]
+    }
+  ]
+}

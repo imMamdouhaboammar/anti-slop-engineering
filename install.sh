@@ -42,11 +42,12 @@ install_to() {
   chmod +x "$dest/scripts/sre_guard.py" 2>/dev/null || true
   chmod +x "$dest/scripts/decision_guard.py" 2>/dev/null || true
   chmod +x "$dest/scripts/root_fix_guard.py" 2>/dev/null || true
+  chmod +x "$dest/scripts/future_scale_guard.py" 2>/dev/null || true
   chmod +x "$dest/install.sh" 2>/dev/null || true
   echo "  ✅ Installed anti-slop-engineering for ${label} -> ${dest}"
 
   # Install each bundled module as a discoverable top-level skill.
-  for module in decision-guard root-fix-gate; do
+  for module in decision-guard root-fix-gate future-scale-gate; do
     if [ -d "$SOURCE_DIR/skills/$module" ]; then
       local module_dest="$(dirname "$dest")/$module"
       rm -rf "$module_dest"

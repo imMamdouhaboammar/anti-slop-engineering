@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Future-Scale Gate (`skills/future-scale-gate`):** Evidence-ranked future operating envelope, irreversible-decision assessment, lifecycle alternative comparison, bounded evolution proofs and explicit triggers for deferred capacity. Includes a portable agentic skill, two operational workflows, architecture/record references, ten proposed semantic evaluation cases and a synthetic record.
+- **Structural audit:** Zero-dependency Python `future_scale_guard.py` and CLI `future-scale audit <file> --json`, with regression tests. A complete record is not a guarantee of scalability or correct future forecasts.
+- **Diagnostic catalog:** `ARC-18` identifies present-only foundation assumptions and their opposite, speculative capacity theater.
+
 ## [1.2.0] - 2026-11-02
 
 ### Added
@@ -25,7 +32,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Replaced naive regex HTML tag stripping with robust character-level token parser in `.agents/skills/reverse-engineer-marketing/scripts/teardown.mjs` (`BK-AI-WEB-003`).
   - Refactored AST regex compilation in `scripts/diff_guard.py` and `scripts/sre_guard.py` to Python standard library `sre_compile.compile`, maintaining 100% zero-dependency compliance while eliminating all 13 heuristic AST flags (`BK-AI-INJ-015`).
   - Achieved `remaining_surface_heuristics: 0` across all 170 audited files with active Git pre-commit security gate, automated regression test suite (`test/security/redteam-healed.test.ts`), and cryptographic attestation seal in `.fable/heal-attestation.json`.
-
 ## [1.1.1] - 2026-11-01
 
 ### Added

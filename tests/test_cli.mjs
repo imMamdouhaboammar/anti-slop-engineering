@@ -53,3 +53,13 @@ test("root-fix audit command routes to the ownership and diff guard", () => {
   assert.equal(output.decision_action, "pause");
   assert.equal(output.machine_check_only, true);
 });
+
+test("future-scale audit command routes to the lifetime architecture guard", () => {
+  const example = resolve("skills/future-scale-gate/examples/runtime-envelope-record.json");
+  const result = invoke("anti-slop-engineering", ["future-scale", "audit", example, "--json"]);
+  assert.equal(result.status, 0, result.stderr);
+  const output = JSON.parse(result.stdout);
+  assert.equal(output.record_status, "complete");
+  assert.equal(output.decision_action, "pause");
+  assert.equal(output.machine_check_only, true);
+});

@@ -1,0 +1,61 @@
+{
+  "goal": "Keep a public simulation language evolvable without implementing a large distributed system on day one",
+  "horizon": "Multiple generations of user-authored simulation workloads",
+  "scenarios": [
+    {
+      "id": "large-programs",
+      "stress": "Larger event graphs and long-running simulations",
+      "basis": "credible",
+      "source": "Intended language use includes diverse user-authored simulations; not a throughput forecast",
+      "failure_if_unprepared": "Engine implementation details leak into language semantics"
+    },
+    {
+      "id": "alternate-backend",
+      "stress": "A second execution backend needs the same observable behavior",
+      "basis": "credible",
+      "source": "Future backend portability is a product objective, not an observed current requirement",
+      "failure_if_unprepared": "Existing programs need an incompatible rewrite"
+    }
+  ],
+  "commitments": [
+    {
+      "decision": "Define a versioned semantic representation independent of the Python interpreter",
+      "reversibility": "high",
+      "failure_cost": "Public compatibility and engine migration would need coordinated rewrites",
+      "exit_path": "Versioned translations with golden behavior tests"
+    }
+  ],
+  "options": [
+    {"name": "Keep parser and execution semantics entangled", "now_cost": "Fewer boundaries initially", "future_cost": "Large coupling and migration risk", "selected": false},
+    {"name": "Separate stable semantics from the initial runtime", "now_cost": "Contract and adapter test investment", "future_cost": "Maintain semantic versioning and compatibility", "selected": true}
+  ],
+  "foundations": [
+    {
+      "boundary": "Language semantics to execution backend",
+      "choice_now": "Define the semantic contract and test an independent consumer",
+      "future_capacity": "Native or alternate runtime with equivalent language behavior",
+      "scenario_refs": ["alternate-backend"],
+      "proof_ref": "alternate-consumer-spike"
+    }
+  ],
+  "proofs": [
+    {
+      "id": "alternate-consumer-spike",
+      "method": "Run a golden simulation program with an independent minimal backend and compare semantic traces",
+      "status": "not_run",
+      "evidence": "Illustrative proposed experiment only; no backend was executed for this record"
+    }
+  ],
+  "deferred": [
+    {
+      "capability": "Distributed scheduling",
+      "trigger": "Measured single-host resource bounds on representative workloads",
+      "pathway": "Introduce scheduler outside the stable engine contract without changing program meaning"
+    }
+  ],
+  "decision": {
+    "action": "pause",
+    "reason": "The future scenario is credible but no independent backend evolution experiment has run",
+    "revisit_when": "A bounded alternate-consumer spike passes with contract-equivalent traces"
+  }
+}
