@@ -49,6 +49,7 @@
     "sre-guard": "bun bin/cli.js sre",
     "test": "python3 -m unittest discover -s tests -v",
     "test-all": "make test-all",
+    "bump": "python3 scripts/bump_version.py",
     "check": "make check",
     "check-all": "make check-all"
   },

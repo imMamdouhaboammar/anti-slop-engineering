@@ -63,3 +63,11 @@ test("future-scale audit command routes to the lifetime architecture guard", () 
   assert.equal(output.decision_action, "pause");
   assert.equal(output.machine_check_only, true);
 });
+
+test("bump command routes to the automated version bumper in dry-run mode", () => {
+  const result = invoke("anti-slop-engineering", ["bump", "patch", "--dry-run", "--json"]);
+  assert.equal(result.status, 0, result.stderr);
+  const output = JSON.parse(result.stdout);
+  assert.equal(output.dry_run, true);
+  assert.equal(output.updated_files.length, 10);
+});

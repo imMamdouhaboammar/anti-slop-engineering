@@ -16,6 +16,7 @@ const sreGuardScript = resolve(rootDir, "scripts", "sre_guard.py");
 const decisionGuardScript = resolve(rootDir, "scripts", "decision_guard.py");
 const rootFixGuardScript = resolve(rootDir, "scripts", "root_fix_guard.py");
 const futureScaleGuardScript = resolve(rootDir, "scripts", "future_scale_guard.py");
+const bumpVersionScript = resolve(rootDir, "scripts", "bump_version.py");
 const nativeSuffix = process.platform === "win32" ? ".exe" : "";
 const rustExecutable = "anti-slop-rust" + nativeSuffix;
 const goExecutable = "toil-guard" + nativeSuffix;
@@ -54,6 +55,7 @@ Commands:
   decision audit <file>  Check a Decision Guard JSON record for missing evidence and trade-offs
   root-fix audit <file>  Check root-cause ownership, change plan and optional Git diff
   future-scale audit <file>  Check future operating envelope, reversibility and evolution proof
+  bump [part]            Bump version across all 10 manifests (patch, minor, major, or explicit)
   test                   Run unit test suite
   contribute             Print guidelines on reporting noted slop or opening PRs
 
@@ -204,6 +206,8 @@ if (cmd === "build") {
   runPythonScript(rootFixGuardScript, args.slice(1), "root_fix_guard");
 } else if (cmd === "future-scale") {
   runPythonScript(futureScaleGuardScript, args.slice(1), "future_scale_guard");
+} else if (cmd === "bump") {
+  runPythonScript(bumpVersionScript, args.slice(1), "bump_version");
 } else if (args.includes("--help") || args.includes("-h")) {
   printBanner();
   process.exit(0);
