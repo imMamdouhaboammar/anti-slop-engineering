@@ -6,7 +6,7 @@
   "remaining_surface_heuristics": 0,
   "file_hashes": {
     "package.json": "01b1d4d3411a83b3581625a30e5dac0c31098a037e1fd75a32d5f2b6092152ff",
-    ".github/workflows/ci.yml": "341128b54c9d4652c182917b9d64498683aed8acff829dbd8a7453347126d720",
+    ".github/workflows/ci.yml": "fbb60d3fc143fca95bb6dd6231f0376250c5ccb738800a5331ed0d52a3b28bf8",
     "bin/postinstall.js": "610a397ec2e5428f1a24427fef451506e70468b0549030cb1ec7143f24e2aac6",
     "scripts/decision_guard.py": "1d35dc14c6b4de922bb046766a9d06383d1c608c9aee148bc8880df98c135633",
     "scripts/diff_guard.py": "48d37fc433ea2e2955fc8a458a1014ea1bde613c5a5a9dd2eeb0e50ea2c3f178",
