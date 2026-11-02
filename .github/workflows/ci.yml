@@ -27,7 +27,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Verify Python syntax
-        run: python -m py_compile scripts/diff_guard.py scripts/sre_guard.py scripts/decision_guard.py scripts/root_fix_guard.py tests/test_diff_guard.py tests/test_sre_guard.py tests/test_decision_guard.py tests/test_root_fix_guard.py
+        run: python -m py_compile scripts/diff_guard.py scripts/sre_guard.py scripts/decision_guard.py scripts/root_fix_guard.py scripts/future_scale_guard.py tests/test_diff_guard.py tests/test_sre_guard.py tests/test_decision_guard.py tests/test_root_fix_guard.py tests/test_future_scale_guard.py
 
       - name: Run unit test suite
         run: python -m unittest discover -s tests -v
@@ -38,6 +38,8 @@ jobs:
         run: python scripts/decision_guard.py audit skills/decision-guard/examples/architecture-record.json --json
       - name: Validate bundled root-fix example
         run: python scripts/root_fix_guard.py audit skills/root-fix-gate/examples/email-checkout-record.json --json
+      - name: Validate bundled future-scale example
+        run: python scripts/future_scale_guard.py audit skills/future-scale-gate/examples/runtime-envelope-record.json --json
 
   validate-distribution:
     name: Validate Universal Distribution & CLI

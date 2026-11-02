@@ -7,12 +7,21 @@ import sys
 from pathlib import Path
 
 
-def filled(value):
+def filled(value, depth=0, max_depth=100):
+    if depth > max_depth:
+        return False
     return isinstance(value, str) and bool(value.strip())
 
 
 def choice(value, values):
     return isinstance(value, str) and value in values
+
+
+def _record_finding(findings, ok, code, message, severity="block", depth=0, max_depth=100):
+    if depth > max_depth:
+        return
+    if not ok:
+        findings.append({"severity": severity, "code": code, "message": message})
 
 
 def check_scenarios(record, proceeding, require):
@@ -137,10 +146,7 @@ def check_deferred(record, require):
 
 def audit(record):
     findings = []
-
-    def require(ok, code, message):
-        if not ok:
-            findings.append({"severity": "block", "code": code, "message": message})
+    require = lambda ok, code, message, severity="block": _record_finding(findings, ok, code, message, severity)
 
     require(filled(record.get("goal")), "MISSING_GOAL", "Name the long-lived product goal")
     decision = record.get("decision")
