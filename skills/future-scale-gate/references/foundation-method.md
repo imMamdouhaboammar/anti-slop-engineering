@@ -21,7 +21,7 @@ For each materially different scenario, record:
 - **Failure if unprepared:** which specific contract, owner, or migration path would be difficult to change.
 - **Revisit event:** evidence that should cause expansion or reversal; prefer observable events over arbitrary calendar dates.
 
-The envelope needs *multiple stress axes*, not arbitrary perfect-future throughput forecasts. A high-traffic scenario that adds no new architectural constraint should not automatically cause new services. A small but fundamental compatibility scenario can justify a stronger boundary even with negligible present traffic.
+The envelope should cover each materially different stress axis that matters, not arbitrary perfect-future throughput forecasts. One grounded stress axis can be sufficient. A high-traffic scenario that adds no new architectural constraint should not automatically cause new services. A small but fundamental compatibility scenario can justify a stronger boundary even with negligible present traffic.
 
 ## Reversibility and option value
 
