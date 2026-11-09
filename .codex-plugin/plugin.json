@@ -1,0 +1,54 @@
+{
+  "name": "anti-slop-engineering",
+  "version": "1.6.0",
+  "description": "Enforce anti-slop engineering discipline, test oracle integrity, and SRE principles across codebases",
+  "author": {
+    "name": "Mamdouh Aboammar",
+    "url": "https://github.com/imMamdouhaboammar"
+  },
+  "license": "MIT",
+  "keywords": [
+    "anti-slop",
+    "code-quality",
+    "sre",
+    "kiss",
+    "dry",
+    "yagni",
+    "testing",
+    "security",
+    "codex",
+    "chatgpt"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Anti-Slop Engineering",
+    "shortDescription": "Prevent and repair AI slop",
+    "longDescription": "Enforces anti-slop engineering discipline, Google SRE reliability principles (KISS, DRY, YAGNI, eliminating toil), Stop-That-Shit boundary interception, test integrity, and paranoid zero-trust architectures across AI-assisted and human codebases.",
+    "developerName": "Mamdouh Aboammar",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Anti-slop diff triage",
+      "Test integrity protection",
+      "Google SRE guard validation",
+      "Decision guard analysis",
+      "Root fix boundary analysis",
+      "Future scale gate analysis",
+      "Paranoid zero-trust architecture"
+    ],
+    "websiteURL": "https://github.com/imMamdouhaboammar/anti-slop-engineering",
+    "defaultPrompt": [
+      "Audit this repository or diff against anti-slop engineering standards.",
+      "Analyze this architecture decision for premature speculation or slop.",
+      "Verify test assertions and ensure no test oracles were weakened."
+    ],
+    "brandColor": "#0F172A",
+    "brandColorDark": "#F8FAFC",
+    "composerIcon": "./assets/mark.svg",
+    "logo": "./assets/logo-light.svg",
+    "privacyPolicyURL": "https://github.com/imMamdouhaboammar/anti-slop-engineering/blob/main/PRIVACY.md",
+    "termsOfServiceURL": "https://github.com/imMamdouhaboammar/anti-slop-engineering/blob/main/TERMS.md",
+    "supportURL": "https://github.com/imMamdouhaboammar/anti-slop-engineering/blob/main/SUPPORT.md"
+  },
+  "homepage": "https://github.com/imMamdouhaboammar/anti-slop-engineering",
+  "repository": "https://github.com/imMamdouhaboammar/anti-slop-engineering"
+}

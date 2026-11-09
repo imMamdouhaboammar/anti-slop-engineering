@@ -1,0 +1,9 @@
+interface:
+  display_name: "Install Anti-Slop"
+  short_description: "Install anti-slop Oxlint rules into a JS/TS project"
+  default_prompt: "Install and configure the anti-slop Oxlint plugins and opinionated rules in this repository."
+policy:
+  products:
+    - CHAT
+    - CODEX
+  allow_implicit_invocation: true

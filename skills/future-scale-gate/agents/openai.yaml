@@ -1,0 +1,9 @@
+interface:
+  display_name: "Future-Scale Gate"
+  short_description: "Audit foundations against speculative scale"
+  default_prompt: "Separate credible future operating constraints from speculative infrastructure and compare lifetime costs."
+policy:
+  products:
+    - CHAT
+    - CODEX
+  allow_implicit_invocation: true

@@ -1,0 +1,9 @@
+interface:
+  display_name: "Anti-Slop Engineering"
+  short_description: "Prevent and repair AI coding slop"
+  default_prompt: "Audit this repository or diff against anti-slop engineering standards, test-oracle erosion, and SRE principles."
+policy:
+  products:
+    - CHAT
+    - CODEX
+  allow_implicit_invocation: true

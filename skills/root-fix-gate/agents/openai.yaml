@@ -1,0 +1,9 @@
+interface:
+  display_name: "Root-Fix Gate"
+  short_description: "Trace root cause and prevent distributed patch slop"
+  default_prompt: "Trace the causal owner of this defect and compare a root architectural correction against distributed patches."
+policy:
+  products:
+    - CHAT
+    - CODEX
+  allow_implicit_invocation: true

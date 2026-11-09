@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Anti-Slop Engineering mark">
+  <rect width="512" height="512" rx="112" fill="#0F172A"/>
+  <path d="M256 96 L384 152 V264 C384 340 328 400 256 424 C184 400 128 340 128 264 V152 Z" fill="none" stroke="#38BDF8" stroke-width="24" stroke-linejoin="round"/>
+  <path d="M192 256 L236 300 L324 212" fill="none" stroke="#F8FAFC" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

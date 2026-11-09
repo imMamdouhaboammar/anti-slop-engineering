@@ -1,0 +1,9 @@
+interface:
+  display_name: "Paranoid Architect"
+  short_description: "Zero-trust 10M concurrent user system review"
+  default_prompt: "Perform an adversarial zero-trust architectural audit on this service, API contract, or data model."
+policy:
+  products:
+    - CHAT
+    - CODEX
+  allow_implicit_invocation: true

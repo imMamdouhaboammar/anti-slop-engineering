@@ -1,0 +1,38 @@
+{
+  "name": "Anti-Slop Engineering",
+  "subtitle": "Prevent and repair AI slop",
+  "description": "Enforces anti-slop engineering discipline, Google SRE reliability principles (KISS, DRY, YAGNI, eliminating toil), Stop-That-Shit boundary interception, test integrity, and paranoid zero-trust architectures across AI-assisted and human codebases.",
+  "category": "Developer Tools",
+  "developerName": "Mamdouh Aboammar",
+  "websiteURL": "https://github.com/imMamdouhaboammar/anti-slop-engineering",
+  "customerSupportURL": "https://github.com/imMamdouhaboammar/anti-slop-engineering/blob/main/SUPPORT.md",
+  "privacyPolicyURL": "https://github.com/imMamdouhaboammar/anti-slop-engineering/blob/main/PRIVACY.md",
+  "termsOfServiceURL": "https://github.com/imMamdouhaboammar/anti-slop-engineering/blob/main/TERMS.md",
+  "version": "1.6.0",
+  "packageName": "anti-slop-engineering",
+  "capabilities": [
+    "Anti-slop diff triage",
+    "Test integrity protection",
+    "Google SRE guard validation",
+    "Decision guard analysis",
+    "Root fix boundary analysis",
+    "Future scale gate analysis",
+    "Paranoid zero-trust architecture"
+  ],
+  "starterPrompts": [
+    "Audit this repository or diff against anti-slop engineering standards.",
+    "Analyze this architecture decision for premature speculation or slop.",
+    "Verify test assertions and ensure no test oracles were weakened."
+  ],
+  "brand": {
+    "concept": "Engineering discipline and Google SRE rigor intercepting AI slop before production.",
+    "lightLogo": "./assets/logo-light.svg",
+    "darkLogo": "./assets/logo-dark.svg",
+    "composerIcon": "./assets/mark.svg"
+  },
+  "publisherVerification": {
+    "required": true,
+    "status": "verify-in-platform-before-submission"
+  },
+  "note": "Repository-maintained evidence format for submission preparation. This is not an upload schema."
+}

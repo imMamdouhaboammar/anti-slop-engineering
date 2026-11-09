@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Anti-Slop Engineering logo for light surfaces">
+  <rect width="512" height="512" rx="112" fill="#F8FAFC"/>
+  <path d="M256 96 L384 152 V264 C384 340 328 400 256 424 C184 400 128 340 128 264 V152 Z" fill="#0F172A" stroke="#0284C7" stroke-width="20" stroke-linejoin="round"/>
+  <path d="M192 256 L236 300 L324 212" fill="none" stroke="#F8FAFC" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="256" cy="180" r="16" fill="#38BDF8"/>
+</svg>

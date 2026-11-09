@@ -1,0 +1,9 @@
+interface:
+  display_name: "Decision Guard"
+  short_description: "Challenge architecture and stack decisions"
+  default_prompt: "Evaluate this technical decision or architecture choice, compare credible alternatives, and test lifetime operational costs."
+policy:
+  products:
+    - CHAT
+    - CODEX
+  allow_implicit_invocation: true
