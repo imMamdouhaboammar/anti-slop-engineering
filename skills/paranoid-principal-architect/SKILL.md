@@ -107,6 +107,10 @@ npx anti-slop-engineering paranoid audit <record.json> --json
 
 ## Domain References
 
+- **[Playbook Suite Overview](playbooks/README.md)**: Central orchestration index for high-concurrency architecture and forensic audits.
+- **[The Paranoid Principal Architect Playbook](playbooks/architect-playbook.md)**: 10M-Scale Axiom, zero-trust boundaries, database & concurrency invariants, and threat modeling.
+- **[Zero-Trust DevOps & Forensic Bug Hunter](playbooks/devops-hunter-playbook.md)**: Line-by-line inspection across 9 stacks, the 4 execution pillars (Check, Clean, Improve, Document), and the 6 forensic gates.
+- **[Stack Booby-Trap Catalog](playbooks/references/stack-booby-traps.md)**: Forensic failure mechanics and hardened remedies across K8s, Docker, Python, TS/Bun, Rust, Go, React, and Architecture.
 - **[Scale & Concurrency Patterns](references/scale-concurrency-patterns.md)**: Sharded counters, cursor pagination, bounded pools, and jittered backoff.
 - **[Zero-Trust Security Matrix](references/zero-trust-security.md)**: Boundary schemas, data-layer authorization, constant-time crypto, and EDoS defense.
 - **[Modern Web Platform Standards](references/modern-web-platform.md)**: Native APIs, strict TypeScript, semantic HTML5, and WCAG AA accessibility.
