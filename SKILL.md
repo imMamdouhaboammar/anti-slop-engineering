@@ -4,7 +4,7 @@ description: Prevent, detect, and repair AI coding slop and dirty engineering in
 author: Mamdouh Aboammar <mamdouhfces1997@gmail.com>
 license: MIT
 metadata:
-  version: "1.3.0"
+  version: "1.4.0"
   focus: "engineering-discipline"
   repository: "https://github.com/imMamdouhaboammar/anti-slop-engineering"
 ---
@@ -40,6 +40,7 @@ metadata:
 15. **Decision Guard before consequential commitments:** When the task proposes derived metrics, an architectural stack, infrastructure, persistence, or a difficult-to-reverse engineering decision, read [Decision Guard](skills/decision-guard/SKILL.md). Check direct evidence and independent alternatives before treating the proposed method as necessary. Never substitute the decision record's structural check for source verification.
 16. **Root-Fix Gate for scattered symptom patches:** When a local behavior change spreads through controllers, views, endpoints or multiple layers, read [Root-Fix Gate](skills/root-fix-gate/SKILL.md). Trace the owner of the domain invariant, compare a coherent source correction with consumer workarounds, and inspect actual change paths. Do not assume the model owns every rule or that few files prove safety.
 17. **Future-Scale Gate for irreversible foundations:** Before locking in a core runtime, public contract, persistence model, or platform boundary for a long-lived product, read [Future-Scale Gate](skills/future-scale-gate/SKILL.md). Establish credible future operating scenarios, assess reversal cost and run a bounded evolution proof. Design the cheap necessary foundation now; defer speculative infrastructure with measurable revisit triggers. Lack of a present bottleneck does not disprove future architectural constraints.
+18. **Paranoid Principal Architect for 10M scale & zero-trust:** When designing system architectures, generating backend/frontend code, refactoring critical paths, conducting adversarial security reviews, or diagnosing scale bottlenecks, race conditions, memory leaks, and EDoS vulnerabilities, read [Paranoid Principal Architect](skills/paranoid-principal-architect/SKILL.md). Enforce the 10,000,000 Concurrent Users Axiom and Active Battlefield Zero-Trust mindset. Reject happy-path assumptions, unbounded async loops, hot keys, client authority, and unparsed inputs from line one.
 
 ## Activation / modes
 
@@ -53,6 +54,7 @@ Select the relevant mode and follow the same gates:
 - **DECIDE:** when premises, direct answers or long-term architecture choices are materially uncertain, follow [Decision Guard](skills/decision-guard/SKILL.md) before BUILD. Return to ordinary modes after a decision; skip the extra protocol for routine repairs.
 - **ROOT-FIX:** when a symptom attracts scattered fixes or ownership is uncertain, follow [Root-Fix Gate](skills/root-fix-gate/SKILL.md) to establish the change boundary, then resume BUILD/FIX with regression tests.
 - **FUTURE-SCALE:** when an architecture commitment would be expensive to reverse as the product evolves, follow [Future-Scale Gate](skills/future-scale-gate/SKILL.md). Skip routine reversible edits and avoid capacity theater.
+- **PARANOID-ARCHITECT:** when building or reviewing systems against 10M concurrent user load, adversarial traffic, race conditions, hot-key contention, or zero-trust boundaries, follow [Paranoid Principal Architect](skills/paranoid-principal-architect/SKILL.md).
 
 For extensive audits, load [anti-pattern catalog](references/anti-pattern-catalog.md). For Google SRE discipline and distributed resilience patterns, load [google-sre-discipline](references/google-sre-discipline.md). For any test changes, load [test integrity policy](references/test-integrity.md). For a PR or merge request, load [PR review protocol](references/pr-review.md). For elevated permissions, sensitive code, network access, or deployment, load [security and execution boundaries](references/security-and-operations.md). For project-specific exceptions, load [judgment and exceptions](references/engineering-judgment.md). For community contributions, follow [contributor guidelines](CONTRIBUTING.md).
 

@@ -5,7 +5,7 @@
   "verified_suite": "test/security/redteam-healed.test.ts",
   "remaining_surface_heuristics": 0,
   "file_hashes": {
-    "package.json": "846f82130654ab9581929773266d11d84c84bf8dc20308aa8edaca69d00fa98f",
+    "package.json": "c924fca23fcc5f43da0b483d73630caa39cc59b9b3095c901c8730e6d42e1548",
     ".github/workflows/ci.yml": "e73fdcc6091bb11d7502e5815f530b8e757dc7d4f884854dd1f0f8ad4c3a9c98",
     "bin/postinstall.js": "610a397ec2e5428f1a24427fef451506e70468b0549030cb1ec7143f24e2aac6",
     "scripts/decision_guard.py": "1d35dc14c6b4de922bb046766a9d06383d1c608c9aee148bc8880df98c135633",

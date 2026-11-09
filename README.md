@@ -12,7 +12,7 @@
 [![Skills.sh](https://img.shields.io/badge/Skills.sh-Compatible-000000?style=flat-square&logo=vercel&logoColor=white)](https://skills.sh)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-Certified%20Skill-D97706?style=flat-square&logo=anthropic&logoColor=white)](https://claude.ai)
 
-[Install](#install) · [What it catches](#what-it-catches) · [Engines](#engines) · [Decision Guard](#decision-guard) · [Root-Fix Gate](#root-fix-gate) · [Future-Scale Gate](#future-scale-gate) · [Agent skill](#agent-skill) · [Anti-pattern catalog](#anti-pattern-catalog-217-patterns)
+[Install](#install) · [What it catches](#what-it-catches) · [Engines](#engines) · [Decision Guard](#decision-guard) · [Root-Fix Gate](#root-fix-gate) · [Future-Scale Gate](#future-scale-gate) · [Paranoid Architect](#the-paranoid-principal-architect) · [Install Anti-Slop](#install-anti-slop-oxlint) · [Agent skill](#agent-skill) · [Anti-pattern catalog](#anti-pattern-catalog-217-patterns)
 
 </div>
 
@@ -263,6 +263,38 @@ node bin/cli.js future-scale audit skills/future-scale-gate/examples/runtime-env
 ```
 
 The bundled example intentionally recommends `pause` because its alternate-engine experiment has not been run. The zero-dependency checker validates record completeness, not forecast accuracy or actual scalability. The ten semantic evaluation scenarios are proposed tests, not measured model effectiveness.
+
+---
+
+## The Paranoid Principal Architect
+
+The [Paranoid Principal Architect](skills/paranoid-principal-architect/SKILL.md) skill enforces an uncompromising, zero-trust engineering posture designed for day-one 10,000,000 concurrent user scale. It rejects optimistic "happy-path" code generation, unparsed inputs, unbounded async loops, hot-key lock contention, and client authority.
+
+| Pillar | Strict Enforcement |
+| --- | --- |
+| **10M Concurrent Users Axiom** | Little's Law capacity budgeting, 16-shard counters, keyset cursor pagination (`LIMIT <= 100`), semaphore worker pools |
+| **The Internet is a Battlefield** | Parse don't validate (Zod/Valibot `.strict()`), data-layer ownership checks in queries, constant-time `crypto.timingSafeEqual` |
+| **Murphy's Law by Default** | Mandatory `Idempotency-Key` headers on mutations, `AbortSignal.timeout(ms)` on all outbound I/O, exponential backoff with full jitter |
+| **Modern Web Standards** | Native platform primitives (`structuredClone`, Web Streams, `URLSearchParams`), native `<dialog>` modals, strict branded types |
+
+Audit architectural threat records:
+
+```bash
+bunx anti-slop-engineering paranoid audit skills/paranoid-principal-architect/examples/paranoid-architecture-record.json --json
+```
+
+---
+
+## Install Anti-Slop (Oxlint)
+
+For TypeScript and JavaScript projects, install the opinionated anti-slop Oxlint lint rules to catch runtime type assertion risks, unconstrained object parameters, and module mocking leaks at lint-time:
+
+```bash
+# In your target repository:
+npx skills add imMamdouhaboammar/anti-slop-engineering
+```
+
+Follow the procedure in [install-anti-slop](skills/install-anti-slop/SKILL.md) to register the bundled plugins (`anti-slop` and optional `anti-slop-effect`) directly into `oxlint.config.ts` or `.oxlintrc.json`.
 
 ---
 

@@ -1,0 +1,58 @@
+{
+  "schema_version": "1.0",
+  "goal": "Operate high-throughput checkout payment mutation service for global flash-sale events",
+  "scale_profile": {
+    "target_concurrency": 10000000,
+    "throughput_rps": 120000,
+    "latency_budget_ms": 75
+  },
+  "threat_pre_mortem": [
+    {
+      "id": "double-submit-race",
+      "threat_class": "race_condition",
+      "description": "Users double-click checkout button creating identical charges within a 10ms window",
+      "mitigation": "Atomic idempotency key lock in distributed cache with 24h cached payload replay"
+    },
+    {
+      "id": "global-inventory-hotkey",
+      "threat_class": "hot_key_contention",
+      "description": "100k requests/sec attempt synchronous row update on a single inventory item counter",
+      "mitigation": "16-shard counter with uniform random write routing and periodic read rollups"
+    },
+    {
+      "id": "downstream-gateway-stall",
+      "threat_class": "network_stall",
+      "description": "Payment gateway latency surges to 30s during flash-sale peak exhausting socket pools",
+      "mitigation": "Non-negotiable AbortSignal.timeout(3000ms) with exponential backoff and full jitter"
+    }
+  ],
+  "trust_boundaries": [
+    {
+      "name": "public-checkout-api",
+      "schema_validation": "zod_strict_parse_with_stripped_unknowns",
+      "data_layer_ownership": "tenant_and_user_id_scoped_in_sql_where_clause"
+    }
+  ],
+  "concurrency_controls": {
+    "idempotency": {
+      "enabled": true,
+      "key_header": "Idempotency-Key",
+      "storage": "redis_set_nx_ex_86400"
+    },
+    "locking_strategy": "sharded_counters"
+  },
+  "bounded_limits": {
+    "max_read_limit": 50,
+    "max_payload_bytes": 102400,
+    "network_timeout_ms": 3000,
+    "backoff_algorithm": "exponential_full_jitter"
+  },
+  "verdict": {
+    "action": "proceed",
+    "rationale": "All scale bottlenecks and malicious attack vectors are mitigated with bounded resources and zero-trust controls.",
+    "revisit_triggers": [
+      "Flash-sale concurrency exceeds 20,000,000 active sessions",
+      "Payment gateway changes idempotency header semantics"
+    ]
+  }
+}

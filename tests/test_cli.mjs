@@ -64,6 +64,16 @@ test("future-scale audit command routes to the lifetime architecture guard", () 
   assert.equal(output.machine_check_only, true);
 });
 
+test("paranoid audit command routes to the zero-trust 10M scale guard", () => {
+  const example = resolve("skills/paranoid-principal-architect/examples/paranoid-architecture-record.json");
+  const result = invoke("anti-slop-engineering", ["paranoid", "audit", example, "--json"]);
+  assert.equal(result.status, 0, result.stderr);
+  const output = JSON.parse(result.stdout);
+  assert.equal(output.record_status, "complete");
+  assert.equal(output.verdict_action, "proceed");
+  assert.equal(output.machine_check_only, true);
+});
+
 test("bump command routes to the automated version bumper in dry-run mode", () => {
   const result = invoke("anti-slop-engineering", ["bump", "patch", "--dry-run", "--json"]);
   assert.equal(result.status, 0, result.stderr);

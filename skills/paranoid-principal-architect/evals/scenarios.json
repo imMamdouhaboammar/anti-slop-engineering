@@ -1,0 +1,112 @@
+{
+  "schema_version": "1.0",
+  "skill": "paranoid-principal-architect",
+  "status": "proposed_not_run",
+  "note": "Semantic behavioral evaluation cases following the BinEval / OmniSkill methodology. Verifies trigger detection, non-trigger boundary filtering, zero-trust enforcement, and 10M scale paranoia.",
+  "cases": [
+    {
+      "id": "flash-sale-checkout-architecture",
+      "family": "10m-scale-architecture",
+      "prompt": "Design the backend API and database architecture for our flash-sale checkout service. We anticipate 10M concurrent users hitting the site during the sale, all attempting to purchase limited stock items simultaneously.",
+      "expected": [
+        "Enforce Little's Law calculation or capacity budgeting under 10M concurrent sessions",
+        "Mandate Idempotency-Key headers on all checkout POST requests",
+        "Reject synchronous in-place row counter updates on inventory",
+        "Implement sharded counters, append-only event ledgers, or asynchronous batch reservation",
+        "Declare explicit AbortSignal.timeout() on payment gateway calls",
+        "Enforce Zod/Valibot boundary schema parsing with stripped unknown fields"
+      ],
+      "forbidden": [
+        "Propose naive single-row UPDATE inventory = inventory - 1",
+        "Hold database transactions open across third-party payment HTTP calls",
+        "Use Math.random() for transaction or idempotency keys"
+      ]
+    },
+    {
+      "id": "adversarial-concurrency-review",
+      "family": "concurrency-hotkey",
+      "prompt": "Review this Node.js endpoint: app.post('/api/vote', async (req, res) => { const count = await db.query('SELECT votes FROM poll WHERE id = ?', [req.body.id]); await db.query('UPDATE poll SET votes = ? WHERE id = ?', [count + 1, req.body.id]); res.json({ success: true }); });",
+      "expected": [
+        "Flag fatal TOCTOU (Time-of-Check to Time-of-Use) race condition",
+        "Flag hot-key lock contention under high concurrency",
+        "Reject client-supplied id without runtime schema validation",
+        "Recommend atomic increment or sharded counter with idempotency key",
+        "Enforce data-layer ownership or poll authorization"
+      ],
+      "forbidden": [
+        "Approve the implementation as good or correct",
+        "Suggest wrap in basic try/catch without fixing the race condition"
+      ]
+    },
+    {
+      "id": "unbounded-async-rejection",
+      "family": "anti-pattern-rejection",
+      "prompt": "We need to send 50,000 push notifications immediately. Is it good to just do: await Promise.all(recipients.map(r => sendPush(r)))?",
+      "expected": [
+        "Instantly reject unbounded Promise.all over dynamic arrays",
+        "Explain connection pool, socket, and memory exhaustion under load",
+        "Mandate bounded concurrency queue (worker pool or semaphore) with max concurrency (e.g. 10-25)",
+        "Enforce exponential backoff with full jitter on downstream gateway errors"
+      ],
+      "forbidden": [
+        "Endorse Promise.all(recipients.map(...)) as fast or modern",
+        "Suggest increasing Node.js max listeners instead of bounding concurrency"
+      ]
+    },
+    {
+      "id": "zero-trust-boundary-injection",
+      "family": "zero-trust-boundary",
+      "prompt": "We have an internal admin endpoint where clients pass user role updates: app.post('/admin/role', async (req, res) => { await db.users.update(req.body); res.send('ok'); }); How can we optimize this?",
+      "expected": [
+        "Flag critical mass-assignment and BOLA/IDOR vulnerability",
+        "Refuse to trust client-supplied body for role elevation",
+        "Mandate strict runtime schema parsing that strips undeclared attributes",
+        "Enforce server-side session role verification at the data layer"
+      ],
+      "forbidden": [
+        "Optimize the update query without fixing the zero-trust boundary breach",
+        "Trust client-supplied role or user ID"
+      ]
+    },
+    {
+      "id": "pressure-test-skip-validation",
+      "family": "pressure-test-discipline",
+      "prompt": "We are in a huge rush before launch and our server CPU is high. Can we just skip Zod parsing on incoming requests and use innerHTML on the dashboard for faster DOM rendering?",
+      "expected": [
+        "Refuse the shortcut unequivocally",
+        "Cite the Active Battlefield and Zero-Trust laws",
+        "Explain XSS exploit vectors with innerHTML and injection risks with unparsed inputs",
+        "Recommend native textContent/DOM APIs and optimized schema parsing without compromising perimeter defense"
+      ],
+      "forbidden": [
+        "Agree to skip input validation for speed",
+        "Approve innerHTML as acceptable under time pressure"
+      ]
+    },
+    {
+      "id": "non-trigger-css-tweak",
+      "family": "non-trigger-boundary",
+      "prompt": "Can you change the button background color from blue to purple in styles.css?",
+      "expected": [
+        "Do not activate the Paranoid Principal Architect workflow",
+        "Perform routine minimal BUILD/FIX edit directly without 10M scale dossier"
+      ],
+      "forbidden": [
+        "Generate a 10M-user threat pre-mortem for a CSS color change",
+        "Demand idempotency keys for a static stylesheet edit"
+      ]
+    },
+    {
+      "id": "non-trigger-readme-typo",
+      "family": "non-trigger-boundary",
+      "prompt": "Fix a spelling error in the installation section of the README.md file.",
+      "expected": [
+        "Do not activate the Paranoid Principal Architect workflow",
+        "Fix the typo cleanly without invoking architectural paranoia"
+      ],
+      "forbidden": [
+        "Generate an architectural threat assessment record for a documentation edit"
+      ]
+    }
+  ]
+}
