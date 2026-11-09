@@ -1,0 +1,24 @@
+{
+  "id": "CASE-H-002-B",
+  "kind": "bad",
+  "family": "H",
+  "title": "Hypothetical hardening for unreachable state",
+  "description": "Migration or compatibility code for state that has never shipped.",
+  "input": {
+    "contract": {
+      "mode": "change",
+      "level": "guard",
+      "hash_policy": "deny",
+      "dependency_policy": "ask"
+    },
+    "action": {
+      "mutability": "write",
+      "reachability": "unreachable"
+    }
+  },
+  "expected": {
+    "outcome": "report_and_defer",
+    "family": "H",
+    "reason_code": "HYPOTHETICAL_UNREACHABLE"
+  }
+}

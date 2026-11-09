@@ -1,0 +1,24 @@
+{
+  "id": "CASE-H-002-G",
+  "kind": "good",
+  "family": "H",
+  "title": "Hardening for deployed reachable state",
+  "description": "Migration or compatibility code for deployed supported state.",
+  "input": {
+    "contract": {
+      "mode": "change",
+      "level": "guard",
+      "hash_policy": "deny",
+      "dependency_policy": "ask"
+    },
+    "action": {
+      "mutability": "write",
+      "reachability": "reachable"
+    }
+  },
+  "expected": {
+    "outcome": "allow",
+    "family": null,
+    "reason_code": "WITHIN_CONTRACT"
+  }
+}

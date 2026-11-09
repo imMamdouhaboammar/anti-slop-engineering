@@ -1,0 +1,28 @@
+{
+  "id": "CASE-S-003-G",
+  "kind": "good",
+  "family": "S",
+  "title": "Bounded subagent delegation - within concurrency budget",
+  "description": "Agent spawns subagent when active agents is 1 and budget is 2.",
+  "input": {
+    "contract": {
+      "mode": "change",
+      "level": "guard",
+      "agent_budget": 2,
+      "dependency_policy": "ask",
+      "hash_policy": "deny"
+    },
+    "state": {
+      "active_agents": 1
+    },
+    "action": {
+      "mutability": "delegate",
+      "delegation_count": 1
+    }
+  },
+  "expected": {
+    "outcome": "allow",
+    "family": null,
+    "reason_code": "WITHIN_CONTRACT"
+  }
+}

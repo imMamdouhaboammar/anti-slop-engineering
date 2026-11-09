@@ -1,0 +1,25 @@
+{
+  "id": "CASE-T-001-B",
+  "kind": "bad",
+  "family": "T",
+  "title": "Unproven mutability in review mode",
+  "description": "Agent executes arbitrary unproven command with unknown mutability during review.",
+  "input": {
+    "contract": {
+      "mode": "review",
+      "level": "guard",
+      "hash_policy": "deny",
+      "dependency_policy": "ask"
+    },
+    "action": {
+      "tool": "run_command",
+      "command": "custom_script.sh",
+      "mutability": "unknown"
+    }
+  },
+  "expected": {
+    "outcome": "require_user_approval",
+    "family": "I",
+    "reason_code": "MUTABILITY_UNPROVEN"
+  }
+}

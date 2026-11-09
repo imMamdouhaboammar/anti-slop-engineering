@@ -1,4 +1,4 @@
-.PHONY: test test-verbose guard sre lint check help build-rust build-go build-services test-rust test-go test-all check-all
+.PHONY: test test-verbose test-cases guard sre lint check help build-rust build-go build-services test-rust test-go test-all check-all
 
 PYTHON ?= python3
 
@@ -20,9 +20,14 @@ help:
 
 test:
 	$(PYTHON) -m unittest discover -s tests
+	$(PYTHON) scripts/run_cases.py
 
 test-verbose:
 	$(PYTHON) -m unittest discover -s tests -v
+	$(PYTHON) scripts/run_cases.py
+
+test-cases:
+	$(PYTHON) scripts/run_cases.py
 
 test-rust:
 	cd services/anti-slop-rust && cargo test
@@ -41,7 +46,7 @@ build-services: build-rust build-go
 test-all: test-verbose test-rust test-go
 
 lint:
-	$(PYTHON) -m py_compile scripts/diff_guard.py scripts/sre_guard.py scripts/decision_guard.py scripts/root_fix_guard.py scripts/future_scale_guard.py scripts/paranoid_guard.py scripts/forensic_hunter.py scripts/bump_version.py tests/test_diff_guard.py tests/test_sre_guard.py tests/test_decision_guard.py tests/test_root_fix_guard.py tests/test_future_scale_guard.py tests/test_paranoid_guard.py tests/test_forensic_hunter.py tests/test_bump_version.py
+	$(PYTHON) -m py_compile scripts/diff_guard.py scripts/sre_guard.py scripts/decision_guard.py scripts/root_fix_guard.py scripts/future_scale_guard.py scripts/paranoid_guard.py scripts/forensic_hunter.py scripts/exec_guard.py scripts/run_cases.py scripts/bump_version.py tests/test_diff_guard.py tests/test_sre_guard.py tests/test_decision_guard.py tests/test_root_fix_guard.py tests/test_future_scale_guard.py tests/test_paranoid_guard.py tests/test_forensic_hunter.py tests/test_exec_guard.py tests/test_bump_version.py
 
 guard:
 	$(PYTHON) scripts/diff_guard.py --base HEAD

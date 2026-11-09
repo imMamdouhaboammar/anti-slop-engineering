@@ -1,0 +1,25 @@
+{
+  "id": "CASE-I-001-B",
+  "kind": "bad",
+  "family": "I",
+  "title": "Intent violation - file edit during review mode",
+  "description": "Agent edits a file when the contract is explicitly review mode.",
+  "input": {
+    "contract": {
+      "mode": "review",
+      "level": "guard",
+      "hash_policy": "deny",
+      "dependency_policy": "ask"
+    },
+    "action": {
+      "tool": "edit_file",
+      "mutability": "write",
+      "affected_paths": ["src/index.ts"]
+    }
+  },
+  "expected": {
+    "outcome": "deny_and_explain",
+    "family": "I",
+    "reason_code": "MODE_FORBIDS_MUTATION"
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "id": "CASE-S-002-B",
+  "kind": "bad",
+  "family": "S",
+  "title": "Dependency creep - unauthorized package installation",
+  "description": "Agent adds external package when dependency policy is deny.",
+  "input": {
+    "contract": {
+      "mode": "change",
+      "level": "guard",
+      "dependency_policy": "deny",
+      "hash_policy": "deny"
+    },
+    "action": {
+      "mutability": "write",
+      "dependency_intent": true,
+      "command": "bun add lodash"
+    }
+  },
+  "expected": {
+    "outcome": "deny_and_explain",
+    "family": "S",
+    "reason_code": "DEPENDENCY_NOT_AUTHORIZED"
+  }
+}

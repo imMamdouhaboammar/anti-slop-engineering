@@ -50,6 +50,8 @@ install_to() {
   chmod +x "$dest/scripts/future_scale_guard.py" 2>/dev/null || true
   chmod +x "$dest/scripts/paranoid_guard.py" 2>/dev/null || true
   chmod +x "$dest/scripts/forensic_hunter.py" 2>/dev/null || true
+  chmod +x "$dest/scripts/exec_guard.py" 2>/dev/null || true
+  chmod +x "$dest/scripts/run_cases.py" 2>/dev/null || true
   chmod +x "$dest/skills/install-anti-slop/scripts/install.mjs" 2>/dev/null || true
   chmod +x "$dest/install.sh" 2>/dev/null || true
   echo "  ✅ Installed anti-slop-engineering for ${label} -> ${dest}"

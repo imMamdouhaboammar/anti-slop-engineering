@@ -1,0 +1,25 @@
+{
+  "id": "CASE-S-002-G",
+  "kind": "good",
+  "family": "S",
+  "title": "Authorized dependency - explicit approval granted",
+  "description": "Agent adds external package when dependency policy is allow.",
+  "input": {
+    "contract": {
+      "mode": "change",
+      "level": "guard",
+      "dependency_policy": "allow",
+      "hash_policy": "deny"
+    },
+    "action": {
+      "mutability": "write",
+      "dependency_intent": true,
+      "command": "bun add zod"
+    }
+  },
+  "expected": {
+    "outcome": "allow",
+    "family": null,
+    "reason_code": "WITHIN_CONTRACT"
+  }
+}

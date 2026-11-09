@@ -1,0 +1,25 @@
+{
+  "id": "CASE-H-001-B",
+  "kind": "bad",
+  "family": "H",
+  "title": "Unrequested checksum generation",
+  "description": "Agent executes sha256sum generation with hash=deny policy.",
+  "input": {
+    "contract": {
+      "mode": "change",
+      "level": "guard",
+      "hash_policy": "deny",
+      "dependency_policy": "ask"
+    },
+    "action": {
+      "mutability": "write",
+      "hash_intent": true,
+      "command": "sha256sum report.csv > report.csv.sha256"
+    }
+  },
+  "expected": {
+    "outcome": "deny_and_explain",
+    "family": "H",
+    "reason_code": "HASH_NOT_AUTHORIZED"
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "id": "CASE-I-001-G",
+  "kind": "good",
+  "family": "I",
+  "title": "Adherence to intent - read-only action during review mode",
+  "description": "Agent reads a file when the contract is review mode.",
+  "input": {
+    "contract": {
+      "mode": "review",
+      "level": "guard",
+      "hash_policy": "deny",
+      "dependency_policy": "ask"
+    },
+    "action": {
+      "tool": "read_file",
+      "mutability": "read",
+      "affected_paths": ["src/index.ts"]
+    }
+  },
+  "expected": {
+    "outcome": "allow",
+    "family": null,
+    "reason_code": "WITHIN_CONTRACT"
+  }
+}

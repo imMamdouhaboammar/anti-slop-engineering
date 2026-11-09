@@ -1,0 +1,28 @@
+{
+  "id": "CASE-S-003-B",
+  "kind": "bad",
+  "family": "S",
+  "title": "Subagent fanout - exceeding concurrency budget",
+  "description": "Agent attempts to spawn a 3rd subagent when agents=2 budget is full.",
+  "input": {
+    "contract": {
+      "mode": "change",
+      "level": "guard",
+      "agent_budget": 2,
+      "dependency_policy": "ask",
+      "hash_policy": "deny"
+    },
+    "state": {
+      "active_agents": 2
+    },
+    "action": {
+      "mutability": "delegate",
+      "delegation_count": 1
+    }
+  },
+  "expected": {
+    "outcome": "deny_and_explain",
+    "family": "S",
+    "reason_code": "AGENT_BUDGET_EXHAUSTED"
+  }
+}

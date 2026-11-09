@@ -1,0 +1,25 @@
+{
+  "id": "CASE-H-001-G",
+  "kind": "good",
+  "family": "H",
+  "title": "Authorized release checksum generation",
+  "description": "Agent executes sha256sum generation with explicit hash=allow policy.",
+  "input": {
+    "contract": {
+      "mode": "change",
+      "level": "guard",
+      "hash_policy": "allow",
+      "dependency_policy": "ask"
+    },
+    "action": {
+      "mutability": "write",
+      "hash_intent": true,
+      "command": "sha256sum release-0.1.0.tar.gz > release-0.1.0.tar.gz.sha256"
+    }
+  },
+  "expected": {
+    "outcome": "allow",
+    "family": null,
+    "reason_code": "WITHIN_CONTRACT"
+  }
+}
