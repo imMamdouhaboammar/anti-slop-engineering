@@ -12,7 +12,7 @@
 [![Skills.sh](https://img.shields.io/badge/Skills.sh-Compatible-000000?style=flat-square&logo=vercel&logoColor=white)](https://skills.sh)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-Certified%20Skill-D97706?style=flat-square&logo=anthropic&logoColor=white)](https://claude.ai)
 
-[Install](#install) · [What it catches](#what-it-catches) · [Engines](#engines) · [Decision Guard](#decision-guard) · [Root-Fix Gate](#root-fix-gate) · [Future-Scale Gate](#future-scale-gate) · [Paranoid Architect](#the-paranoid-principal-architect) · [Forensic Bug Hunter](#forensic-bug-hunter-scanner) · [Execution Guard](#in-flight-execution-guard) · [Install Anti-Slop](#install-anti-slop-oxlint) · [Agent skill](#agent-skill) · [Anti-pattern catalog](#anti-pattern-catalog-217-patterns)
+[Install](#install) · [What it catches](#what-it-catches) · [Engines](#engines) · [Decision Guard](#decision-guard) · [Root-Fix Gate](#root-fix-gate) · [Future-Scale Gate](#future-scale-gate) · [Paranoid Architect](#the-paranoid-principal-architect) · [Forensic Bug Hunter](#forensic-bug-hunter-scanner) · [Execution Guard](#in-flight-execution-guard) · [Install Anti-Slop](#install-anti-slop-oxlint--skill) · [Agent skill](#agent-skill) · [Anti-pattern catalog](#anti-pattern-catalog-217-patterns)
 
 </div>
 
@@ -302,12 +302,18 @@ Modular playbooks and architectural checklists are located in [`skills/paranoid-
 
 ---
 
-## Install Anti-Slop (Oxlint)
+## Install Anti-Slop (Oxlint & Skill)
 
-Opinionated anti-slop Oxlint lint rules for TypeScript and JavaScript codebases. Catches runtime type assertion risks, unconstrained object parameters, type widening, and module mocking leaks at lint-time:
+Opinionated anti-slop Oxlint lint rules and agent skill for TypeScript and JavaScript codebases. Catches runtime type assertion risks, unconstrained object parameters, type widening, and module mocking leaks at lint-time:
+
+### Agent Skill & Slash Command
+
+Invoke `/install-anti-slop` in any supported AI coding agent (Claude Code, Antigravity, Gemini CLI, Cursor, Windsurf) to automatically inspect the target repository, detect package managers, vendor the AST plugins, and configure `oxlint.config.ts` or `.oxlintrc.json`.
+
+### CLI Command
 
 ```bash
-# 1. Install Oxlint plugin directly into your target repository (creates tools/oxlint/anti-slop/):
+# Install Oxlint plugin directly into target repository (creates tools/oxlint/anti-slop/):
 bunx anti-slop-engineering install-oxlint
 # Or via npx:
 npx anti-slop-engineering install-oxlint
