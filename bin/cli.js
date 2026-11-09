@@ -19,6 +19,7 @@ const futureScaleGuardScript = resolve(rootDir, "scripts", "future_scale_guard.p
 const paranoidGuardScript = resolve(rootDir, "scripts", "paranoid_guard.py");
 const forensicHunterScript = resolve(rootDir, "scripts", "forensic_hunter.py");
 const bumpVersionScript = resolve(rootDir, "scripts", "bump_version.py");
+const installOxlintScript = resolve(rootDir, "skills", "install-anti-slop", "scripts", "install.mjs");
 const nativeSuffix = process.platform === "win32" ? ".exe" : "";
 const rustExecutable = "anti-slop-rust" + nativeSuffix;
 const goExecutable = "toil-guard" + nativeSuffix;
@@ -43,7 +44,7 @@ if (executableAliases[invokedAs]) args.unshift(executableAliases[invokedAs]);
 
 function printBanner() {
   console.log(`
-🛡️  Anti-Slop Engineering CLI (v1.4.0)
+🛡️  Anti-Slop Engineering CLI (v1.5.0)
    Clean-Room AI Coding Guard & High-Performance Polyglot Architecture
    Engines: Standard Library Python Guard | Rust Microservice | Go Toil Guard
    Author: Mamdouh Aboammar <mamdouhfces1997@gmail.com>
@@ -65,6 +66,7 @@ Commands:
   future-scale audit <file>  Check future operating envelope, reversibility and evolution proof
   paranoid audit <file>  Check a Paranoid Architect record for zero-trust and 10M scale compliance
   hunter, forensic       Run Zero-Trust Forensic Bug Hunter static scanner across 9 stacks
+  install-oxlint         Install bundled Oxlint anti-slop plugin into target repo
   bump [part]            Bump version across all 10 manifests (patch, minor, major, or explicit)
   test                   Run unit test suite
   contribute             Print guidelines on reporting noted slop or opening PRs
@@ -229,6 +231,12 @@ if (cmd === "build") {
   runPythonScript(paranoidGuardScript, args.slice(1), "paranoid_guard");
 } else if (cmd === "hunter" || cmd === "forensic" || cmd === "forensic-hunter") {
   runPythonScript(forensicHunterScript, args.slice(1), "forensic_hunter");
+} else if (cmd === "install-oxlint" || cmd === "install-anti-slop") {
+  if (!existsSync(installOxlintScript)) {
+    console.error(`Error: install script not found at ${installOxlintScript}`);
+    process.exit(1);
+  }
+  spawnProcess("node", [installOxlintScript, ...args.slice(1)], "install_oxlint");
 } else if (cmd === "bump") {
   runPythonScript(bumpVersionScript, args.slice(1), "bump_version");
 } else if (args.includes("--help") || args.includes("-h")) {

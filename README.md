@@ -12,7 +12,7 @@
 [![Skills.sh](https://img.shields.io/badge/Skills.sh-Compatible-000000?style=flat-square&logo=vercel&logoColor=white)](https://skills.sh)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-Certified%20Skill-D97706?style=flat-square&logo=anthropic&logoColor=white)](https://claude.ai)
 
-[Install](#install) · [What it catches](#what-it-catches) · [Engines](#engines) · [Decision Guard](#decision-guard) · [Root-Fix Gate](#root-fix-gate) · [Future-Scale Gate](#future-scale-gate) · [Paranoid Architect](#the-paranoid-principal-architect) · [Install Anti-Slop](#install-anti-slop-oxlint) · [Agent skill](#agent-skill) · [Anti-pattern catalog](#anti-pattern-catalog-217-patterns)
+[Install](#install) · [What it catches](#what-it-catches) · [Engines](#engines) · [Decision Guard](#decision-guard) · [Root-Fix Gate](#root-fix-gate) · [Future-Scale Gate](#future-scale-gate) · [Paranoid Architect](#the-paranoid-principal-architect) · [Forensic Bug Hunter](#forensic-bug-hunter-scanner) · [Install Anti-Slop](#install-anti-slop-oxlint) · [Agent skill](#agent-skill) · [Anti-pattern catalog](#anti-pattern-catalog-217-patterns)
 
 </div>
 
@@ -285,16 +285,68 @@ bunx anti-slop-engineering paranoid audit skills/paranoid-principal-architect/ex
 
 ---
 
-## Install Anti-Slop (Oxlint)
+## Forensic Bug Hunter Scanner
 
-For TypeScript and JavaScript projects, install the opinionated anti-slop Oxlint lint rules to catch runtime type assertion risks, unconstrained object parameters, and module mocking leaks at lint-time:
+Zero-trust static analysis scanner across 9 application stacks detecting booby traps, concurrency leaks, race conditions, memory leaks, and EDoS vulnerabilities:
 
 ```bash
-# In your target repository:
-npx skills add imMamdouhaboammar/anti-slop-engineering
+# Scan git diff against base:
+bunx anti-slop-engineering hunter --base HEAD
+# Scan specific file or directory:
+bunx anti-slop-engineering hunter --path src/
+# Output machine-readable JSON:
+bunx anti-slop-engineering hunter --json
 ```
 
-Follow the procedure in [install-anti-slop](skills/install-anti-slop/SKILL.md) to register the bundled plugins (`anti-slop` and optional `anti-slop-effect`) directly into `oxlint.config.ts` or `.oxlintrc.json`.
+Modular playbooks and architectural checklists are located in [`skills/paranoid-principal-architect/playbooks/`](skills/paranoid-principal-architect/playbooks/).
+
+---
+
+## Install Anti-Slop (Oxlint)
+
+Opinionated anti-slop Oxlint lint rules for TypeScript and JavaScript codebases. Catches runtime type assertion risks, unconstrained object parameters, type widening, and module mocking leaks at lint-time:
+
+```bash
+# 1. Install Oxlint plugin directly into your target repository (creates tools/oxlint/anti-slop/):
+bunx anti-slop-engineering install-oxlint
+# Or via npx:
+npx anti-slop-engineering install-oxlint
+```
+
+Follow the procedure in [install-anti-slop](skills/install-anti-slop/SKILL.md) to register the bundled plugins (`anti-slop` and optional `anti-slop-effect`) directly into `oxlint.config.ts` or `.oxlintrc.json`:
+
+```ts
+// oxlint.config.ts or .oxlintrc.json
+export default {
+  ignorePatterns: [
+    ".agent/**",
+    ".agents/**",
+    ".claude/**",
+    ".gemini/**",
+    "tools/oxlint/anti-slop/**"
+  ],
+  jsPlugins: [
+    { name: "anti-slop", specifier: "./tools/oxlint/anti-slop/index.ts" }
+  ],
+  rules: {
+    "anti-slop/no-chained-type-assertions": "error",
+    "anti-slop/no-conditional-empty-object-spread": "error",
+    "anti-slop/no-known-value-widening": "error",
+    "anti-slop/no-module-mocking": "error",
+    "anti-slop/no-object-parameters": "error",
+    "anti-slop/no-reflect-apply": "error",
+    "anti-slop/no-reflect-get": "error",
+    "anti-slop/no-runtime-typeof": "error",
+    "anti-slop/no-shape-in-symbol-names": "error",
+    "anti-slop/no-unknown-parameters": "error",
+    "anti-slop/no-unknown-returns": "error",
+    "anti-slop/no-unknown-type-aliases": "error",
+    "anti-slop/no-unsafe-dictionary-type": "error",
+    "anti-slop/no-widen-then-assert": "error",
+    "anti-slop/require-safety-comment-for-type-assertion": "error"
+  }
+};
+```
 
 ---
 

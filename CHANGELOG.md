@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-11-09
+
+### Added
+- **Install Anti-Slop (Oxlint) Skill & CLI Runner (`skills/install-anti-slop`):**
+  - Integrated 15 AST lint rules and optional Effect plugin catching runtime type assertion risks, unconstrained object parameters, type widening, and module mocking leaks at lint-time.
+  - Added CLI runner `bunx anti-slop-engineering install-oxlint [target]` (or `npx anti-slop-engineering install-oxlint`).
+  - Updated universal multi-agent installer (`install.sh`) to deploy `paranoid-principal-architect` and `install-anti-slop` across Claude, Gemini CLI, Codex, and Agent Kernel.
+- **Forensic Bug Hunter Scanner & Modular Playbooks:**
+  - Zero-trust forensic bug hunter static analysis scanner (`scripts/forensic_hunter.py` & CLI `anti-slop-engineering hunter --base HEAD --json`) across 9 application stacks.
+  - Modularized playbook suite in `skills/paranoid-principal-architect/playbooks/` covering architect guidelines, devops booby traps, and stack vulnerability prevention.
+
+## [1.4.0] - 2026-11-09
+
+### Added
+- **Paranoid Principal Architect Skill & Guard (`skills/paranoid-principal-architect`):**
+  - Day-one 10,000,000 concurrent user scale engineering principles and Active Battlefield zero-trust mindset.
+  - Zero-dependency JSON validator (`scripts/paranoid_guard.py` & CLI `anti-slop-engineering paranoid audit <file> --json`).
+  - Pre-mortem threat mitigation contracts, architectural evaluation scenarios, and hardened idempotent payment service example.
+  - Staging compiled native microservices in `dist/bin/`.
+
 ## [1.3.0] - 2026-11-02
 
 ### Added
