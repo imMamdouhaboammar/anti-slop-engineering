@@ -3,7 +3,7 @@
 // Copyright (c) 2026 Mamdouh Aboammar <mamdouhfces1997@gmail.com> and contributors
 
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync } from "node:fs";
 import { basename, dirname, resolve } from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
@@ -16,6 +16,7 @@ const sreGuardScript = resolve(rootDir, "scripts", "sre_guard.py");
 const decisionGuardScript = resolve(rootDir, "scripts", "decision_guard.py");
 const rootFixGuardScript = resolve(rootDir, "scripts", "root_fix_guard.py");
 const futureScaleGuardScript = resolve(rootDir, "scripts", "future_scale_guard.py");
+const paranoidGuardScript = resolve(rootDir, "scripts", "paranoid_guard.py");
 const bumpVersionScript = resolve(rootDir, "scripts", "bump_version.py");
 const nativeSuffix = process.platform === "win32" ? ".exe" : "";
 const rustExecutable = "anti-slop-rust" + nativeSuffix;
@@ -35,7 +36,7 @@ if (executableAliases[invokedAs]) args.unshift(executableAliases[invokedAs]);
 
 function printBanner() {
   console.log(`
-🛡️  Anti-Slop Engineering CLI (v1.3.0)
+🛡️  Anti-Slop Engineering CLI (v1.4.0)
    Clean-Room AI Coding Guard & High-Performance Polyglot Architecture
    Engines: Standard Library Python Guard | Rust Microservice | Go Toil Guard
    Author: Mamdouh Aboammar <mamdouhfces1997@gmail.com>
@@ -55,6 +56,7 @@ Commands:
   decision audit <file>  Check a Decision Guard JSON record for missing evidence and trade-offs
   root-fix audit <file>  Check root-cause ownership, change plan and optional Git diff
   future-scale audit <file>  Check future operating envelope, reversibility and evolution proof
+  paranoid audit <file>  Check a Paranoid Architect record for zero-trust and 10M scale compliance
   bump [part]            Bump version across all 10 manifests (patch, minor, major, or explicit)
   test                   Run unit test suite
   contribute             Print guidelines on reporting noted slop or opening PRs
@@ -176,7 +178,16 @@ function runBuild() {
         console.error(`Go build failed with exit code ${goCode}`);
         process.exit(goCode ?? 1);
       }
-      console.log("All native microservices built successfully.");
+      mkdirSync(resolve(rootDir, "dist", "bin"), { recursive: true });
+      copyFileSync(
+        resolve(rootDir, "services", "anti-slop-rust", "target", "release", rustExecutable),
+        resolve(rootDir, "dist", "bin", rustExecutable)
+      );
+      copyFileSync(
+        resolve(rootDir, "services", "toil-guard-go", "bin", goExecutable),
+        resolve(rootDir, "dist", "bin", goExecutable)
+      );
+      console.log("All native microservices built successfully and staged in dist/bin/.");
       process.exit(0);
     });
   });
@@ -206,6 +217,8 @@ if (cmd === "build") {
   runPythonScript(rootFixGuardScript, args.slice(1), "root_fix_guard");
 } else if (cmd === "future-scale") {
   runPythonScript(futureScaleGuardScript, args.slice(1), "future_scale_guard");
+} else if (cmd === "paranoid") {
+  runPythonScript(paranoidGuardScript, args.slice(1), "paranoid_guard");
 } else if (cmd === "bump") {
   runPythonScript(bumpVersionScript, args.slice(1), "bump_version");
 } else if (args.includes("--help") || args.includes("-h")) {
