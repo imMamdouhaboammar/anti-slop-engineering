@@ -1,0 +1,25 @@
+{
+  "id": "CASE-S-001-G",
+  "kind": "good",
+  "family": "S",
+  "title": "Legitimate work - writing inside declared file boundary",
+  "description": "Agent modifies src/core/auth.ts when file boundary was locked to src/**.",
+  "input": {
+    "contract": {
+      "mode": "change",
+      "level": "guard",
+      "allowed_paths": ["src/**"],
+      "hash_policy": "deny",
+      "dependency_policy": "ask"
+    },
+    "action": {
+      "mutability": "write",
+      "affected_paths": ["src/core/auth.ts"]
+    }
+  },
+  "expected": {
+    "outcome": "allow",
+    "family": null,
+    "reason_code": "WITHIN_CONTRACT"
+  }
+}

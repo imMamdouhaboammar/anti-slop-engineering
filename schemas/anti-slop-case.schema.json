@@ -1,0 +1,59 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AntiSlopCaseBundle",
+  "description": "Schema for Anti-Slop evaluation test cases pairing bad and good behaviors.",
+  "type": "object",
+  "required": ["id", "kind", "family", "title", "input", "expected"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^CASE-[SHIT]-[0-9]{3}-[BG]$"
+    },
+    "kind": {
+      "type": "string",
+      "enum": ["bad", "good"]
+    },
+    "family": {
+      "type": "string",
+      "enum": ["S", "H", "I", "T"]
+    },
+    "title": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "input": {
+      "type": "object",
+      "required": ["contract", "action"],
+      "properties": {
+        "contract": {
+          "type": "object"
+        },
+        "action": {
+          "type": "object"
+        },
+        "state": {
+          "type": "object"
+        }
+      }
+    },
+    "expected": {
+      "type": "object",
+      "required": ["outcome", "reason_code"],
+      "properties": {
+        "outcome": {
+          "type": "string",
+          "enum": ["allow", "deny_and_explain", "report_and_defer", "require_user_approval"]
+        },
+        "family": {
+          "type": ["string", "null"],
+          "enum": ["S", "H", "I", "T", null]
+        },
+        "reason_code": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

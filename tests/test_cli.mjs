@@ -104,3 +104,17 @@ test("install-oxlint command copies the bundled anti-slop plugin to target direc
     rmSync(tempDir, { recursive: true, force: true });
   }
 });
+
+test("cases command runs the 16 declarative evaluation cases cleanly", () => {
+  const result = invoke("anti-slop-engineering", ["cases"]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /All Anti-Slop evaluation cases passed successfully!/);
+});
+
+test("exec command routes to the in-flight execution guard status", () => {
+  const result = invoke("exec-guard", ["status"]);
+  assert.equal(result.status, 0, result.stderr);
+  const output = JSON.parse(result.stdout);
+  assert.ok(output.contract);
+  assert.ok(typeof output.active_agents === "number");
+});

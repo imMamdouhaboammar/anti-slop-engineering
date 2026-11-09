@@ -1,0 +1,25 @@
+{
+  "id": "CASE-T-001-G",
+  "kind": "good",
+  "family": "T",
+  "title": "Proven read-only command in review mode",
+  "description": "Agent executes git status with proven read mutability during review.",
+  "input": {
+    "contract": {
+      "mode": "review",
+      "level": "guard",
+      "hash_policy": "deny",
+      "dependency_policy": "ask"
+    },
+    "action": {
+      "tool": "run_command",
+      "command": "git status",
+      "mutability": "read"
+    }
+  },
+  "expected": {
+    "outcome": "allow",
+    "family": null,
+    "reason_code": "WITHIN_CONTRACT"
+  }
+}

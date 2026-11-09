@@ -18,6 +18,8 @@ const rootFixGuardScript = resolve(rootDir, "scripts", "root_fix_guard.py");
 const futureScaleGuardScript = resolve(rootDir, "scripts", "future_scale_guard.py");
 const paranoidGuardScript = resolve(rootDir, "scripts", "paranoid_guard.py");
 const forensicHunterScript = resolve(rootDir, "scripts", "forensic_hunter.py");
+const execGuardScript = resolve(rootDir, "scripts", "exec_guard.py");
+const runCasesScript = resolve(rootDir, "scripts", "run_cases.py");
 const bumpVersionScript = resolve(rootDir, "scripts", "bump_version.py");
 const installOxlintScript = resolve(rootDir, "skills", "install-anti-slop", "scripts", "install.mjs");
 const nativeSuffix = process.platform === "win32" ? ".exe" : "";
@@ -38,6 +40,8 @@ const executableAliases = {
   "toil-guard": "toil",
   "forensic-hunter": "hunter",
   "forensic": "hunter",
+  "exec-guard": "exec",
+  "run-cases": "cases",
 };
 const args = process.argv.slice(2);
 if (executableAliases[invokedAs]) args.unshift(executableAliases[invokedAs]);
@@ -66,6 +70,8 @@ Commands:
   future-scale audit <file>  Check future operating envelope, reversibility and evolution proof
   paranoid audit <file>  Check a Paranoid Architect record for zero-trust and 10M scale compliance
   hunter, forensic       Run Zero-Trust Forensic Bug Hunter static scanner across 9 stacks
+  exec, exec-guard       Run in-flight Execution Guard (PreToolUse interceptor & directive controller)
+  cases, run-cases       Run declarative pairwise evaluation cases (16 SHIT/Anti-Slop test pairs)
   install-oxlint         Install bundled Oxlint anti-slop plugin into target repo
   bump [part]            Bump version across all 10 manifests (patch, minor, major, or explicit)
   test                   Run unit test suite
@@ -231,6 +237,10 @@ if (cmd === "build") {
   runPythonScript(paranoidGuardScript, args.slice(1), "paranoid_guard");
 } else if (cmd === "hunter" || cmd === "forensic" || cmd === "forensic-hunter") {
   runPythonScript(forensicHunterScript, args.slice(1), "forensic_hunter");
+} else if (cmd === "exec" || cmd === "exec-guard") {
+  runPythonScript(execGuardScript, args.slice(1), "exec_guard");
+} else if (cmd === "cases" || cmd === "run-cases") {
+  runPythonScript(runCasesScript, args.slice(1), "run_cases");
 } else if (cmd === "install-oxlint" || cmd === "install-anti-slop") {
   if (!existsSync(installOxlintScript)) {
     console.error(`Error: install script not found at ${installOxlintScript}`);

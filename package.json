@@ -9,7 +9,8 @@
     "diff-guard": "bin/cli.js",
     "sre-guard": "bin/cli.js",
     "rust-guard": "bin/cli.js",
-    "toil-guard": "bin/cli.js"
+    "toil-guard": "bin/cli.js",
+    "exec-guard": "bin/cli.js"
   },
   "repository": {
     "type": "git",
@@ -48,6 +49,8 @@
     "guard": "bun bin/cli.js --base HEAD",
     "sre": "bun bin/cli.js sre",
     "sre-guard": "bun bin/cli.js sre",
+    "exec": "bun bin/cli.js exec",
+    "cases": "bun bin/cli.js cases",
     "test": "python3 -m unittest discover -s tests -v",
     "test-all": "make test-all",
     "bump": "python3 scripts/bump_version.py",

@@ -1,0 +1,25 @@
+{
+  "id": "CASE-I-002-G",
+  "kind": "good",
+  "family": "I",
+  "title": "Adherence to intent - read-only shell command in answer mode",
+  "description": "Agent executes git diff in answer mode.",
+  "input": {
+    "contract": {
+      "mode": "answer",
+      "level": "guard",
+      "hash_policy": "deny",
+      "dependency_policy": "ask"
+    },
+    "action": {
+      "tool": "run_command",
+      "command": "git diff HEAD~1",
+      "mutability": "read"
+    }
+  },
+  "expected": {
+    "outcome": "allow",
+    "family": null,
+    "reason_code": "WITHIN_CONTRACT"
+  }
+}

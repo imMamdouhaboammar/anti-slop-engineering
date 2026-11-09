@@ -126,6 +126,11 @@ bunx anti-slop-engineering toil stream
 # Zero-dependency Python Core Fallback:
 python scripts/diff_guard.py --base HEAD --json
 python scripts/sre_guard.py --base HEAD --strict --json
+
+# In-Flight Real-Time Action Execution Guard:
+bunx anti-slop-engineering exec status
+bunx anti-slop-engineering exec check-action --tool <tool> --args '<json>'
+bunx anti-slop-engineering cases
 ```
 
 Replace `origin/main` with your actual target branch; if unavailable, compare with a known commit using `--base HEAD`. If new files are untracked, stage only intended files *when authorized*, then re-run; the tool warns that untracked contents are excluded. **Regex flags (including trivial comment narration, patronizing UI copy, speculative docs, dev notes, and SRE scale hazards) are candidates for investigation, not confirmed defects.** The tool neither runs tests nor performs SAST.
@@ -170,6 +175,27 @@ Before proposing merge, report: intent, changed files, exact test evidence, base
 - Do not introduce speculative parameters (`_unused_param`, `future_kwargs`), dead feature toggles (`if False:`), or unreferenced extension points.
 - Do not duplicate domain invariants, validation rules, or error models across multiple modules; maintain a single authoritative source of truth.
 - Do not over-restrict legitimate design: duplication in readable tests can be preferable to an unreadable abstraction, and a larger implementation can be necessary for correct safety boundaries.
+
+## In-flight task directives and execution control
+
+Apply the Stop Ladder to balance task responsibility and boundary enforcement:
+1. Understand current responsibility (explicit contract, affected callers, data migrations).
+2. Start with a direct solution (existing codebase helpers, platform built-ins, standard library).
+3. Expand only to close concrete gaps (supported inputs, real obligations).
+4. Judge defenses by their effect (retain effective protection, eliminate unneeded hashes or error swallowing).
+5. Verify the result and finish (no circular verification or redundant multi-agent loops).
+
+Directive syntax:
+```text
+$anti-slop [mode] [level] [files=...] [hash=...] [deps=...] [agents=N] -- [task]
+```
+
+- `mode`: `change` (default write), `review` (read-only), `answer` (read-only), `monitor` (read-only), `unconfirmed` (passive).
+- `level`: `guard` (enforcing block), `watch` (advisory warning), `off` (disabled).
+- `files=path1|path2|dir/**`: file boundary lock. Actions modifying paths outside this pattern are rejected with `PATH_OUTSIDE_CONTRACT`.
+- `hash=deny|ask|allow`: cryptographic checksum and hash policy.
+- `deps=deny|ask|allow`: dependency installation policy. When `deps=ask`, generates single-use runner tickets.
+- `agents=N`: concurrent subagent budget.
 
 ## Deliverable contract
 
