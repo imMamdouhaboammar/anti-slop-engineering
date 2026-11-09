@@ -24,6 +24,8 @@
     "bin",
     "dist",
     "scripts",
+    "cases",
+    "schemas",
     "skills",
     "services/anti-slop-rust/Cargo.toml",
     "services/anti-slop-rust/Cargo.lock",

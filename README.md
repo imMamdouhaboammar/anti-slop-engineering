@@ -12,7 +12,7 @@
 [![Skills.sh](https://img.shields.io/badge/Skills.sh-Compatible-000000?style=flat-square&logo=vercel&logoColor=white)](https://skills.sh)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-Certified%20Skill-D97706?style=flat-square&logo=anthropic&logoColor=white)](https://claude.ai)
 
-[Install](#install) · [What it catches](#what-it-catches) · [Engines](#engines) · [Decision Guard](#decision-guard) · [Root-Fix Gate](#root-fix-gate) · [Future-Scale Gate](#future-scale-gate) · [Paranoid Architect](#the-paranoid-principal-architect) · [Forensic Bug Hunter](#forensic-bug-hunter-scanner) · [Install Anti-Slop](#install-anti-slop-oxlint) · [Agent skill](#agent-skill) · [Anti-pattern catalog](#anti-pattern-catalog-217-patterns)
+[Install](#install) · [What it catches](#what-it-catches) · [Engines](#engines) · [Decision Guard](#decision-guard) · [Root-Fix Gate](#root-fix-gate) · [Future-Scale Gate](#future-scale-gate) · [Paranoid Architect](#the-paranoid-principal-architect) · [Forensic Bug Hunter](#forensic-bug-hunter-scanner) · [Execution Guard](#in-flight-execution-guard) · [Install Anti-Slop](#install-anti-slop-oxlint) · [Agent skill](#agent-skill) · [Anti-pattern catalog](#anti-pattern-catalog-217-patterns)
 
 </div>
 
@@ -346,6 +346,32 @@ export default {
     "anti-slop/require-safety-comment-for-type-assertion": "error"
   }
 };
+```
+
+---
+
+## In-Flight Execution Guard
+
+The real-time execution guard interceptor enforces boundaries before agent actions run. Inspired by Stop-That-Shit boundary control, it intercepts PreToolUse actions, parses active directives, gates unauthorized file mutations, blocks unverified dependency creep, caps concurrent subagent fanout, and evaluates declarative pairwise test cases:
+
+| Feature | Enforcement |
+| --- | --- |
+| **Directive Parser** | `$anti-slop [mode] [level] [files=...] [hash=...] [deps=...] [agents=N] -- [task]` |
+| **File Boundary Lock** | Rejects edits outside declared contract paths (`PATH_OUTSIDE_CONTRACT`) |
+| **Read-Only Mode Gate** | Blocks mutating tools (`write_file`, `edit_file`, mutating shell commands) in `review`/`answer`/`monitor` modes |
+| **Dependency Gate** | Flags unapproved package installations; issues single-use runner tickets when `deps=ask` |
+| **Subagent Concurrency** | Halts subagent invocations when `active_subagents >= agents` budget |
+| **Pairwise Case Runner** | 16 declarative Good/Bad test cases verifying SHIT boundary invariants |
+
+```bash
+# Check guard status & active directives:
+bunx anti-slop-engineering exec status
+
+# Evaluate an action against active contract:
+bunx anti-slop-engineering exec check-action --tool edit_file --args '{"Path": "unauthorized.ts"}'
+
+# Run declarative pairwise evaluation cases (16 cases across H, I, S, T):
+bunx anti-slop-engineering cases
 ```
 
 ---
