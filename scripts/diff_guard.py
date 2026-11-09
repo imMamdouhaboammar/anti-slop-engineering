@@ -13,6 +13,8 @@ import sre_compile
 import subprocess
 import sys
 
+__version__ = '1.6.0'
+
 
 PATTERNS = [
     ('SKIPPED_TEST', 'blocker', r'(?i)(?:@pytest\.mark\.(?:skip|xfail)|\b(?:it|test|describe)\.skip\s*\(|\b(?:xit|xdescribe)\s*\(|@Disabled\b|\bpytest\.skip\s*\(|\bskipTest\s*\()'),
@@ -197,6 +199,7 @@ def scan(repo, base, max_lines=400):
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument('--version', action='version', version=f'%(prog)s {__version__}')
     p.add_argument('--repo', default='.', help='Path to Git repository')
     p.add_argument('--base', default='HEAD', help='Existing commit to compare against, ideally merge-base with target branch')
     p.add_argument('--json', action='store_true', help='Machine-readable JSON output')

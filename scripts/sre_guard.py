@@ -23,6 +23,8 @@ import sre_compile
 import subprocess
 import sys
 
+__version__ = '1.6.0'
+
 # File types subject to SRE code analysis
 CODE_EXTENSIONS = {
     '.py', '.ts', '.tsx', '.js', '.jsx', '.go', '.rs',
@@ -452,6 +454,7 @@ def main():
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
+    p.add_argument('--version', action='version', version=f'%(prog)s {__version__}')
     p.add_argument('--repo', default='.', help='Path to Git repository (default: current directory)')
     p.add_argument('--base', help='Git base commit/branch to analyze diff against (e.g. HEAD, origin/main)')
     p.add_argument('--files', nargs='*', help='Explicit file paths or directories to analyze')

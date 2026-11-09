@@ -3,7 +3,7 @@
 // Copyright (c) 2026 Mamdouh Aboammar <mamdouhfces1997@gmail.com> and contributors
 
 import { spawn } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { basename, dirname, resolve } from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
@@ -11,6 +11,9 @@ import { fileURLToPath } from "node:url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const rootDir = resolve(__dirname, "..");
+const pkgPath = resolve(rootDir, "package.json");
+const pkg = existsSync(pkgPath) ? JSON.parse(readFileSync(pkgPath, "utf8")) : {};
+const cliVersion = pkg.version || "1.6.0";
 const diffGuardScript = resolve(rootDir, "scripts", "diff_guard.py");
 const sreGuardScript = resolve(rootDir, "scripts", "sre_guard.py");
 const decisionGuardScript = resolve(rootDir, "scripts", "decision_guard.py");
@@ -210,6 +213,11 @@ function runBuild() {
 }
 
 const cmd = args[0];
+
+if (args.includes("--version") || args.includes("-v") || cmd === "version") {
+  console.log(cliVersion);
+  process.exit(0);
+}
 
 if (cmd === "build") {
   runBuild();
