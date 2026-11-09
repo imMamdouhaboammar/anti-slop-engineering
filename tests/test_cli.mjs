@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { resolve } from "node:path";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
 
@@ -88,4 +90,17 @@ test("hunter command routes to the zero-trust forensic bug hunter", () => {
   const output = JSON.parse(result.stdout);
   assert.ok(output.verdict);
   assert.ok(typeof output.total_findings === "number");
+});
+
+test("install-oxlint command copies the bundled anti-slop plugin to target directory", () => {
+  const tempDir = mkdtempSync(join(tmpdir(), "oxlint-test-"));
+  try {
+    const target = join(tempDir, "tools/oxlint/anti-slop");
+    const result = invoke("anti-slop-engineering", ["install-oxlint", target]);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /Copied the anti-slop plugin to/);
+    assert.ok(existsSync(join(target, "index.ts")));
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
 });
