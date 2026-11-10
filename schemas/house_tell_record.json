@@ -1,0 +1,130 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "HouseTellRecord",
+  "description": "Schema for physical Gate 0 commit-sheet, agent house-tell breaking, and category reflex inversion audit findings",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "timestamp",
+    "verdict",
+    "commit_sheet_path",
+    "signature_peak",
+    "color_tier",
+    "target_lightness",
+    "contrast_axis",
+    "grid_break",
+    "motion_budget",
+    "category_reflex",
+    "house_tells_broken",
+    "findings_count",
+    "findings"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "enum": ["1.0.0"]
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "verdict": {
+      "type": "string",
+      "enum": ["PROCEED", "REJECT", "WARNING"]
+    },
+    "commit_sheet_path": {
+      "type": "string"
+    },
+    "commit_sheet_hash": {
+      "type": "string"
+    },
+    "signature_peak": {
+      "type": "string"
+    },
+    "color_tier": {
+      "type": "string",
+      "enum": ["RESTRAINED", "COMMITTED", "FULL_PALETTE", "DRENCHED"]
+    },
+    "target_lightness": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "contrast_axis": {
+      "type": "string"
+    },
+    "grid_break": {
+      "type": "string"
+    },
+    "motion_budget": {
+      "type": "array",
+      "items": { "type": "string" },
+      "maxItems": 3
+    },
+    "category_reflex": {
+      "type": "object",
+      "required": ["first_order", "second_order", "chosen_deviation"],
+      "properties": {
+        "first_order": { "type": "string" },
+        "second_order": { "type": "string" },
+        "chosen_deviation": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "house_tells_broken": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["tell", "replacement"],
+        "properties": {
+          "tell": { "type": "string" },
+          "replacement": { "type": "string" }
+        },
+        "additionalProperties": false
+      },
+      "minItems": 2
+    },
+    "findings_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "file",
+          "line",
+          "class",
+          "severity",
+          "evidence",
+          "recommendation"
+        ],
+        "properties": {
+          "id": { "type": "string" },
+          "file": { "type": "string" },
+          "line": { "type": "integer", "minimum": 1 },
+          "class": {
+            "type": "string",
+            "enum": [
+              "MISSING_COMMIT_SHEET",
+              "GENERIC_COMMITMENT_TRUISM",
+              "INSUFFICIENT_HOUSE_TELLS_BROKEN",
+              "CATEGORY_REFLEX_COLLAPSE",
+              "MOTION_BUDGET_OVERFLOW"
+            ]
+          },
+          "severity": {
+            "type": "string",
+            "enum": ["BLOCKING", "WARNING", "INFORMATIONAL"]
+          },
+          "evidence": { "type": "string" },
+          "recommendation": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

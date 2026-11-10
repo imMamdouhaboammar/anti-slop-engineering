@@ -1,0 +1,9 @@
+interface:
+  display_name: "API Contract Governor"
+  short_description: "Microsoft TypeScript & Stripe DX API and contract governor"
+  default_prompt: "Review or design this SDK, CLI, or module boundary for Pit of Success defaults, discriminated unions, progressive disclosure, and RFC 9457 errors."
+policy:
+  products:
+    - CHAT
+    - CODEX
+  allow_implicit_invocation: true

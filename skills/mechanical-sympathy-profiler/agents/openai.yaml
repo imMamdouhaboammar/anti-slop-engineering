@@ -1,0 +1,9 @@
+interface:
+  display_name: "Mechanical Sympathy & Empirical Profiler"
+  short_description: "Meta/Google systems profiling, EXPLAIN ANALYZE BUFFERS, P99/allocation benchmarks, streaming, and I/O batching"
+  default_prompt: "Profile and optimize this path using Meta/Google Systems Mechanical Sympathy: forbid blind caching or unmeasured changes, capture baseline and post-change EXPLAIN (ANALYZE, BUFFERS) or P99/allocation micro-benchmarks, stream large payloads in bounded RAM, eliminate hot-loop GC allocations, and batch/pipeline all I/O out of loops."
+policy:
+  products:
+    - CHAT
+    - CODEX
+  allow_implicit_invocation: true

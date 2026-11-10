@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0.0",
+  "target_invariant_id": "INV-PARANOID-IDEMPOTENCY",
+  "action": "supersede",
+  "justification": "Migrating checkout mutation from Redis-backed idempotency tokens to database native conditional unique constraints on (org_id, client_request_token). This eliminates Redis as a single point of failure while preserving strict at-most-once execution.",
+  "trade_off_delta": {
+    "gain": "Removes external Redis infrastructure dependency and 12ms network round-trip from the critical path.",
+    "risk": "Requires database connection pool to handle duplicate constraint violation errors cleanly without connection churn."
+  },
+  "authority": {
+    "author": "Mamdouh Aboammar",
+    "pr_or_issue": "PR #108 (feat: native db idempotency)",
+    "approved_at": "2026-11-10T18:00:00Z"
+  },
+  "verification_proof": "Executed 100,000 concurrent duplicate request benchmark against PostgreSQL cluster. Verified zero duplicate orders and 0 error leaks under high concurrency."
+}

@@ -20,11 +20,40 @@ const decisionGuardScript = resolve(rootDir, "scripts", "decision_guard.py");
 const rootFixGuardScript = resolve(rootDir, "scripts", "root_fix_guard.py");
 const futureScaleGuardScript = resolve(rootDir, "scripts", "future_scale_guard.py");
 const paranoidGuardScript = resolve(rootDir, "scripts", "paranoid_guard.py");
+const perfGuardScript = resolve(rootDir, "scripts", "perf_guard.py");
+const rolloutGuardScript = resolve(rootDir, "scripts", "rollout_guard.py");
+const simulationGuardScript = resolve(rootDir, "scripts", "simulation_guard.py");
+const privacyGuardScript = resolve(rootDir, "scripts", "privacy_guard.py");
+const apiContractGuardScript = resolve(rootDir, "scripts", "api_contract_guard.py");
+const appleCraftGuardScript = resolve(rootDir, "scripts", "apple_craft_guard.py");
+const observabilityGuardScript = resolve(rootDir, "scripts", "observability_guard.py");
 const forensicHunterScript = resolve(rootDir, "scripts", "forensic_hunter.py");
 const execGuardScript = resolve(rootDir, "scripts", "exec_guard.py");
 const runCasesScript = resolve(rootDir, "scripts", "run_cases.py");
 const bumpVersionScript = resolve(rootDir, "scripts", "bump_version.py");
+const astSlopGuardScript = resolve(rootDir, "scripts", "ast_slop_guard.py");
+const contrastGuardScript = resolve(rootDir, "scripts", "contrast_guard.py");
+const prBoundaryGuardScript = resolve(rootDir, "scripts", "pr_boundary_guard.py");
+const honeypotTrapGuardScript = resolve(rootDir, "scripts", "honeypot_trap_guard.py");
+const commentBudgetGuardScript = resolve(rootDir, "scripts", "comment_budget_guard.py");
+const attentionGuardScript = resolve(rootDir, "scripts", "attention_guard.py");
+const invariantStewardScript = resolve(rootDir, "scripts", "invariant_steward_guard.py");
+const demockGuardScript = resolve(rootDir, "scripts", "demock_guard.py");
+const mandelaGuardScript = resolve(rootDir, "scripts", "mandela_guard.py");
+const reductionGuardScript = resolve(rootDir, "scripts", "reduction_guard.py");
+const re0HandoffGuardScript = resolve(rootDir, "scripts", "re0_handoff_guard.py");
+const backpropGuardScript = resolve(rootDir, "scripts", "backprop_guard.py");
+const systemDriftGuardScript = resolve(rootDir, "scripts", "system_drift_guard.py");
+const chromaDriftGuardScript = resolve(rootDir, "scripts", "chroma_drift_guard.py");
+const houseTellGuardScript = resolve(rootDir, "scripts", "house_tell_guard.py");
+const motionRuntimeGuardScript = resolve(rootDir, "scripts", "motion_runtime_guard.py");
+const assetProvenanceGuardScript = resolve(rootDir, "scripts", "asset_provenance_guard.py");
+const styleseedGuardScript = resolve(rootDir, "scripts", "styleseed_guard.py");
+const tagoreGuardScript = resolve(rootDir, "scripts", "tagore_guard.py");
+const auditRunnerScript = resolve(rootDir, "scripts", "audit_runner.py");
+const installerScript = resolve(rootDir, "scripts", "installer.mjs");
 const installOxlintScript = resolve(rootDir, "skills", "install-anti-slop", "scripts", "install.mjs");
+const updateOxlintScript = resolve(rootDir, "skills", "install-anti-slop", "scripts", "update.mjs");
 const nativeSuffix = process.platform === "win32" ? ".exe" : "";
 const rustExecutable = "anti-slop-rust" + nativeSuffix;
 const goExecutable = "toil-guard" + nativeSuffix;
@@ -41,10 +70,105 @@ const executableAliases = {
   "sre-guard": "sre",
   "rust-guard": "rust",
   "toil-guard": "toil",
+  "paranoid-guard": "paranoid",
+  "perf-guard": "perf",
+  "rollout-guard": "rollout",
+  "choreographer": "rollout",
+  "sim-guard": "sim",
+  "simulation-guard": "sim",
+  "dst-guard": "sim",
+  "privacy-guard": "privacy",
+  "data-lineage-guard": "privacy",
+  "contract-guard": "contract",
+  "api-contract": "contract",
+  "contract": "contract",
+  "ergonomics": "contract",
+  "apple-craft": "apple-craft",
+  "apple-craft-guard": "apple-craft",
+  "interaction-physics": "apple-craft",
+  "frame-budget": "apple-craft",
+  "frame-budget-guard": "apple-craft",
+  "observability": "observability",
+  "observability-guard": "observability",
+  "slo": "observability",
+  "slo-guard": "observability",
+  "monarch": "observability",
+  "dapper": "observability",
   "forensic-hunter": "hunter",
   "forensic": "hunter",
   "exec-guard": "exec",
   "run-cases": "cases",
+  "ast-guard": "ast",
+  "ast-slop": "ast",
+  "ts-slop": "ast",
+  "contrast-guard": "contrast",
+  "contrast": "contrast",
+  "pr-guard": "pr-guard",
+  "pr-boundary": "pr-guard",
+  "pr-check": "pr-guard",
+  "honeypot-guard": "honeypot",
+  "honeypot": "honeypot",
+  "canary": "honeypot",
+  "canary-guard": "honeypot",
+  "comment-guard": "comment-guard",
+  "comment-budget": "comment-guard",
+  "ccr": "comment-guard",
+  "attention": "attention",
+  "attention-guard": "attention",
+  "cognitive": "attention",
+  "scannability": "attention",
+  "focus": "attention",
+  "steward": "steward",
+  "invariant": "steward",
+  "invariant-steward": "steward",
+  "repo-memory": "steward",
+  "demock": "demock",
+  "demock-guard": "demock",
+  "mandela": "mandela",
+  "mandela-guard": "mandela",
+  "reduction": "reduction",
+  "elon": "reduction",
+  "re0-handoff": "re0-handoff",
+  "state-note": "re0-handoff",
+  "shower-test": "re0-handoff",
+  "backprop": "backprop",
+  "backprop-guard": "backprop",
+  "system-drift": "system-drift",
+  "systemscan": "system-drift",
+  "drift-guard": "system-drift",
+  "variant-budget": "system-drift",
+  "chroma-drift": "chroma-drift",
+  "chromadiff": "chroma-drift",
+  "chroma": "chroma-drift",
+  "aesthetic-drift": "chroma-drift",
+  "house-tell": "house-tell",
+  "commit-sheet": "house-tell",
+  "tell-guard": "house-tell",
+  "reflex-guard": "house-tell",
+  "motion-runtime": "motion-runtime",
+  "motionqa": "motion-runtime",
+  "runtime-motion": "motion-runtime",
+  "fillrate": "motion-runtime",
+  "asset-provenance": "asset-provenance",
+  "provenance": "asset-provenance",
+  "asset-guard": "asset-provenance",
+  "source-ledger": "asset-provenance",
+  "styleseed": "styleseed",
+  "styleseed-guard": "styleseed",
+  "styleseed-engine": "styleseed",
+  "tagore": "tagore",
+  "tagore-guard": "tagore",
+  "discourse": "tagore",
+  "deslop-prose": "tagore",
+  "prose-guard": "tagore",
+  "humanize": "tagore",
+  "audit-guard": "audit",
+  "audit": "audit",
+  "installer": "install",
+  "setup": "install",
+  "ruff": "ruff",
+  "clippy": "clippy",
+  "lint-rust": "clippy",
 };
 const args = process.argv.slice(2);
 if (executableAliases[invokedAs]) args.unshift(executableAliases[invokedAs]);
@@ -72,11 +196,45 @@ Commands:
   root-fix audit <file>  Check root-cause ownership, change plan and optional Git diff
   future-scale audit <file>  Check future operating envelope, reversibility and evolution proof
   paranoid audit <file>  Check a Paranoid Architect record for zero-trust and 10M scale compliance
+  perf audit <file>      Check a Mechanical Sympathy & Perf Gate record for hardware and 120Hz compliance
+  rollout audit <file>   Check a Rollout Choreographer record for wire compatibility and canary safety
+  sim audit <file>       Check Deterministic Simulation & Property record for MSR & AWS testing rigor
+  privacy audit <file>   Check Privacy & Data Lineage record for Apple Privacy & Meta Infra compliance
+  contract audit <file>  Check API Contract & Ergonomics record for TypeScript & Stripe DX compliance
+  apple-craft audit <file> Check Apple Craft & Interaction Physics record for 120Hz, CLS=0 and state matrix
+  observability audit <file> Check Observability & SLO record for Google Monarch & Dapper compliance
   hunter, forensic       Run Zero-Trust Forensic Bug Hunter static scanner across 9 stacks
   exec, exec-guard       Run in-flight Execution Guard (PreToolUse interceptor & directive controller)
   cases, run-cases       Run declarative pairwise evaluation cases (16 SHIT/Anti-Slop test pairs)
+  ast, ast-slop          Run AST & Type Slop Guard (chained casts, empty spreads, reducer copies, module mocks)
+  contrast, contrast-guard Evaluate WCAG 2.2 color contrast ratios or scan files for low-contrast pairs
+  pr-guard, pr-check     Run PR Boundary & Git Topology Guard (provenance, templates, branch hygiene)
+  honeypot, canary       Run Honeypot Trap & Prompt Canary Guard (detect ungrounded bots & LLM traps)
+  comment-guard, ccr     Run Comment Budget Guard (Comment-to-Code Ratio & syntax narration slop)
+  attention, cognitive   Run Cognitive Bandwidth & Attention Economy Guard (Scannability, Blocking Asks, Purity)
+  steward, invariant     Run Repo Memory & Invariant Steward (sync ledger, audit drift, validate triggers)
+  demock, demock-guard   Run Demock & Silent-Fallback Guard (test doubles in prod, swallowed fallbacks, SQLite bypass)
+  mandela, mandela-guard Run Mandela Test-Oracle Guard (8 leakage patterns, tautologies, circular mocks)
+  reduction, elon        Run Musk 5-Step Reduction Governor & Add-Back Ledger (10% calibration gate)
+  re0-handoff, state-note Run Re0 State-Note & Shower-Test Cold-Read Guard (NVIDIA 1500-token RSI context reset)
+  backprop, backprop-guard Run Upstream Rule & Invariant Backpropagation Guard (error-to-rule learning)
+  system-drift, systemscan Run Design System Drift & Variant Budget Guard (crawls routes, variant caps, focus-rings)
+  chroma-drift, chromadiff Run Chromatic Saturation Drift & OKLCH Category Reflex Guard (cheerful drift, cream/gradient bands)
+  house-tell, commit-sheet Run Agent House-Tell & Triple-Reflex Inversion Guard (Gate 0 commit-sheet contract, tells broken)
+  motion-runtime, motionqa Run DPR-2 Runtime Motion & Fillrate Sentry (5.2MP retina, 4x CPU throttle, long-tasks, audio policy)
+  asset-provenance, provenance Run Asset Sourcing & License Provenance Ledger Guard (cryptographic SHA-256 & open-license ledger)
+  styleseed              Run StyleSeed Cognitive Grammar & Token Canon Guard (primitives, OKLCH, spatial inversion)
+  tagore, discourse      Run Tagore Engineering Discourse & Substance Guard (29 tells, 8-dim rubric, voice calibration)
+  audit                  Run unified multi-guard audit and generate numbered markdown dossier (anti-slop/audit-NNN.md)
+  mode [during|after|ask] Configure anti-slop execution mode (active inline vs post-hoc audit)
+  install, setup         Install anti-slop skills and pointer blocks across 14 AI coding agents
+  update                 Upgrade installed skills and refresh agent pointer blocks in one shot
+  ruff                   Run Ruff linter on Python codebase
+  oxlint                 Run Oxlint linter with configured anti-slop rules
+  clippy, lint-rust      Run Cargo Clippy linter on Rust engine (-D warnings)
   install-oxlint         Install bundled Oxlint anti-slop plugin into target repo
-  bump [part]            Bump version across all 10 manifests (patch, minor, major, or explicit)
+  update-oxlint          Reconcile and update vendored Oxlint anti-slop rules preserving local edits
+  bump [part]            Bump version across all 13 manifests (patch, minor, major, or explicit)
   test                   Run unit test suite
   contribute             Print guidelines on reporting noted slop or opening PRs
 
@@ -214,7 +372,7 @@ function runBuild() {
 
 const cmd = args[0];
 
-if (args.includes("--version") || args.includes("-v") || cmd === "version") {
+if (cmd === "--version" || cmd === "-v" || cmd === "version" || (args.length === 1 && (args[0] === "--version" || args[0] === "-v"))) {
   console.log(cliVersion);
   process.exit(0);
 }
@@ -243,12 +401,102 @@ if (cmd === "build") {
   runPythonScript(futureScaleGuardScript, args.slice(1), "future_scale_guard");
 } else if (cmd === "paranoid") {
   runPythonScript(paranoidGuardScript, args.slice(1), "paranoid_guard");
+} else if (cmd === "perf" || cmd === "perf-guard") {
+  runPythonScript(perfGuardScript, args.slice(1), "perf_guard");
+} else if (cmd === "rollout" || cmd === "rollout-guard" || cmd === "choreographer") {
+  runPythonScript(rolloutGuardScript, args.slice(1), "rollout_guard");
+} else if (cmd === "sim" || cmd === "simulation" || cmd === "dst" || cmd === "sim-guard") {
+  runPythonScript(simulationGuardScript, args.slice(1), "simulation_guard");
+} else if (cmd === "privacy" || cmd === "privacy-guard" || cmd === "data-lineage-guard") {
+  runPythonScript(privacyGuardScript, args.slice(1), "privacy_guard");
+} else if (cmd === "contract" || cmd === "api-contract" || cmd === "contract-guard" || cmd === "ergonomics") {
+  runPythonScript(apiContractGuardScript, args.slice(1), "api_contract_guard");
+} else if (cmd === "apple-craft" || cmd === "apple-craft-guard" || cmd === "interaction-physics" || cmd === "frame-budget" || cmd === "frame-budget-guard") {
+  runPythonScript(appleCraftGuardScript, args.slice(1), "apple_craft_guard");
+} else if (cmd === "observability" || cmd === "observability-guard" || cmd === "slo" || cmd === "slo-guard" || cmd === "monarch" || cmd === "dapper") {
+  runPythonScript(observabilityGuardScript, args.slice(1), "observability_guard");
 } else if (cmd === "hunter" || cmd === "forensic" || cmd === "forensic-hunter") {
   runPythonScript(forensicHunterScript, args.slice(1), "forensic_hunter");
 } else if (cmd === "exec" || cmd === "exec-guard") {
   runPythonScript(execGuardScript, args.slice(1), "exec_guard");
 } else if (cmd === "cases" || cmd === "run-cases") {
   runPythonScript(runCasesScript, args.slice(1), "run_cases");
+} else if (cmd === "ast" || cmd === "ast-slop" || cmd === "ts-slop") {
+  runPythonScript(astSlopGuardScript, args.slice(1), "ast_slop_guard");
+} else if (cmd === "contrast" || cmd === "contrast-guard") {
+  runPythonScript(contrastGuardScript, args.slice(1), "contrast_guard");
+} else if (cmd === "pr-guard" || cmd === "pr-boundary" || cmd === "pr-check") {
+  runPythonScript(prBoundaryGuardScript, args.slice(1), "pr_boundary_guard");
+} else if (cmd === "honeypot" || cmd === "honeypot-guard" || cmd === "canary") {
+  runPythonScript(honeypotTrapGuardScript, args.slice(1), "honeypot_trap_guard");
+} else if (cmd === "comment-guard" || cmd === "comment-budget" || cmd === "ccr") {
+  runPythonScript(commentBudgetGuardScript, args.slice(1), "comment_budget_guard");
+} else if (cmd === "attention" || cmd === "cognitive" || cmd === "scannability" || cmd === "focus" || cmd === "attention-guard") {
+  runPythonScript(attentionGuardScript, args.slice(1), "attention_guard");
+} else if (cmd === "steward" || cmd === "invariant" || cmd === "invariant-steward" || cmd === "repo-memory") {
+  runPythonScript(invariantStewardScript, args.slice(1), "invariant_steward_guard");
+} else if (cmd === "demock" || cmd === "demock-guard") {
+  runPythonScript(demockGuardScript, args.slice(1), "demock_guard");
+} else if (cmd === "mandela" || cmd === "mandela-guard") {
+  runPythonScript(mandelaGuardScript, args.slice(1), "mandela_guard");
+} else if (cmd === "reduction" || cmd === "elon") {
+  runPythonScript(reductionGuardScript, args.slice(1), "reduction_guard");
+} else if (cmd === "re0-handoff" || cmd === "state-note" || cmd === "shower-test") {
+  runPythonScript(re0HandoffGuardScript, args.slice(1), "re0_handoff_guard");
+} else if (cmd === "backprop" || cmd === "backprop-guard") {
+  runPythonScript(backpropGuardScript, args.slice(1), "backprop_guard");
+} else if (cmd === "system-drift" || cmd === "systemscan" || cmd === "drift-guard" || cmd === "variant-budget") {
+  runPythonScript(systemDriftGuardScript, args.slice(1), "system_drift_guard");
+} else if (cmd === "chroma-drift" || cmd === "chromadiff" || cmd === "chroma" || cmd === "aesthetic-drift") {
+  runPythonScript(chromaDriftGuardScript, args.slice(1), "chroma_drift_guard");
+} else if (cmd === "house-tell" || cmd === "commit-sheet" || cmd === "tell-guard" || cmd === "reflex-guard") {
+  runPythonScript(houseTellGuardScript, args.slice(1), "house_tell_guard");
+} else if (cmd === "motion-runtime" || cmd === "motionqa" || cmd === "runtime-motion" || cmd === "fillrate") {
+  runPythonScript(motionRuntimeGuardScript, args.slice(1), "motion_runtime_guard");
+} else if (cmd === "asset-provenance" || cmd === "provenance" || cmd === "asset-guard" || cmd === "source-ledger") {
+  runPythonScript(assetProvenanceGuardScript, args.slice(1), "asset_provenance_guard");
+} else if (cmd === "styleseed" || cmd === "styleseed-guard" || cmd === "styleseed-engine") {
+  runPythonScript(styleseedGuardScript, args.slice(1), "styleseed_guard");
+} else if (cmd === "tagore" || cmd === "tagore-guard" || cmd === "discourse" || cmd === "deslop-prose" || cmd === "humanize" || cmd === "prose") {
+  runPythonScript(tagoreGuardScript, args.slice(1), "tagore_guard");
+} else if (cmd === "audit") {
+  runPythonScript(auditRunnerScript, ["audit", ...args.slice(1)], "audit_runner");
+} else if (cmd === "mode") {
+  runPythonScript(auditRunnerScript, ["mode", ...args.slice(1)], "audit_runner");
+} else if (cmd === "install" || cmd === "setup") {
+  spawnProcess("node", [installerScript, ...args.slice(1)], "installer");
+} else if (cmd === "update") {
+  spawnProcess("node", [installerScript, "update", ...args.slice(1)], "installer");
+} else if (cmd === "ruff") {
+  const ruffArgs = args.slice(1);
+  if (ruffArgs.includes("--version") || ruffArgs.includes("-V")) {
+    spawnProcess("ruff", ["--version"], "ruff");
+  } else {
+    spawnProcess("ruff", ["check", ...(ruffArgs.length ? ruffArgs : ["."])], "ruff");
+  }
+} else if (cmd === "oxlint") {
+  const isBun = typeof process.versions.bun !== "undefined";
+  const runner = isBun ? "bunx" : "npx";
+  spawnProcess(runner, ["oxlint", ...args.slice(1)], "oxlint");
+} else if (cmd === "clippy" || cmd === "lint-rust") {
+  const rustDir = resolve(rootDir, "services", "anti-slop-rust");
+  const child = spawn("cargo", ["clippy", "--all-targets", "--all-features", "--", "-D", "warnings", ...args.slice(1)], {
+    cwd: rustDir,
+    stdio: "inherit",
+  });
+  child.on("error", (err) => {
+    console.error(`Failed to launch cargo clippy: ${err.message}`);
+    process.exit(1);
+  });
+  child.on("close", (code) => {
+    process.exit(code ?? 1);
+  });
+} else if (cmd === "update-oxlint") {
+  if (!existsSync(updateOxlintScript)) {
+    console.error(`Error: update script not found at ${updateOxlintScript}`);
+    process.exit(1);
+  }
+  spawnProcess("node", [updateOxlintScript, ...args.slice(1)], "update_oxlint");
 } else if (cmd === "install-oxlint" || cmd === "install-anti-slop") {
   if (!existsSync(installOxlintScript)) {
     console.error(`Error: install script not found at ${installOxlintScript}`);

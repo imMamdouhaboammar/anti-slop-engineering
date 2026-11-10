@@ -1,0 +1,95 @@
+{
+  "schema_version": "1.0",
+  "skill": "scientific-fault-isolation",
+  "status": "proposed_not_run",
+  "note": "Semantic behavioral evaluation cases following the BinEval / OmniSkill methodology. Verifies trigger detection, non-trigger boundary filtering, 3-hypothesis differential diagnosis, single discriminating probe design, binary search isolation (git bisect and layer halving), determinism pinning without sleep(), and handoff to root-fix-gate.",
+  "cases": [
+    {
+      "id": "intermittent-race-condition-differential-diagnosis",
+      "family": "differential-diagnosis-and-pinning",
+      "prompt": "Our checkout test `should prevent double wallet withdrawal` fails about 1 in 20 runs on CI with `Expected balance 0, received -50`. I tried adding `await new Promise(r => setTimeout(r, 200))` and `wallet?.balance ?? 0` in `WalletService.ts`, and it passed once locally, should I merge it?",
+      "expected": [
+        "Reject merging the `setTimeout(r, 200)` timing band-aid and `?.` symptom-masking edit",
+        "Mandate reverting the speculative production edits immediately",
+        "Formulate 3 mutually exclusive, falsifiable hypotheses (e.g. H1: TOCTOU concurrent read-modify-write race, H2: stale read-replica / cache state, H3: floating unawaited promise in test setup)",
+        "Design a single discriminating read-only probe to falsify 2 of the 3 hypotheses",
+        "Replace `setTimeout` with a deterministic rendezvous barrier (`Promise.withResolvers()` / `DeterministicBarrier`) so the test fails 100% of the time (RED) before applying an atomic compare-and-swap or row-lock fix",
+        "Require Red-Green-Revert verification and probe cleanup before completion"
+      ],
+      "forbidden": [
+        "Approve increasing the `setTimeout` from 200ms to 500ms to stabilize CI",
+        "Approve keeping `wallet?.balance ?? 0` without proving why wallet was undefined or negative",
+        "Mutate production logic before isolating the fault mechanism"
+      ]
+    },
+    {
+      "id": "commit-regression-automated-git-bisect",
+      "family": "binary-search-isolation",
+      "prompt": "PDF invoice rendering started throwing `Invalid font glyph table` sometime over the last 180 commits since release `v2.4.0`, and several intermediate commits on `main` had broken TypeScript builds. How should we find and fix the bug?",
+      "expected": [
+        "Forbid linearly reading 180 commits or guessing random changes in the PDF renderer",
+        "Prescribe automated `git bisect start HEAD v2.4.0` with `git bisect run /tmp/bisect-probe.sh` to isolate the regression in O(log2 180) ~= 8 steps",
+        "Place the bisect script outside the tracked working tree (`/tmp/`) so checkouts do not clobber it",
+        "Enforce exit code `125` (`git bisect skip`) when the TypeScript build fails so broken intermediate commits do not poison the binary search",
+        "Mandate `git bisect reset` once the first bad commit SHA is identified"
+      ],
+      "forbidden": [
+        "Return exit code `1` when `bun run build` fails inside the bisect runner script",
+        "Apply speculative font fallback patches before isolating the offending commit"
+      ]
+    },
+    {
+      "id": "flaky-timezone-and-random-seed-pinning",
+      "family": "determinism-pinning",
+      "prompt": "Our subscription renewal test `calculates pro-rata credit with jittered retry token` fails only late at night and on random runs. Fix the flaky test.",
+      "expected": [
+        "Identify the two unpinned sources of non-determinism: system wall-clock time (`new Date()` / local timezone vs UTC midnight boundary) and unseeded PRNG (`Math.random()`)",
+        "Formulate 3 falsifiable hypotheses covering UTC/local day truncation, PRNG boundary overflow, and token TTL edge conditions",
+        "Pin the clock at the exact midnight UTC discontinuity (`23:59:59.999Z`) and inject a deterministic PRNG seed so the failure reproduces 100% deterministically",
+        "Verify Red -> Green -> Revert (Red) after fixing the UTC boundary calculation"
+      ],
+      "forbidden": [
+        "Add `retry(3)` to the test runner to hide the flakiness",
+        "Relax the assertion tolerance (`toBeCloseTo` with a huge delta) without isolating the cause"
+      ]
+    },
+    {
+      "id": "pressure-test-shotgun-debugging-streak",
+      "family": "pressure-test-discipline",
+      "prompt": "We have an outage right now! The GraphQL `/orders` resolver is returning empty arrays for some enterprise tenants. Just try disabling the Redis cache, adding a `try/catch` fallback, and changing the SQL `LEFT JOIN` to `INNER JOIN` all in one commit so we can see if that fixes it!",
+      "expected": [
+        "Refuse to bundle three speculative production mutations (cache disable, catch-and-swallow, SQL join rewrite) into a shotgun commit",
+        "Explain that mutating multiple variables simultaneously destroys causal attribution and risks corrupting tenant order visibility",
+        "Formulate 3 falsifiable hypotheses (H1: Redis cache key omits `tenant_id`, H2: SQL join filter drops rows with NULL optional relation, H3: GraphQL DataLoader batch ordering mismatch)",
+        "Provide a single read-only discriminating probe at the midpoint boundary (comparing SQL row count vs DataLoader batch vs Redis payload for one affected tenant) that isolates the fault in under 60 seconds"
+      ],
+      "forbidden": [
+        "Comply and emit a diff that simultaneously disables Redis, changes the SQL join, and wraps the resolver in an empty `catch` returning `[]`"
+      ]
+    },
+    {
+      "id": "handoff-to-root-fix-gate-after-isolation",
+      "family": "skill-boundary-handoff",
+      "prompt": "We already ran our discriminating probe and proved with 100% certainty that `UserCheckoutController` normalizes `email.toLowerCase().trim()`, while `WebhookAccountController` and `AdminInviteController` write raw unnormalized uppercase emails directly into `users.email`. Which layer should own the normalization rule?",
+      "expected": [
+        "Recognize that the physical fault mechanism is already isolated and proven",
+        "Delegate / route to `root-fix-gate` to evaluate architectural layer ownership (identity domain service vs ORM entity vs database constraint) and consumer migration impact rather than re-running `git bisect` or differential diagnosis"
+      ],
+      "forbidden": [
+        "Demand a new 3-hypothesis `git bisect` investigation when the exact causal mechanism is already proven and the question is strictly architectural boundary ownership"
+      ]
+    },
+    {
+      "id": "non-trigger-obvious-syntax-compile-error",
+      "family": "non-trigger-boundary",
+      "prompt": "TypeScript compiler fails on line 14 of `utils/math.ts` with `TS2304: Cannot find name 'clmap'. Did you mean 'clamp'?`. Fix the typo.",
+      "expected": [
+        "Do not activate the 3-Hypothesis Differential Diagnosis or `git bisect` ceremony for a deterministic single-line compiler typo",
+        "Fix `clmap` to `clamp` directly and verify compilation"
+      ],
+      "forbidden": [
+        "Generate a 3-hypothesis differential diagnosis matrix and JSON fault-isolation record for a trivial compiler identifier typo"
+      ]
+    }
+  ]
+}

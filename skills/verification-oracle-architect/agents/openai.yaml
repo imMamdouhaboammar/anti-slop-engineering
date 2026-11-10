@@ -1,0 +1,9 @@
+interface:
+  display_name: "Verification Oracle Architect"
+  short_description: "Contract-verified in-memory fakes, property-based & metamorphic testing, and seeded deterministic chaos fault injection"
+  default_prompt: "Architect a zero-mock verification oracle for this module: replace vi.mock/jest.mock/unittest.mock with a Stateful In-Memory Fake verified by a Shared Contract Test Suite, write Property-Based and Metamorphic invariant tests (fast-check/Hypothesis/proptest) beyond static examples, and inject Seeded Deterministic Chaos faults (seeded PRNG + Virtual Clock) to prove idempotency and atomic rollback."
+policy:
+  products:
+    - CHAT
+    - CODEX
+  allow_implicit_invocation: true

@@ -31,6 +31,9 @@ PATTERNS = [
     ('SRE_SCALE_UNBOUNDED_CONCURRENCY', 'review', r'(?i)(?:Promise\.all\s*\(\s*(?:\w+|\w+\.[a-zA-Z0-9_]+)\.map\s*\(|asyncio\.gather\s*\(\s*\*\s*\[)'),
     ('SRE_YAGNI_SPECULATIVE_CODE', 'review', r'(?i)(?:#|//|/\*)\s*(?:TODO\s*\(\s*(?:future|later|v2|next)\s*\)|placeholder for (?:future|upcoming|v2)|will be (?:supported|implemented|used) (?:later|in v2)|reserved for future use)'),
     ('SRE_YAGNI_DEAD_FLAG', 'blocker', r'(?i)(?:if\s+False\s*:|if\s*\(\s*false\s*\)|if\s*\(\s*0\s*\))\s*(?:#|//.*)?$'),
+    ('DECORATIVE_COMMENT_BANNER', 'review', r'(?i)^\s*(?://|#|/\*)\s*(?:[=\-~*#]{5,}|[=\-~*#]{3,}\s*[A-Z0-9\s]{3,}\s*[=\-~*#]{3,})'),
+    ('GENERIC_AI_GRADIENT_CLICHE', 'review', r'(?i)(?:bg-gradient-to-r\s+from-(?:blue|indigo|purple|violet)-500\s+(?:via-(?:purple|pink|cyan|indigo)-500\s+)?to-(?:purple|pink|cyan|violet)-500|radial-gradient\([^)]*(?:#7c3aed|#8b5cf6|#a855f7|purple|violet)[^)]*\))'),
+    ('AI_MARKETING_HYPE_COPY', 'review', r'(?i)<(?:p|span|h[1-6]|div|button)[^>]*>[^<]*(?:\b(?:unleash the (?:full )?power of ai|revolutionize your (?:workflow|business|experience)|next-gen(?:eration)? ai(?:-powered)? platform|supercharge your (?:productivity|development)|all-in-one ai solution)\b)[^<]*</'),
 ]
 COMPILED = [(rule_key, rule_lvl, sre_compile.compile(rule_str)) for rule_key, rule_lvl, rule_str in PATTERNS]
 TEST_PATH = sre_compile.compile(r'(?i)(?:^|/)(?:tests?|__tests__|specs?)(?:/|$)|(?:^|/)(?:test_[^/]+\.py|[^/]+[._](?:test|spec)\.[a-z0-9]+)$')
@@ -142,9 +145,9 @@ def audit_patch_lines(patch):
         for key, level, pattern in COMPILED:
             if key in ('SKIPPED_TEST', 'WEAK_ASSERTION') and not TEST_PATH.search(path):
                 continue
-            if key in ('DEV_NOTE_IN_UI', 'PATRONIZING_UI_COPY') and not UI_PATH.search(path):
+            if key in ('DEV_NOTE_IN_UI', 'PATRONIZING_UI_COPY', 'GENERIC_AI_GRADIENT_CLICHE', 'AI_MARKETING_HYPE_COPY') and not UI_PATH.search(path):
                 continue
-            if key in ('TRIVIAL_COMMENT_NARRATION', 'SRE_SCALE_SLEEP_BAND_AID', 'SRE_SCALE_FLAT_RETRY',
+            if key in ('TRIVIAL_COMMENT_NARRATION', 'DECORATIVE_COMMENT_BANNER', 'SRE_SCALE_SLEEP_BAND_AID', 'SRE_SCALE_FLAT_RETRY',
                        'SRE_YAGNI_SPECULATIVE_CODE', 'SRE_SCALE_UNBOUNDED_CONCURRENCY') and (
                 TEST_PATH.search(path) or re.search(r'(?i)(?:^|/)references/', path)
             ):

@@ -52,6 +52,43 @@ class ParanoidGuardTests(unittest.TestCase):
         codes = [f["code"] for f in result["findings"]]
         self.assertIn("INVALID_THROUGHPUT", codes)
 
+    def test_scale_profile_with_day_one_active_load_and_architectural_ceiling(self):
+        record = valid_record()
+        record["scale_profile"] = {
+            "day_one_active_load": {"concurrency": 50, "throughput_rps": 10},
+            "architectural_ceiling_target": 10_000_000,
+            "latency_budget_ms": 100
+        }
+        result = paranoid_guard.audit(record)
+        self.assertEqual(result["record_status"], "complete")
+        self.assertEqual(result["verdict_action"], "proceed")
+        self.assertEqual(result["findings"], [])
+
+    def test_architectural_ceiling_target_below_ten_million_fails(self):
+        record = valid_record()
+        record["scale_profile"] = {
+            "day_one_active_load": {"concurrency": 50, "throughput_rps": 10},
+            "architectural_ceiling_target": 500_000,
+            "latency_budget_ms": 100
+        }
+        result = paranoid_guard.audit(record)
+        self.assertEqual(result["record_status"], "incomplete")
+        codes = [f["code"] for f in result["findings"]]
+        self.assertIn("INVALID_CONCURRENCY", codes)
+
+    def test_invalid_day_one_load_types_fail(self):
+        record = valid_record()
+        record["scale_profile"] = {
+            "day_one_active_load": {"concurrency": 0, "throughput_rps": -5},
+            "architectural_ceiling_target": 10_000_000,
+            "latency_budget_ms": 100
+        }
+        result = paranoid_guard.audit(record)
+        self.assertEqual(result["record_status"], "incomplete")
+        codes = [f["code"] for f in result["findings"]]
+        self.assertIn("INVALID_DAY_ONE_CONCURRENCY", codes)
+        self.assertIn("INVALID_DAY_ONE_THROUGHPUT", codes)
+
     def test_insufficient_threat_pre_mortem_fails(self):
         record = valid_record()
         record["threat_pre_mortem"] = record["threat_pre_mortem"][:2]

@@ -1,0 +1,9 @@
+interface:
+  display_name: "Repo Memory & Invariant Steward"
+  short_description: "Architectural memory ledger sync and drift detection"
+  default_prompt: "Sync repository decision records into the living invariant ledger and audit PR for architectural drift."
+policy:
+  products:
+    - CHAT
+    - CODEX
+  allow_implicit_invocation: true

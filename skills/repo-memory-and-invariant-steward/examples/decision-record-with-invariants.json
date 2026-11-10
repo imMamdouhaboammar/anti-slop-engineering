@@ -1,0 +1,52 @@
+{
+  "schema_version": "1.0",
+  "goal": "Migrate high-frequency checkout transaction processing to append-only event ledger with distributed deduplication",
+  "decision_action": "proceed",
+  "rationale": "Direct row-level update on inventory tables causes lock contention under 10M concurrent users. An append-only ledger eliminates write locks.",
+  "invariants": [
+    {
+      "id": "INV-CHECKOUT-APPEND-ONLY",
+      "category": "architecture",
+      "assertion": "Checkout mutations must insert append-only immutable journal records rather than updating existing ledger balances.",
+      "rationale": "Preserves audit trail and eliminates hot-row database lock contention.",
+      "enforcement_scope": {
+        "paths": [
+          "src/ledger/**",
+          "src/checkout/**"
+        ],
+        "patterns": [
+          "INSERT INTO journal",
+          "appendJournalEntry"
+        ],
+        "forbidden_patterns": [
+          "UPDATE account_balance"
+        ]
+      },
+      "status": "active",
+      "reassessment_threshold": "Requires compliance team signoff and formal accounting audit."
+    },
+    {
+      "id": "INV-CHECKOUT-DEDUPLICATION",
+      "category": "concurrency_and_scale",
+      "assertion": "Every incoming checkout request must validate unique transaction_token before journal dispatch.",
+      "rationale": "Guarantees zero duplicate debit transactions during gateway retries.",
+      "enforcement_scope": {
+        "paths": [
+          "src/checkout/gateway.ts",
+          "src/api/checkout.ts"
+        ],
+        "patterns": [
+          "transaction_token",
+          "deduplicateToken"
+        ],
+        "forbidden_patterns": [
+          "skipDeduplication"
+        ]
+      },
+      "status": "active",
+      "reassessment_threshold": "Requires proof of alternative idempotent wire protocol."
+    }
+  ],
+  "author": "Mamdouh Aboammar",
+  "created_at": "2026-11-10T18:00:00Z"
+}

@@ -131,7 +131,7 @@ fn run_ladder_audit(paths: Vec<String>, format: &str) -> io::Result<()> {
 
     for path in paths {
         let content = fs::read_to_string(&path).map_err(|e| {
-            io::Error::new(e.kind(), format!("Cannot read '{}': {}", path, e))
+            io::Error::new(e.kind(), format!("Cannot read '{path}': {e}"))
         })?;
         let mut findings = auditor.audit_code(&path, &content);
         all_findings.append(&mut findings);
@@ -145,10 +145,10 @@ fn run_ladder_audit(paths: Vec<String>, format: &str) -> io::Result<()> {
 fn run_triage(base: &str, read_only: bool, format: &str) -> io::Result<()> {
     let output = Command::new("git").args(["diff", base, "--"]).output()?;
     if !output.status.success() {
-        return Err(io::Error::new(
-            io::ErrorKind::Other,
-            format!("git diff {} failed: {}", base, String::from_utf8_lossy(&output.stderr)),
-        ));
+        return Err(io::Error::other(format!(
+            "git diff {base} failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )));
     }
     let diff_content = String::from_utf8_lossy(&output.stdout).to_string();
 
@@ -167,7 +167,7 @@ fn finish_with_report(report: &AuditReport, format: &str) {
 fn output_report(report: &AuditReport, format: &str) {
     if format == "json" {
         if let Ok(json) = serde_json::to_string_pretty(report) {
-            println!("{}", json);
+            println!("{json}");
         }
     } else {
         println!(

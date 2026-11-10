@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "BackpropRecord",
+  "description": "Schema for backpropagating downstream code failures and slop detections into upstream rules and invariants",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "timestamp",
+    "trigger_error",
+    "symptom_location",
+    "upstream_rule_implicated",
+    "elon_step_question",
+    "ssot_owner",
+    "action",
+    "applied"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "enum": ["1.0.0"]
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "trigger_error": {
+      "type": "string"
+    },
+    "symptom_location": {
+      "type": "object",
+      "required": ["file", "line", "excerpt"],
+      "properties": {
+        "file": { "type": "string" },
+        "line": { "type": "integer", "minimum": 1 },
+        "excerpt": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "upstream_rule_implicated": {
+      "type": "string"
+    },
+    "elon_step_question": {
+      "type": "string"
+    },
+    "ssot_owner": {
+      "type": "string"
+    },
+    "action": {
+      "type": "string",
+      "enum": ["ADD_INVARIANT", "UPDATE_RULE", "DELETE_OBSOLETE_RULE", "CLARIFY_CONTRACT"]
+    },
+    "applied": {
+      "type": "boolean"
+    },
+    "resulting_diff_snippet": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": false
+}

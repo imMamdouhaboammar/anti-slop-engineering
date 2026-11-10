@@ -5,7 +5,7 @@ Use this workflow when creating new services, designing distributed backends, dr
 ## Step-by-Step Architecture Procedure
 
 ### 1. Freeze Scale Profile & Concurrency Model
-1. Explicitly baseline the system for **10,000,000 concurrent user sessions**.
+1. Explicitly baseline the system for Day-One Active Load while proving scale readiness against an **architectural ceiling target of 10,000,000 concurrent user sessions**.
 2. Apply Little's Law ($L = \lambda \times W$) to calculate in-flight load at 50ms versus 500ms latency.
 3. Establish hard SLA targets: P99 latency <= 100ms, zero synchronous global lock points.
 
@@ -21,7 +21,7 @@ Before drawing component boundaries, identify the top 3 fatal failure modes:
 3. Scope all data queries to tenant and owner IDs at the query level (`WHERE tenant_id = :tenant_id AND user_id = :user_id`).
 
 ### 4. Concurrency & State Architecture
-1. **Counters:** Eliminate single-row counters. Use 16-64 sharded counters or an append-only event ledger.
+1. **Counters:** Eliminate synchronous global row locks. Encapsulate state mutations behind atomic storage seams or append-only event ledgers so transitioning from single-row atomic updates to 16-64 sharded counters requires zero domain rewrites when throughput demands it.
 2. **Mutations:** Enforce an `Idempotency-Key` on every mutating POST/PUT/RPC call.
 3. **Locks:** Use Optimistic Concurrency Control (OCC) with version stamps or ETags. Prohibit long-lived table locks.
 4. **Transaction Seams:** Prohibit network I/O inside database transactions. Complete DB mutations in minimal atomic transactions, commit, and execute network calls asynchronously.

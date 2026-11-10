@@ -1,0 +1,9 @@
+interface:
+  display_name: "Rollout Choreographer"
+  short_description: "Meta & Google SRE safe evolution and rollout review"
+  default_prompt: "Perform a safe evolution and rollout choreography audit on this API contract, feature rollout, or system migration."
+policy:
+  products:
+    - CHAT
+    - CODEX
+  allow_implicit_invocation: true

@@ -26,6 +26,14 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
+      - name: Install Ruff
+        if: matrix.python-version == '3.12'
+        run: pip install "ruff>=0.17.4"
+
+      - name: Lint with Ruff
+        if: matrix.python-version == '3.12'
+        run: ruff check .
+
       - name: Verify Python syntax
         run: python -m py_compile scripts/diff_guard.py scripts/sre_guard.py scripts/decision_guard.py scripts/root_fix_guard.py scripts/future_scale_guard.py scripts/bump_version.py tests/test_diff_guard.py tests/test_sre_guard.py tests/test_decision_guard.py tests/test_root_fix_guard.py tests/test_future_scale_guard.py tests/test_bump_version.py
 
@@ -52,6 +60,12 @@ jobs:
         uses: oven-sh/setup-bun@4bc047ad259df6fc24a6c9b0f9a0cb08cf17fbe5 # v2.0.1
         with:
           bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Run Oxlint Linter
+        run: bun run oxlint
 
       - name: Set up Node.js
         uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.2.0
@@ -111,9 +125,13 @@ jobs:
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
           toolchain: stable
+          components: clippy
       - uses: actions/setup-go@f111f3307d8850f501ac008e886eec1fd1932a34 # v5.3.0
         with:
           go-version-file: services/toil-guard-go/go.mod
+      - name: Rust Clippy linting
+        working-directory: services/anti-slop-rust
+        run: cargo clippy --all-targets --all-features -- -D warnings
       - name: Rust unit tests
         working-directory: services/anti-slop-rust
         run: cargo test --all-targets --locked

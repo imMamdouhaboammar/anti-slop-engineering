@@ -1,0 +1,63 @@
+{
+  "schema_version": "1.0",
+  "surface": {
+    "component_or_flow": "InvoiceWorkspaceBoard (120Hz ProMotion Kanban & Inline Note Composer)",
+    "target_refresh_rate_hz": 120,
+    "frame_budget_ms": 8.33
+  },
+  "frame_budget_physics": {
+    "layout_thrashing_eliminated": true,
+    "dom_read_write_separation": "All bounding boxes are cached via ResizeObserver and batched in a strict read phase prior to requestAnimationFrame transform writes",
+    "animated_properties": [
+      "transform",
+      "opacity"
+    ],
+    "main_thread_max_task_ms": 3.5,
+    "heavy_work_offload_strategy": "web_worker",
+    "raf_epsilon_termination": 0.0001
+  },
+  "optimistic_ui_and_cls": {
+    "optimistic_feedback_budget_ms": 16.0,
+    "rollback_snapshot_captured": true,
+    "rollback_recovery_behavior": "Restores immutable rollbackSnapshot on HTTP 4xx/5xx or timeout, repopulates composer draft from preservedDraft, and surfaces an inline non-shifting retry banner with the original Idempotency-Key",
+    "preserves_user_draft_on_failure": true,
+    "cumulative_layout_shift_target": 0.0,
+    "geometry_reservation_mechanisms": [
+      "pixel_matched_skeleton",
+      "explicit_aspect_ratio",
+      "intrinsic_width_height_attrs",
+      "fixed_validation_error_track",
+      "scrollbar_gutter_stable"
+    ]
+  },
+  "state_machine_contract": {
+    "pattern": "discriminated_union",
+    "boolean_soup_absent": true,
+    "exhaustiveness_checked": true,
+    "modeled_states": [
+      "idle",
+      "loading_initial",
+      "loaded_empty",
+      "loaded_fresh",
+      "revalidating_stale",
+      "optimistic_mutating",
+      "partial_failure",
+      "offline_queued",
+      "terminal_error"
+    ]
+  },
+  "hardware_and_a11y_physics": {
+    "touch_scroll_hijacking_absent": true,
+    "reduced_motion_respected": true,
+    "modal_dialog_a11y_enforced": true,
+    "min_hit_target_px": 44
+  },
+  "verdict": {
+    "action": "proceed",
+    "rationale": "All animations are restricted to GPU compositor transform and opacity within the 8.33ms 120Hz frame budget, rAF spring loops terminate at epsilon 1e-4, optimistic mutations project in <16ms with verified rollback snapshot and draft restoration, skeletons reserve exact pixel geometry (CLS = 0.0), and the view state machine exhaustively covers all 9 discriminated union states.",
+    "revisit_triggers": [
+      "Board item count per column exceeds 1,000 cards (requires viewport window virtualization)",
+      "P99 frame duration on low-power mobile devices exceeds 12ms during concurrent WebSocket bursts"
+    ]
+  }
+}

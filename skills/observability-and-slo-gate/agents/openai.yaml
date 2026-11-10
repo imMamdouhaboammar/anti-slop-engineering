@@ -1,0 +1,9 @@
+interface:
+  display_name: "Observability & SLO Gate"
+  short_description: "Google Dapper & OpenTelemetry low-cardinality metrics, P50/P95/P99 histograms, end-to-end W3C traceparent propagation, and burn-rate SLOs"
+  default_prompt: "Instrument and audit this service using the Google Dapper / OpenTelemetry Observability & SLO Gate: ban high-cardinality identifiers (user_id, request_id, raw URLs) from metric labels, record latencies with P50/P95/P99 Histograms and trace exemplars, propagate W3C traceparent and correlation_id across HTTP, queues, outbox workers, and database spans, emit trace-correlated structured JSON logs with PII redaction, and define Multi-Window Burn-Rate SLO gates."
+policy:
+  products:
+    - CHAT
+    - CODEX
+  allow_implicit_invocation: true

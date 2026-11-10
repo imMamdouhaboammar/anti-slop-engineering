@@ -1,0 +1,110 @@
+{
+  "schema_version": "1.0",
+  "skill": "deterministic-simulation-and-property-testing",
+  "status": "proposed_not_run",
+  "note": "Semantic behavioral evaluation cases following the BinEval / OmniSkill methodology. Verifies Microsoft Research & AWS rigor: Property-Based Testing, Deterministic Simulation Testing (DST), State-Machine Modeling, and Structure-Aware Fuzzing.",
+  "cases": [
+    {
+      "id": "distributed-consensus-dst",
+      "family": "deterministic-simulation-testing",
+      "prompt": "We are building a distributed consensus replicated state machine in TypeScript. How should we test leader election and log replication against network partitions, message drops, and clock drift?",
+      "expected": [
+        "Enforce Deterministic Simulation Testing (DST) with a discrete event simulation loop",
+        "Mandate a DeterministicVirtualClock and completely ban real wall-clock sleeps (setTimeout, time.sleep)",
+        "Drive network packet drops, clock skews, and message reordering using a seeded 64-bit PRNG (e.g. Mulberry32/PCG32)",
+        "Assert 100% reproducible traces from identical seeds",
+        "Check safety invariants (e.g. at most one leader per term) at every discrete simulation tick"
+      ],
+      "forbidden": [
+        "Rely on real wall-clock timeouts or setTimeout sleeps for network testing",
+        "Use unseeded Math.random() for fault injection",
+        "Settle for 3 happy-path unit tests with mock sockets"
+      ]
+    },
+    {
+      "id": "financial-ledger-pbt",
+      "family": "property-based-testing",
+      "prompt": "I wrote a double-entry ledger module in Python that transfers balances between accounts. I wrote 3 unit tests with fixed amounts (10, 50, 100). Is this sufficient for production?",
+      "expected": [
+        "Unequivocally state that example-based tests are insufficient for invariant verification",
+        "Mandate Property-Based Testing (Hypothesis or fast-check) generating thousands of pseudo-random inputs",
+        "Enforce automated shrinking to discover minimal failing counterexamples",
+        "Formally specify core invariants: conservation of money (sum of balances invariant), idempotency, and non-negative balances",
+        "Require red-green mutation falsification to prove the test suite catches deliberate invariant violations"
+      ],
+      "forbidden": [
+        "Approve 3 static example tests as production-ready",
+        "Suggest adding 2 more static example test cases as a sufficient fix",
+        "Accept property testing without automatic shrinking"
+      ]
+    },
+    {
+      "id": "state-machine-impossible-states",
+      "family": "state-machine-modeling",
+      "prompt": "Review this WebSocket connection client state interface: interface ConnectionState { isConnecting: boolean; isConnected: boolean; isDisconnected: boolean; error: Error | null; socket: WebSocket | null; }",
+      "expected": [
+        "Flag the boolean bag anti-pattern that permits $2^3 = 8$ impossible state permutations",
+        "Refactor to strict tagged unions or algebraic data types making impossible states unrepresentable in the type system",
+        "Enforce an explicit State Transition Table (from_state x event -> next_state + side_effects)",
+        "Recommend generative model-based testing that asserts state machine safety across random valid action sequences"
+      ],
+      "forbidden": [
+        "Approve the boolean flags interface",
+        "Suggest adding more booleans (e.g. isReconnecting: boolean) to patch missing states"
+      ]
+    },
+    {
+      "id": "untrusted-parser-structure-aware-fuzzing",
+      "family": "structure-aware-fuzzing",
+      "prompt": "We are implementing a custom binary/JSON RPC frame decoder for our gateway. We tested it with 5 valid JSON sample files and it passes. Can we ship this to production?",
+      "expected": [
+        "Reject relying on static valid samples for an untrusted input parser",
+        "Mandate Structure-Aware Fuzzing (grammar-based generator mutating frames across malformed headers, negative lengths, and Unicode)",
+        "Assert crash freedom and zero unhandled exceptions/panics",
+        "Enforce strict recursion depth limits and payload byte caps to prevent allocation bombs and ReDoS"
+      ],
+      "forbidden": [
+        "Accept 5 static sample files as adequate parser verification",
+        "Recommend dumb bit-flipping fuzzing without grammar structure awareness"
+      ]
+    },
+    {
+      "id": "pressure-test-skip-virtual-clock",
+      "family": "pressure-test-discipline",
+      "prompt": "We are behind schedule on our distributed database release. Building a discrete event simulator is too much work. Can we just use setTimeout(2000) and Math.random() in CI?",
+      "expected": [
+        "Firmly refuse the shortcut",
+        "Explain that unseeded randomness and wall-clock sleeps create flaky CI, non-reproducible race conditions, and catastrophic production failures",
+        "Insist on seeded deterministic simulation and property-based testing as non-negotiable engineering discipline"
+      ],
+      "forbidden": [
+        "Agree to use setTimeout or unseeded Math.random() under deadline pressure",
+        "Dismiss deterministic simulation as optional overhead"
+      ]
+    },
+    {
+      "id": "non-trigger-readme-fix",
+      "family": "non-trigger-boundary",
+      "prompt": "Fix the spelling of 'deterministic' in README.md line 14.",
+      "expected": [
+        "Do not activate the Deterministic Simulation & Property Testing workflow",
+        "Perform routine minimal text edit directly without simulation records or fuzz harnesses"
+      ],
+      "forbidden": [
+        "Demand property tests or a virtual clock for a markdown typo fix"
+      ]
+    },
+    {
+      "id": "non-trigger-css-styling",
+      "family": "non-trigger-boundary",
+      "prompt": "Change the border radius of the alert card to 8px in theme.css.",
+      "expected": [
+        "Do not activate the Deterministic Simulation & Property Testing workflow",
+        "Apply standard minimal CSS edit"
+      ],
+      "forbidden": [
+        "Generate a DST simulation harness for a CSS border-radius change"
+      ]
+    }
+  ]
+}

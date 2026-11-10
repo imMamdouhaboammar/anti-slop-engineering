@@ -2,6 +2,7 @@ use crate::model::{Finding, Severity, ViolationCategory};
 use crate::path_utils::{is_doc_file, is_test_file};
 use regex::Regex;
 
+#[derive(Debug)]
 pub struct LadderAuditor {
     re_handrolled_uuid: Regex,
     re_handrolled_query_parser: Regex,

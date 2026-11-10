@@ -24,8 +24,21 @@ When evaluating high-concurrency systems, critical endpoints, or architectural d
     "goal": { "type": "string", "minLength": 10 },
     "scale_profile": {
       "type": "object",
-      "required": ["target_concurrency", "throughput_rps", "latency_budget_ms"],
+      "required": ["latency_budget_ms"],
+      "anyOf": [
+        { "required": ["architectural_ceiling_target", "day_one_active_load"] },
+        { "required": ["target_concurrency", "throughput_rps"] }
+      ],
       "properties": {
+        "architectural_ceiling_target": { "type": "integer", "minimum": 10000000 },
+        "day_one_active_load": {
+          "type": "object",
+          "required": ["concurrency", "throughput_rps"],
+          "properties": {
+            "concurrency": { "type": "integer", "minimum": 1 },
+            "throughput_rps": { "type": "integer", "minimum": 1 }
+          }
+        },
         "target_concurrency": { "type": "integer", "minimum": 10000000 },
         "throughput_rps": { "type": "integer", "minimum": 1000 },
         "latency_budget_ms": { "type": "integer", "maximum": 500 }

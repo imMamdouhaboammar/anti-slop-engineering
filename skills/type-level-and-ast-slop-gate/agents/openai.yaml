@@ -1,0 +1,7 @@
+interface:
+  display_name: "Type-Level and AST Slop Gate"
+  short_description: "Audit and eliminate AST slop, chained casts, quadratic reducers, eager chaining, and module mocks."
+  default_model: "gpt-4o"
+policy:
+  fail_closed: true
+  zero_dependency_fallback: true

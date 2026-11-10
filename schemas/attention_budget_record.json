@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AntiSlopAttentionBudgetRecord",
+  "description": "RFC 9457 Problem Details schema for Cognitive Bandwidth & Attention Economy Guard audit records.",
+  "type": "object",
+  "required": [
+    "type",
+    "title",
+    "status",
+    "code",
+    "detail",
+    "metrics",
+    "findings",
+    "remediation"
+  ],
+  "properties": {
+    "type": { "type": "string", "format": "uri" },
+    "title": { "type": "string" },
+    "status": { "type": "integer" },
+    "code": {
+      "type": "string",
+      "enum": [
+        "ERR_ATTENTION_BUDGET_EXCEEDED",
+        "ERR_BURIED_BLOCKING_QUESTION",
+        "ERR_DELIVERABLE_IMPURITY",
+        "ERR_EXCESSIVE_WALL_OF_TEXT",
+        "ERR_WORKING_MEMORY_OVERFLOW",
+        "ERR_DROPPED_CONSTRAINT_REGRESSION",
+        "NO_ATTENTION_FINDINGS"
+      ]
+    },
+    "detail": { "type": "string" },
+    "instance": { "type": "string" },
+    "metrics": {
+      "type": "object",
+      "required": [
+        "word_count",
+        "words_to_emphasis",
+        "answer_first",
+        "longest_wall_words",
+        "landing_per_100w",
+        "wall_word_fraction",
+        "mean_para_words",
+        "deliverable_pure",
+        "blocking_placed_correctly"
+      ],
+      "properties": {
+        "word_count": { "type": "integer" },
+        "words_to_emphasis": { "type": "integer" },
+        "answer_first": { "type": "boolean" },
+        "longest_wall_words": { "type": "integer" },
+        "landing_per_100w": { "type": "number" },
+        "wall_word_fraction": { "type": "number" },
+        "mean_para_words": { "type": "number" },
+        "deliverable_pure": { "type": "boolean" },
+        "blocking_placed_correctly": { "type": "boolean" },
+        "list_max_items": { "type": "integer" }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["severity", "category", "rule", "message", "evidence"],
+        "properties": {
+          "file": { "type": "string" },
+          "line": { "type": "integer" },
+          "severity": { "type": "string", "enum": ["blocker", "review", "nit"] },
+          "category": { "type": "string" },
+          "rule": { "type": "string" },
+          "message": { "type": "string" },
+          "evidence": { "type": "string" }
+        }
+      }
+    },
+    "remediation": {
+      "type": "object",
+      "required": ["action", "guidance"],
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "FRONT_LOAD_ANSWER",
+            "MOVE_BLOCKING_ASK_TO_TERMINUS",
+            "STRIP_WRAPPER_FRAMING",
+            "BREAK_WALL_WITH_ANCHORS",
+            "CHUNK_UNBOUNDED_LISTS",
+            "PRESERVE_EXACT_CONSTRAINTS",
+            "NO_ACTION_REQUIRED"
+          ]
+        },
+        "guidance": { "type": "string" }
+      }
+    }
+  }
+}

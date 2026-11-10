@@ -95,8 +95,8 @@ When the decision is consequential or likely to be revisited, save a JSON decisi
 ## Delegated Skills
 
 - `anti-slop-engineering`: Resume BUILD/FIX/REVIEW and the Seven Gates after the choice is established.
-- `fable-research` or a host-equivalent research capability: Resolve source or vendor claims whose current truth changes the decision.
-- `fable-verify` or a host-equivalent verification capability: Test concrete technical feasibility and performance claims, not merely the prose.
+- `future-scale-gate`: Formally model long-term operating envelopes and reversal costs for irreversible structural commitments.
+- `root-fix-gate`: Trace architectural invariant ownership when deciding whether to refactor or preserve a boundary.
 
 ## Completion and limits
 

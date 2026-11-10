@@ -6,6 +6,7 @@ import {
 	createTypeEnvironment,
 	type TypeEnvironment,
 } from "../shared/dictionary-types.ts";
+import { visibleTypeAlias } from "../shared/type-alias-resolution.ts";
 
 import type { ESTree } from "@oxlint/plugins";
 
@@ -57,34 +58,45 @@ function typeReferenceName(type: ESTree.TSTypeReference): string | null {
 	return type.typeName.type === "Identifier" ? type.typeName.name : null;
 }
 
-function isInsideTypeAliasDeclaration(node: ESTree.Node, maxDepth = 64): boolean {
+function isInsideTypeAliasDeclaration(node: ESTree.Node): boolean {
 	let current: ESTree.Node | null = node.parent;
-	let depth = 0;
-	while (current !== null && current.type !== "Program" && depth < maxDepth) {
+	while (current !== null && current.type !== "Program") {
 		if (current.type === "TSTypeAliasDeclaration") return true;
 		current = current.parent;
-		depth++;
 	}
 	return false;
 }
 
-function isPlainAliasConsumerUse(node: ESTree.TSType, environment: TypeEnvironment, depth = 0, maxDepth = 32): boolean {
-	if (depth > maxDepth) return false;
+function isPlainAliasConsumerUse(node: ESTree.TSType, environment: TypeEnvironment): boolean {
 	if (node.type !== "TSTypeReference" || node.typeArguments?.params.length) return false;
 	const name = typeReferenceName(node);
-	return name !== null && environment.aliases.has(name) && !isInsideTypeAliasDeclaration(node);
+	return (
+		name !== null &&
+		visibleTypeAlias(name, node, environment.typeAliases) !== null &&
+		!isInsideTypeAliasDeclaration(node)
+	);
 }
 
-function shouldReportType(node: ESTree.TSType, environment: TypeEnvironment, maxDepth = 64): boolean {
+function isInsideTypeParameterConstraint(node: ESTree.TSType): boolean {
+	let child: ESTree.Node = node;
+	let parent: ESTree.Node | null = child.parent;
+	while (parent !== null && parent.type !== "Program") {
+		if (parent.type === "TSTypeParameter" && parent.constraint === child) return true;
+		child = parent;
+		parent = child.parent;
+	}
+	return false;
+}
+
+function shouldReportType(node: ESTree.TSType, environment: TypeEnvironment): boolean {
+	if (isInsideTypeParameterConstraint(node)) return false;
 	if (isPlainAliasConsumerUse(node, environment)) return false;
 	if (classifyUnsafeDictionary(node, environment) === null) return false;
 	let current: ESTree.Node | null = node.parent;
-	let depth = 0;
-	while (current !== null && current.type !== "Program" && depth < maxDepth) {
+	while (current !== null && current.type !== "Program") {
 		if (isTypeNode(current) && classifyUnsafeDictionary(current, environment) !== null)
 			return false;
 		current = current.parent;
-		depth++;
 	}
 	return true;
 }
@@ -116,7 +128,10 @@ export const noUnsafeDictionaryTypeRule = defineRule({
 
 		return {
 			Program(node) {
-				environment = createTypeEnvironment(node);
+				environment = createTypeEnvironment(
+					node,
+					context.sourceCode.visitorKeys,
+				);
 			},
 			TSTypeReference: reportIfUnsafe,
 			TSTypeLiteral: reportIfUnsafe,

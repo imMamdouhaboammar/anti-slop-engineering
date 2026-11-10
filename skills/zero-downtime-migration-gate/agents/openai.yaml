@@ -1,0 +1,9 @@
+interface:
+  display_name: "Zero-Downtime Migration Gate"
+  short_description: "Spanner & Stripe expand-migrate-contract discipline"
+  default_prompt: "Audit this database migration or API contract change for zero-downtime Expand-Migrate-Contract compliance, lock-free DDL, and N/N-1 wire compatibility."
+policy:
+  products:
+    - CHAT
+    - CODEX
+  allow_implicit_invocation: true

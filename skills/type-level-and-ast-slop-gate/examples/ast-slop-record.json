@@ -1,0 +1,13 @@
+{
+  "tool": "anti-slop-ast-guard",
+  "version": "1.0.0",
+  "mode": "diff",
+  "target": "HEAD",
+  "verdict": "PASS",
+  "summary": {
+    "total_findings": 0,
+    "blockers": 0,
+    "reviews": 0
+  },
+  "findings": []
+}

@@ -1,0 +1,142 @@
+{
+  "schema_version": "1.0",
+  "target_service": {
+    "service_name": "checkout-settlement-engine (src/telemetry/dapperMonarchPipeline.ts)",
+    "telemetry_standard": "google_monarch_dapper_otel",
+    "execution_boundaries": [
+      "frontend_to_http_gateway",
+      "http_or_grpc_service",
+      "async_message_queue_or_outbox",
+      "background_worker_consumer",
+      "database_client_query"
+    ]
+  },
+  "metric_cardinality_governance": {
+    "dynamic_ids_banned_in_metric_labels": true,
+    "unmatched_routes_collapsed_to_constant": true,
+    "max_label_cardinality_product": 240,
+    "approved_low_cardinality_labels": [
+      "http.request.method",
+      "http.route",
+      "http.response.status_class",
+      "error.code",
+      "queue.name",
+      "db.system",
+      "db.operation.name"
+    ],
+    "high_cardinality_routed_to_traces_and_logs": [
+      "app.user_id",
+      "app.tenant_id",
+      "app.order_id",
+      "app.idempotency_key",
+      "http.request_id",
+      "correlation_id"
+    ]
+  },
+  "latency_histograms_and_quantiles": {
+    "instrument_type": "explicit_bucket_histogram",
+    "gauge_or_average_latency_banned": true,
+    "explicit_buckets_ms": [
+      5,
+      10,
+      25,
+      50,
+      100,
+      150,
+      250,
+      400,
+      750,
+      1500,
+      3000,
+      7500
+    ],
+    "tracked_quantiles": [
+      "p50",
+      "p95",
+      "p99"
+    ],
+    "trace_exemplars_attached": true
+  },
+  "red_and_use_metrics": {
+    "red_endpoint_metrics_enabled": true,
+    "use_resource_metrics_enabled": true,
+    "monitored_resources": [
+      {
+        "resource": "cpu",
+        "utilization": "system.cpu.utilization",
+        "saturation": "system.cpu.load_average.1m",
+        "errors": "system.cpu.throttling_events"
+      },
+      {
+        "resource": "memory",
+        "utilization": "process.memory.utilization",
+        "saturation": "system.memory.major_page_faults",
+        "errors": "process.oom_kill.count"
+      },
+      {
+        "resource": "db_connection_pool",
+        "utilization": "db.client.connections.utilization",
+        "saturation": "db.client.connections.pending_waiters",
+        "errors": "db.client.connections.timeouts"
+      },
+      {
+        "resource": "queue_workers",
+        "utilization": "worker.concurrency.utilization",
+        "saturation": "messaging.queue.backlog_depth",
+        "errors": "messaging.dead_letter.count"
+      }
+    ]
+  },
+  "w3c_context_propagation": {
+    "propagation_format": "w3c_traceparent_and_tracestate",
+    "correlation_id_enforced": true,
+    "async_queue_and_worker_headers_injected": true,
+    "async_consumer_context_extracted": true,
+    "database_query_span_propagated": true,
+    "in_memory_trace_continuity_verified": true
+  },
+  "structured_logging_and_redaction": {
+    "log_format": "structured_json",
+    "raw_console_log_banned": true,
+    "mandatory_correlation_fields": [
+      "trace_id",
+      "span_id",
+      "correlation_id",
+      "service.name"
+    ],
+    "redacted_sensitive_keys": [
+      "authorization",
+      "cookie",
+      "password",
+      "secret",
+      "api_key",
+      "access_token"
+    ]
+  },
+  "slo_and_burn_rate_alerts": {
+    "availability_target_percent": 99.9,
+    "latency_p95_target_ms": 150,
+    "latency_p99_target_ms": 400,
+    "fast_burn_multi_window": {
+      "burn_rate_multiplier": 14.4,
+      "long_window": "1h",
+      "short_window": "5m",
+      "action": "page_and_halt_rollout"
+    },
+    "slow_burn_multi_window": {
+      "burn_rate_multiplier": 6.0,
+      "long_window": "6h",
+      "short_window": "30m",
+      "action": "open_remediation_ticket"
+    },
+    "non_impact_alerts_banned": true
+  },
+  "verdict": {
+    "action": "proceed",
+    "rationale": "Architecture strictly enforces Google Monarch stream pre-aggregation, bounded low-cardinality schemas, OpenTelemetry Dapper context propagation, automated RED/USE metrics, and Multi-Window Multi-Burn-Rate alerts.",
+    "revisit_triggers": [
+      "introduction_of_new_queue_brokers",
+      "sla_target_increase_to_four_nines"
+    ]
+  }
+}

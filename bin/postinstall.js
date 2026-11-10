@@ -13,6 +13,9 @@ const log = (msg) => {
 };
 
 function installSkills() {
+  if (process.env.CI || process.env.NODE_ENV === "test") {
+    return;
+  }
   log("Auto-installing agent skill via skills.sh...");
   try {
     const isBun = typeof process.versions.bun !== "undefined";

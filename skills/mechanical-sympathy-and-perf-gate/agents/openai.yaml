@@ -1,0 +1,9 @@
+interface:
+  display_name: "Mechanical Sympathy & Perf Gate"
+  short_description: "Apple & Google Systems hardware, 120Hz frame budget, and zero-allocation performance gate"
+  default_prompt: "Audit this system architecture, hot loop, or frontend interaction for mechanical sympathy, 120Hz frame budget compliance, bounded streaming, and flamegraph-verified benchmarks."
+policy:
+  products:
+    - CHAT
+    - CODEX
+  allow_implicit_invocation: true

@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AntiSlopCommentBudgetRecord",
+  "type": "object",
+  "required": [
+    "type",
+    "title",
+    "status",
+    "code",
+    "detail",
+    "metrics",
+    "findings",
+    "remediation"
+  ],
+  "properties": {
+    "type": { "type": "string", "format": "uri" },
+    "title": { "type": "string" },
+    "status": { "type": "integer" },
+    "code": {
+      "type": "string",
+      "enum": [
+        "ERR_COMMENT_BUDGET_EXCEEDED",
+        "ERR_SYNTAX_NARRATION_SLOP",
+        "NO_COMMENT_FINDINGS"
+      ]
+    },
+    "detail": { "type": "string" },
+    "instance": { "type": "string" },
+    "metrics": {
+      "type": "object",
+      "required": [
+        "added_comment_lines",
+        "added_code_lines",
+        "comment_density_ratio",
+        "threshold"
+      ],
+      "properties": {
+        "added_comment_lines": { "type": "integer" },
+        "added_code_lines": { "type": "integer" },
+        "comment_density_ratio": { "type": "number" },
+        "threshold": { "type": "number" }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["file", "line", "severity", "category", "evidence"],
+        "properties": {
+          "file": { "type": "string" },
+          "line": { "type": "integer" },
+          "severity": { "type": "string", "enum": ["blocker", "review", "nit"] },
+          "category": { "type": "string" },
+          "evidence": { "type": "string" }
+        }
+      }
+    },
+    "remediation": {
+      "type": "object",
+      "required": ["action", "target_lines", "guidance"],
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "STRIP_SYNTAX_NARRATION",
+            "REDUCE_COMMENT_DENSITY",
+            "PRESERVE_SAFETY_CONTRACTS",
+            "NO_ACTION_REQUIRED"
+          ]
+        },
+        "target_lines": { "type": "array", "items": { "type": "integer" } },
+        "guidance": { "type": "string" }
+      }
+    }
+  }
+}

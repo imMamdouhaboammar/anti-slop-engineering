@@ -73,6 +73,9 @@ Thumbs.db
 skills-lock.json
 .mcp.json
 
+# Node & Bun
+node_modules/
+
 # Rust & Cargo
 target/
 **/*.rs.bk
@@ -84,3 +87,9 @@ services/toil-guard-go/bin/
 # Bug Killer cryptographic identities & config
 .aegis/
 .bugkiller/
+
+# Generated audit dossiers
+/anti-slop/
+
+# Fable local logs
+.fable/

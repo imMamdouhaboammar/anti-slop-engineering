@@ -1,0 +1,100 @@
+{
+  "schema_version": "1.0",
+  "skill": "apple-craft-and-frame-budget",
+  "status": "proposed_not_run",
+  "note": "Semantic behavioral evaluation cases following the BinEval / OmniSkill methodology. Verifies trigger detection, non-trigger boundary filtering, 16.6ms/8.3ms frame budget enforcement (zero layout thrashing, compositor-only animations, epsilon-terminated rAF, main-thread offloading), sub-50ms Optimistic UI with rollback snapshots, Zero CLS pixel geometry reservation, explicit Discriminated Union State Machines replacing Boolean Soup, and Apple HIG touch/dialog physics.",
+  "cases": [
+    {
+      "id": "boolean-soup-to-discriminated-union-state-machine",
+      "family": "explicit-state-machine",
+      "prompt": "Here is our React order history component. It uses `const [isLoading, setIsLoading] = useState(false); const [isError, setIsError] = useState(false); const [isEmpty, setIsEmpty] = useState(false); const [isRefreshing, setIsRefreshing] = useState(false);`. Users complain that during background refresh the screen flashes blank, and when the recommendations sidebar API fails the entire order table crashes into an error screen. Refactor this to production quality.",
+      "expected": [
+        "Reject the Boolean Soup (`isLoading`, `isError`, `isEmpty`, `isRefreshing` as independent booleans) because 2^4 = 16 combinations allow impossible states",
+        "Refactor state into an explicit TypeScript Discriminated Union State Machine keyed on `status` covering `idle`, `loading_initial`, `loaded_empty`, `loaded_fresh`, `revalidating_stale`, `partial_failure`, `offline_queued`, and `terminal_error`",
+        "Preserve existing order rows on screen during `revalidating_stale` (stale-while-revalidate) instead of flashing a blank screen or full-page spinner",
+        "Isolate secondary sidebar API errors into the `partial_failure` variant so primary order rows remain interactive while only the failed panel shows a scoped retry action",
+        "Enforce compile-time exhaustiveness checking (`assertNever`) on the state switch"
+      ],
+      "forbidden": [
+        "Add a fifth boolean flag such as `const [isPartialError, setIsPartialError] = useState(false)`",
+        "Hide already-loaded data behind a full-screen loading spinner during background refresh"
+      ]
+    },
+    {
+      "id": "frame-budget-layout-thrashing-and-compositor-motion",
+      "family": "frame-budget-physics",
+      "prompt": "Our interactive Kanban board drops to 18 FPS on 120Hz MacBook Pros when dragging cards. In `onPointerMove`, we loop through every card, set `card.style.top = y + 'px'`, `card.style.left = x + 'px'`, and immediately call `const rect = card.getBoundingClientRect()` to check collisions, plus we have `transition: all 0.2s ease` in CSS and a continuous `requestAnimationFrame` spring loop that never stops. Fix the performance.",
+      "expected": [
+        "Identify the Forced Synchronous Layout (Layout Thrashing) caused by writing `style.top`/`style.left` and immediately reading `getBoundingClientRect()` inside the loop",
+        "Separate the frame into a strict Read Phase (batching or caching bounding geometry via ResizeObserver / drag-start snapshot) followed by a Write Phase inside `requestAnimationFrame`",
+        "Replace `style.top` and `style.left` mutations with GPU-compositor `transform: translate3d(x, y, 0)` so movement triggers zero layout and zero paint",
+        "Replace `transition: all 0.2s ease` with explicit compositor properties (`transform`, `opacity`) and disable CSS transitions on the actively dragged element during pointer frames",
+        "Terminate the `requestAnimationFrame` spring loop with `cancelAnimationFrame` once position and velocity deltas settle within epsilon (`1e-4`)"
+      ],
+      "forbidden": [
+        "Keep `card.style.top` and `card.style.left` while merely wrapping `onPointerMove` in `throttle(50)`",
+        "Leave `transition: all` in the stylesheet",
+        "Leave an infinite `requestAnimationFrame` loop running when cards are at rest"
+      ]
+    },
+    {
+      "id": "optimistic-ui-with-graceful-rollback-and-zero-cls",
+      "family": "optimistic-ui-and-zero-cls",
+      "prompt": "When a user clicks 'Archive' on an invoice row or submits a quick note, our app waits 800ms for the POST request before updating the UI, and when the page first loads, a tiny 20px spinner gets replaced by a 480px invoice card list, causing the action buttons below to jump right as the user tries to click them. How should we fix both issues?",
+      "expected": [
+        "Mandate `< 16ms` active press feedback and `< 50ms` Optimistic UI transition (`optimistic_mutating` state) that immediately archives the row or inserts the note with a client `Idempotency-Key`",
+        "Capture an immutable `rollbackSnapshot` of the pre-mutation state before applying the optimistic update",
+        "Define a deterministic, spring-damped Rollback Path if the server responds with an error or timeout: restore `rollbackSnapshot`, preserve the user's note text in the input draft, and display a non-destructive inline retry banner",
+        "Eliminate the Cumulative Layout Shift (`CLS = 0.000`) by replacing the 20px spinner with a pixel-matched skeleton placeholder that reserves the exact `480px` row height, grid tracks, and image `aspect-ratio` prior to data arrival"
+      ],
+      "forbidden": [
+        "Keep blocking the UI on the 800ms network roundtrip before giving visual state confirmation",
+        "Discard the user's typed note text when rolling back a failed optimistic POST",
+        "Use a generic un-sized spinner that shifts downstream layout elements when data resolves"
+      ]
+    },
+    {
+      "id": "pressure-test-main-thread-blocking-and-touch-scroll-hijack",
+      "family": "pressure-test-discipline",
+      "prompt": "The design agency wants us to parse a 15,000-row JSON analytics dump and save it to `localStorage.setItem('analytics', JSON.stringify(rows))` inside the scroll handler, and they also want us to enable our custom JavaScript wheel/touch momentum scroll-jacking engine across iPhone Safari and Android Chrome so every device scrolls at the exact same speed. Implement this now.",
+      "expected": [
+        "Refuse both requests as direct violations of Client Runtime Physics and Apple HIG hardware ergonomics",
+        "Explain that synchronous `JSON.stringify` + `localStorage.setItem` on a 15,000-row payload blocks the Main Thread for >100ms, blowing past the 8.3ms/16.6ms frame budget and causing severe scroll jank",
+        "Move the 15,000-row parsing/indexing and persistence off the Main Thread into a Web Worker + async IndexedDB (or debounced background idle task)",
+        "Refuse programmatic scroll hijacking on touch devices; gate any custom momentum scroll engine strictly behind `!window.matchMedia('(pointer: coarse)').matches && window.innerWidth >= 768` so iOS and Android retain native hardware touch inertia"
+      ],
+      "forbidden": [
+        "Call `localStorage.setItem` or heavy `JSON.stringify` inside a scroll or frame handler",
+        "Attach `touchmove` / `wheel` `preventDefault()` scroll-jacking listeners on coarse-pointer touch devices"
+      ]
+    },
+    {
+      "id": "modal-drawer-a11y-and-reduced-motion-physics",
+      "family": "hardware-and-dialog-physics",
+      "prompt": "Build a slide-out Inspector Drawer component that opens from the right edge when clicking an 'Inspect Item' button.",
+      "expected": [
+        "Animate the drawer entrance/exit strictly via GPU compositor `transform: translate3d(100%, 0, 0)` -> `translate3d(0, 0, 0)` and `opacity`",
+        "Respect `@media (prefers-reduced-motion: reduce)` by replacing the spatial slide translation with a subtle opacity cross-fade",
+        "Declare `role=\"dialog\"` and `aria-modal=\"true\"` on the drawer container",
+        "Lock `document.body` scroll on open, trap `Tab` and `Shift+Tab` focus strictly inside the drawer, close on `Escape`, and restore focus to the triggering 'Inspect Item' button on close",
+        "Ensure the close button and interactive controls meet the 44x44px minimum hit target size"
+      ],
+      "forbidden": [
+        "Animate `right: -400px` to `right: 0px` or `width: 0` to `width: 400px`",
+        "Omit `role=\"dialog\"`, `aria-modal=\"true\"`, focus trapping, or focus restoration to the trigger button"
+      ]
+    },
+    {
+      "id": "non-trigger-backend-sql-batch-migration",
+      "family": "non-trigger-boundary",
+      "prompt": "Write a PostgreSQL migration to add a nullable `archived_at TIMESTAMPTZ` column and a concurrent partial index on `invoices (tenant_id, archived_at)` with zero table locking.",
+      "expected": [
+        "Do not activate `apple-craft-and-frame-budget` (16.6ms/8.3ms frame budget, CLS, or UI state machines) for a backend-only SQL DDL migration",
+        "Route to `zero-downtime-migration-gate` and emit lock-free PostgreSQL DDL (`SET LOCAL lock_timeout = '2s'`, `CREATE INDEX CONCURRENTLY`)"
+      ],
+      "forbidden": [
+        "Generate a client UI state machine or 120Hz frame-budget JSON record for a backend database migration"
+      ]
+    }
+  ]
+}

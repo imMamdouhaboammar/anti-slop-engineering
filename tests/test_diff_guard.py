@@ -158,6 +158,40 @@ class DiffGuardTests(unittest.TestCase):
         self.assertIn('SRE_YAGNI_DEAD_FLAG', finding_ids)
         self.assertIn('SRE_SCALE_SLEEP_BAND_AID', finding_ids)
 
+    def test_flags_decorative_comment_banner(self):
+        (self.repo / 'src' / 'auth.py').write_text(
+            "# =======================\n"
+            "# AUTHENTICATION MODULE\n"
+            "# =======================\n"
+            "def login(): pass\n"
+        )
+        git(self.repo, 'add', 'src/auth.py')
+        _, report = self.check()
+        finding_ids = [x['id'] for x in report['findings']]
+        self.assertIn('DECORATIVE_COMMENT_BANNER', finding_ids)
+
+    def test_flags_generic_ai_gradient_cliche(self):
+        (self.repo / 'src' / 'Hero.tsx').write_text(
+            'export function Hero() {\n'
+            '  return <div className="bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500">Hero</div>;\n'
+            '}\n'
+        )
+        git(self.repo, 'add', 'src/Hero.tsx')
+        _, report = self.check()
+        finding_ids = [x['id'] for x in report['findings']]
+        self.assertIn('GENERIC_AI_GRADIENT_CLICHE', finding_ids)
+
+    def test_flags_ai_marketing_hype_copy(self):
+        (self.repo / 'src' / 'Landing.tsx').write_text(
+            'export function Landing() {\n'
+            '  return <h1>Unleash the power of AI to revolutionize your workflow</h1>;\n'
+            '}\n'
+        )
+        git(self.repo, 'add', 'src/Landing.tsx')
+        _, report = self.check()
+        finding_ids = [x['id'] for x in report['findings']]
+        self.assertIn('AI_MARKETING_HYPE_COPY', finding_ids)
+
 
 if __name__ == '__main__':
     unittest.main()

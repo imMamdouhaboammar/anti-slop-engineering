@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MotionRuntimeRecord",
+  "description": "Schema for DPR-2 retina motion, 4x CPU throttle FPS, long-task bounding, and audio gating audit findings",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "timestamp",
+    "verdict",
+    "device_scale_factor",
+    "measured_fps",
+    "max_longtask_ms",
+    "audio_autoplay_silent",
+    "reduced_motion_branch_present",
+    "findings_count",
+    "findings"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "enum": ["1.0.0"]
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "verdict": {
+      "type": "string",
+      "enum": ["PROCEED", "REJECT", "WARNING"]
+    },
+    "viewport_width": {
+      "type": "integer",
+      "minimum": 320
+    },
+    "viewport_height": {
+      "type": "integer",
+      "minimum": 240
+    },
+    "device_scale_factor": {
+      "type": "number",
+      "minimum": 1.0
+    },
+    "cpu_throttling_rate": {
+      "type": "number",
+      "minimum": 1.0
+    },
+    "measured_fps": {
+      "type": "number",
+      "minimum": 0
+    },
+    "min_fps_threshold": {
+      "type": "number",
+      "minimum": 0
+    },
+    "max_longtask_ms": {
+      "type": "number",
+      "minimum": 0
+    },
+    "audio_autoplay_silent": {
+      "type": "boolean"
+    },
+    "reduced_motion_branch_present": {
+      "type": "boolean"
+    },
+    "is_dev_server": {
+      "type": "boolean"
+    },
+    "findings_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "file",
+          "line",
+          "class",
+          "severity",
+          "evidence",
+          "recommendation"
+        ],
+        "properties": {
+          "id": { "type": "string" },
+          "file": { "type": "string" },
+          "line": { "type": "integer", "minimum": 1 },
+          "class": {
+            "type": "string",
+            "enum": [
+              "SUBPAR_FPS_AT_DPR2",
+              "LONGTASK_BUDGET_EXCEEDED",
+              "AUTOPLAY_SOUND_UNMUTED",
+              "REDUCED_MOTION_COLLAPSE",
+              "DEV_SERVER_MEASUREMENT_INVALID"
+            ]
+          },
+          "severity": {
+            "type": "string",
+            "enum": ["BLOCKING", "WARNING", "INFORMATIONAL"]
+          },
+          "evidence": { "type": "string" },
+          "recommendation": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

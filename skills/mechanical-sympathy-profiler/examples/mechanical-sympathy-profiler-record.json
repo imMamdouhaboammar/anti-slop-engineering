@@ -1,0 +1,52 @@
+{
+  "schema_version": "1.0",
+  "target_path": {
+    "component_or_query": "LedgerSettlementBatchWorker & /api/v1/ledger/reconcile (10,000 NDJSON events + PostgreSQL settlement sync)",
+    "workload_cardinality": "10,000 settlement events per batch across 500 active tenant organizations",
+    "measurement_method": "microbenchmark_and_explain_analyze_buffers"
+  },
+  "baseline_measurement": {
+    "p50_ms": 412.6,
+    "p99_ms": 984.2,
+    "alloc_bytes_per_op": 68450000,
+    "allocs_per_op": 142000,
+    "io_roundtrips_per_request": 2001,
+    "explain_analyze_buffers": "Seq Scan on ledger_entries (cost=0.00..48210.00 rows=1000 width=96) (actual time=14.20..186.40 rows=1000 loops=1) Rows Removed by Filter: 489000, Buffers: shared hit=12400 read=19800",
+    "evidence_artifact": "bun run bench:ledger --iterations=500 && psql -c 'EXPLAIN (ANALYZE, BUFFERS) ...' (captured in artifacts/bench-baseline.json)"
+  },
+  "bottleneck_physics": {
+    "primary_bound": "network_io_roundtrips",
+    "speculative_caching_rejected": true,
+    "root_mechanic": "Worker buffered entire 65MB NDJSON payload via fs.readFileSync, performed O(N*M) nested array.find() tenant lookups with spread-copy reduce accumulators, executed 2,000 serial UPDATE/Redis calls inside a for-loop, and hit an unindexed Seq Scan reading 32,200 8KB heap buffers."
+  },
+  "hardware_and_io_remediation": {
+    "memory_strategy": "bounded_chunk_streaming",
+    "gc_pressure_mitigations": [
+      "bounded_stream_backpressure",
+      "eliminate_intermediate_array_chains",
+      "preindex_o1_map_set_lookup",
+      "in_place_accumulator_mutation",
+      "reuse_typed_buffer_scratchpad"
+    ],
+    "io_batching_strategy": "sql_unnest_or_any_batch",
+    "roundtrip_reduction": "2001 serial roundtrips -> 2 bulk roundtrips (1 PostgreSQL UNNEST batch + 1 Redis pipeline)"
+  },
+  "post_change_measurement": {
+    "p50_ms": 14.8,
+    "p99_ms": 23.4,
+    "alloc_bytes_per_op": 1420000,
+    "allocs_per_op": 1850,
+    "io_roundtrips_per_request": 2,
+    "explain_analyze_buffers": "Index Only Scan using idx_ledger_entries_tenant_status_created_cov on ledger_entries (cost=0.56..412.80 rows=1000 width=96) (actual time=0.18..1.92 rows=1000 loops=1) Heap Fetches: 0, Buffers: shared hit=312 read=0",
+    "regression_check_passed": true,
+    "improvement_summary": "P99 latency dropped 97.6% (984.2ms -> 23.4ms), heap allocations dropped 97.9% (68.45MB -> 1.42MB per batch), database buffer reads dropped from 32,200 blocks to 312 shared hits via ESR covering index, and wire roundtrips collapsed from 2,001 to 2."
+  },
+  "verdict": {
+    "action": "proceed",
+    "rationale": "Rejected proposal to wrap the slow settlement query in a 5-minute Redis cache. Empirical baseline and post-change benchmarks plus EXPLAIN (ANALYZE, BUFFERS) confirm a 42x P99 speedup and 48x allocation reduction by streaming NDJSON in 64KB chunks, pre-indexing tenants in an O(1) Map, coalescing 1,000 SQL updates into a single UNNEST query, pipelining Redis counters, and adding an ESR covering index.",
+    "revisit_triggers": [
+      "Batch size exceeds 100,000 events per file (shard UNNEST batches into 5,000-row chunks to keep WAL lock hold times under 10ms)",
+      "Ledger table exceeds 500M rows per partition (enable monthly range partitioning on created_at)"
+    ]
+  }
+}

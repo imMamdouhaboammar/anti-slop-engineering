@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AntiSlopTagoreDiscourseRecord",
+  "description": "RFC 9457 Problem Details schema for Tagore Engineering Discourse & Substance Guard audit records.",
+  "type": "object",
+  "required": [
+    "type",
+    "title",
+    "status",
+    "code",
+    "detail",
+    "metrics",
+    "findings",
+    "remediation"
+  ],
+  "properties": {
+    "type": { "type": "string", "format": "uri" },
+    "title": { "type": "string" },
+    "status": { "type": "integer" },
+    "code": {
+      "type": "string",
+      "enum": [
+        "ERR_TAGORE_SCORE_BELOW_THRESHOLD",
+        "ERR_TAGORE_MECHANICS_FLOOR_FAILED",
+        "ERR_TAGORE_SUBSTANCE_FLOOR_FAILED",
+        "ERR_TAGORE_INFLATED_SLOP_DETECTED",
+        "ERR_TAGORE_FLATTENED_SOULLESS_SLOP",
+        "ERR_TAGORE_CHECKLIST_FAILED",
+        "NO_TAGORE_FINDINGS"
+      ]
+    },
+    "detail": { "type": "string" },
+    "instance": { "type": "string" },
+    "metrics": {
+      "type": "object",
+      "required": [
+        "total_score",
+        "mechanics_subtotal",
+        "substance_subtotal",
+        "dimensions",
+        "discourse_vector",
+        "slop_to_substance_ratio",
+        "passive_voice_ratio",
+        "mean_sentence_length",
+        "sentence_length_stddev",
+        "empirical_token_density",
+        "catalog_tells_count",
+        "checklist_violations_count",
+        "verdict"
+      ],
+      "properties": {
+        "total_score": { "type": "number", "minimum": 0, "maximum": 80 },
+        "mechanics_subtotal": { "type": "number", "minimum": 0, "maximum": 50 },
+        "substance_subtotal": { "type": "number", "minimum": 0, "maximum": 30 },
+        "dimensions": {
+          "type": "object",
+          "required": [
+            "directness",
+            "rhythm",
+            "trust",
+            "authenticity",
+            "density",
+            "specificity",
+            "restraint",
+            "voice"
+          ],
+          "properties": {
+            "directness": { "type": "number", "minimum": 1, "maximum": 10 },
+            "rhythm": { "type": "number", "minimum": 1, "maximum": 10 },
+            "trust": { "type": "number", "minimum": 1, "maximum": 10 },
+            "authenticity": { "type": "number", "minimum": 1, "maximum": 10 },
+            "density": { "type": "number", "minimum": 1, "maximum": 10 },
+            "specificity": { "type": "number", "minimum": 1, "maximum": 10 },
+            "restraint": { "type": "number", "minimum": 1, "maximum": 10 },
+            "voice": { "type": "number", "minimum": 1, "maximum": 10 }
+          }
+        },
+        "discourse_vector": {
+          "type": "string",
+          "enum": ["clean", "inflated", "flattened", "mixed"]
+        },
+        "slop_to_substance_ratio": { "type": "number" },
+        "passive_voice_ratio": { "type": "number" },
+        "mean_sentence_length": { "type": "number" },
+        "sentence_length_stddev": { "type": "number" },
+        "empirical_token_density": { "type": "number" },
+        "catalog_tells_count": { "type": "integer" },
+        "checklist_violations_count": { "type": "integer" },
+        "verdict": {
+          "type": "string",
+          "enum": ["PROCEED", "REVISE_MECHANICS", "REVISE_SUBSTANCE", "REFUSE"]
+        }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["severity", "category", "rule", "message", "evidence"],
+        "properties": {
+          "file": { "type": "string" },
+          "line": { "type": "integer" },
+          "severity": { "type": "string", "enum": ["blocker", "review", "nit"] },
+          "category": { "type": "string" },
+          "pattern_id": { "type": "string" },
+          "rule": { "type": "string" },
+          "message": { "type": "string" },
+          "evidence": { "type": "string" },
+          "suggested_replacement": { "type": "string" }
+        }
+      }
+    },
+    "remediation": {
+      "type": "object",
+      "required": ["action", "guidance"],
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "SCRUB_INFLATED_TELLS",
+            "INJECT_ENGINEERING_SUBSTANCE",
+            "RESTRUCTURE_METRONOMIC_CADENCE",
+            "ELIMINATE_PASSIVE_SUBJECTLESS_FRAGMENTS",
+            "REVISE_FAILED_CHECKLIST",
+            "NO_ACTION_REQUIRED"
+          ]
+        },
+        "guidance": { "type": "string" }
+      }
+    }
+  }
+}

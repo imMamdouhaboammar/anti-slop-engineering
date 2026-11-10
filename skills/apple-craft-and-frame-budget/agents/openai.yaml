@@ -1,0 +1,9 @@
+interface:
+  display_name: "Apple Craft & Frame Budget"
+  short_description: "Apple HIG craft, 60/120Hz frame physics, Optimistic UI, Zero CLS, and State Machines"
+  default_prompt: "Architect, implement, or audit this UI using Apple HIG craft and 60/120Hz Client Runtime Physics: enforce the 16.6ms/8.3ms compositor frame budget, sub-50ms Optimistic UI with rollback snapshots, Zero CLS pixel reservation, and an explicit Discriminated Union State Machine without Boolean Soup."
+policy:
+  products:
+    - CHAT
+    - CODEX
+  allow_implicit_invocation: true

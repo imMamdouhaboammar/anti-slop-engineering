@@ -1,0 +1,68 @@
+{
+  "eval_version": "1.0",
+  "skill": "observability-and-slo-architect",
+  "scenarios": [
+    {
+      "id": "direct_positive_add_route_metrics",
+      "type": "direct_positive",
+      "prompt": "Add Prometheus metrics to our checkout API routes in src/routes/checkout.ts to monitor traffic, error rates, and response latency.",
+      "expected_behavior": {
+        "should_trigger": true,
+        "actions": [
+          "Enforce compile-time bounded label set without user_id or request_id in labels",
+          "Emit RED metrics: Rate counter, Errors counter, and Duration Histogram",
+          "Configure explicit bucket boundaries for P50, P95, and P99 calculation",
+          "Map unmatched 404 paths to __unmatched__",
+          "Attach trace exemplars to histogram recordings"
+        ]
+      }
+    },
+    {
+      "id": "direct_positive_async_queue_tracing",
+      "type": "direct_positive",
+      "prompt": "We are adding a Kafka message queue worker for settlement processing. Please implement the producer and consumer logic with full tracing.",
+      "expected_behavior": {
+        "should_trigger": true,
+        "actions": [
+          "Wrap publish in an OpenTelemetry PRODUCER span",
+          "Inject W3C traceparent and correlation_id into Kafka message headers",
+          "Extract W3C traceparent in worker before execution",
+          "Start a child or linked CONSUMER span under the parent trace",
+          "Instrument worker USE metrics (concurrency utilization and backlog saturation)"
+        ]
+      }
+    },
+    {
+      "id": "indirect_positive_slo_alerting_rules",
+      "type": "indirect_positive",
+      "prompt": "Our on-call team is burned out from receiving pages at 3 AM whenever CPU spikes to 85% for 2 minutes. Redesign our alerting strategy.",
+      "expected_behavior": {
+        "should_trigger": true,
+        "actions": [
+          "Decommission raw CPU and threshold-only resource alerts",
+          "Establish Availability and Latency SLIs tied to user experience",
+          "Implement Google SRE Multi-Window Multi-Burn-Rate alerts (14.4x 1h/5m for page, 6.0x 6h/30m for ticket)",
+          "Verify alerts require both long and short window confirmation"
+        ]
+      }
+    },
+    {
+      "id": "near_miss_negative_offline_cli_script",
+      "type": "near_miss_negative",
+      "prompt": "Write a python script to parse a local CSV file of products and generate a summary markdown table for offline documentation.",
+      "expected_behavior": {
+        "should_trigger": false,
+        "reason": "Offline local script with no distributed networking, TSDB metrics, async queues, or production SLOs."
+      }
+    },
+    {
+      "id": "near_miss_negative_css_styling",
+      "type": "near_miss_negative",
+      "prompt": "Change the background color of the login button from blue to dark slate in tailwind.config.js.",
+      "expected_behavior": {
+        "should_trigger": false,
+        "reason": "Static UI CSS style change with no telemetry or observability implications."
+      }
+    }
+  ]
+}

@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AntiSlopHoneypotRecord",
+  "type": "object",
+  "required": [
+    "type",
+    "title",
+    "status",
+    "code",
+    "detail",
+    "canary_scan",
+    "findings",
+    "remediation"
+  ],
+  "properties": {
+    "type": { "type": "string", "format": "uri" },
+    "title": { "type": "string" },
+    "status": { "type": "integer" },
+    "code": {
+      "type": "string",
+      "enum": [
+        "ERR_HONEYPOT_TRIGGERED",
+        "ERR_DIRECTIVE_TRAP_ECHOED",
+        "NO_HONEYPOT_FINDINGS"
+      ]
+    },
+    "detail": { "type": "string" },
+    "instance": { "type": "string" },
+    "canary_scan": {
+      "type": "object",
+      "required": ["targets_scanned", "traps_configured", "canary_tokens_found"],
+      "properties": {
+        "targets_scanned": { "type": "integer" },
+        "traps_configured": { "type": "integer" },
+        "canary_tokens_found": { "type": "integer" }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["trap_id", "severity", "message", "matched_text"],
+        "properties": {
+          "trap_id": { "type": "string" },
+          "severity": { "type": "string", "enum": ["blocker", "review"] },
+          "message": { "type": "string" },
+          "matched_text": { "type": "string" }
+        }
+      }
+    },
+    "remediation": {
+      "type": "object",
+      "required": ["action", "guidance"],
+      "properties": {
+        "action": { "type": "string" },
+        "guidance": { "type": "string" }
+      }
+    }
+  }
+}

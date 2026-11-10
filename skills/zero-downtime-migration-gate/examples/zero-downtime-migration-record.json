@@ -1,0 +1,58 @@
+{
+  "schema_version": "1.0",
+  "goal": "Evolve users.full_name into split given_name and family_name columns and update Customer REST/Protobuf contracts with zero downtime across rolling deployments",
+  "evolution_strategy": {
+    "pattern": "expand_migrate_contract",
+    "current_phase": "expand",
+    "phases": {
+      "expand": {
+        "description": "Add nullable given_name and family_name columns, drop NOT NULL on legacy full_name, build concurrent index, and deploy dual-write adapter while retaining legacy reads",
+        "dual_write_enabled": true,
+        "n_minus_1_compatible": true
+      },
+      "migrate": {
+        "description": "Execute keyset-paginated backfill in 1,000-row batches with 100ms jittered delay, validate NOT VALID check constraint, and cut over reads to given_name/family_name",
+        "read_cutover_strategy": "dual_read_fallback_then_primary_new_columns",
+        "verification_gate": "Zero NULL rows in given_name/family_name and 100% shadow-read parity over 24 hours"
+      },
+      "contract": {
+        "description": "Remove dual-write code references after N-1 pods and mobile horizon drain, drop legacy full_name column under lock_timeout, and reserve Protobuf tag 4",
+        "drain_prerequisite": "0% Version N-1 server pods active and 0 legacy API version requests over 30-day telemetry window"
+      }
+    }
+  },
+  "ddl_safety": {
+    "engine": "postgresql",
+    "lock_timeout_ms": 2000,
+    "statement_timeout_ms": 10000,
+    "concurrent_index_creation": true,
+    "constraint_validation_strategy": "not_valid_then_validate",
+    "prohibited_operations_absent": true
+  },
+  "backfill_plan": {
+    "decoupled_from_ddl": true,
+    "batch_size": 1000,
+    "throttle_delay_ms": 100,
+    "idempotent": true
+  },
+  "wire_compatibility": {
+    "formats": ["json", "protobuf", "graphql"],
+    "backward_compatible_n_reads_n_minus_1": true,
+    "forward_compatible_n_minus_1_reads_n": true,
+    "active_client_horizon": "90d_mobile_and_30m_rolling_pods",
+    "protobuf_reserved_enforced": true,
+    "version_pinning_strategy": "stripe_date_header_gate"
+  },
+  "rollback_safety": {
+    "n_minus_1_binary_safe_without_db_rollback": true,
+    "rehearsal_evidence": "Verified N-1 integration test suite passes INSERT and SELECT queries against Phase 1 expanded PostgreSQL schema"
+  },
+  "verdict": {
+    "action": "proceed",
+    "rationale": "All schema changes follow 3-phase Expand-Migrate-Contract with 2000ms lock_timeout, non-blocking constraint validation, batched backfills, and dual-payload wire compatibility.",
+    "revisit_triggers": [
+      "PostgreSQL replication lag exceeds 2000ms during Phase 2 backfill",
+      "Legacy mobile client traffic on API version < 2026-11-10 exceeds 0.1% before Phase 3 contraction"
+    ]
+  }
+}

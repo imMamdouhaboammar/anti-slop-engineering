@@ -1,0 +1,124 @@
+{
+  "schema_version": "1.0.0",
+  "generated_at": "2026-11-10T18:00:00Z",
+  "invariants_count": 4,
+  "ledger_hash": "a1b2c3d4e5f67890123456789abcdef0123456789abcdef0123456789abcdef0",
+  "invariants": [
+    {
+      "id": "INV-PARANOID-IDEMPOTENCY",
+      "category": "concurrency_and_scale",
+      "assertion": "State-mutating POST/PUT/PATCH endpoints must enforce Idempotency-Key with persistent atomic storage.",
+      "rationale": "Eliminates duplicate transactions and race conditions under 10M concurrent sessions and network retries.",
+      "enforcement_scope": {
+        "paths": [
+          "src/api/**",
+          "src/controllers/**",
+          "src/routes/**",
+          "**/api/**"
+        ],
+        "patterns": [
+          "Idempotency-Key"
+        ],
+        "forbidden_patterns": [
+          "Math.random()"
+        ]
+      },
+      "authority": {
+        "record_type": "paranoid_record",
+        "record_file": "skills/paranoid-principal-architect/examples/paranoid-architecture-record.json",
+        "record_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "author": "Mamdouh Aboammar"
+      },
+      "status": "active",
+      "reassessment_threshold": "Requires distributed idempotency benchmark and load-test verification."
+    },
+    {
+      "id": "INV-PARANOID-BOUNDED-READ",
+      "category": "concurrency_and_scale",
+      "assertion": "Database reads must be keyset-paginated with max_read_limit <= 50.",
+      "rationale": "Prevents memory exhaustion, latency spikes, and full-table-scan database brownouts.",
+      "enforcement_scope": {
+        "paths": [
+          "src/db/**",
+          "src/repositories/**",
+          "**/db/**"
+        ],
+        "patterns": [
+          "limit",
+          "cursor"
+        ],
+        "forbidden_patterns": [
+          "OFFSET 100",
+          "OFFSET 500"
+        ]
+      },
+      "authority": {
+        "record_type": "paranoid_record",
+        "record_file": "skills/paranoid-principal-architect/examples/paranoid-architecture-record.json",
+        "record_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "author": "Mamdouh Aboammar"
+      },
+      "status": "active",
+      "reassessment_threshold": "Requires database index and query latency proof."
+    },
+    {
+      "id": "INV-OBSERVABILITY-CARDINALITY",
+      "category": "telemetry_and_slo",
+      "assertion": "Metric dimensions must remain bounded: dynamic IDs in label keys are strictly prohibited.",
+      "rationale": "Prevents metric storage explosion and OOMs in time-series telemetry systems.",
+      "enforcement_scope": {
+        "paths": [
+          "src/telemetry/**",
+          "src/metrics/**",
+          "**/observability/**"
+        ],
+        "patterns": [
+          "histogram",
+          "counter"
+        ],
+        "forbidden_patterns": [
+          "user_id",
+          "request_id",
+          "order_id"
+        ]
+      },
+      "authority": {
+        "record_type": "observability_record",
+        "record_file": "skills/observability-and-slo-architect/examples/observability-slo-record.json",
+        "record_sha256": "c4ca4238a0b923820dcc509a6f75849b27ae41e4649b934ca495991b7852b855",
+        "author": "Mamdouh Aboammar"
+      },
+      "status": "active",
+      "reassessment_threshold": "Requires Monarch telemetry capacity review."
+    },
+    {
+      "id": "INV-ROLLOUT-WIRE-COMPAT",
+      "category": "rollout_and_compatibility",
+      "assertion": "Wire contracts must remain N-1/N+1 compatible: additive changes only and tolerant readers.",
+      "rationale": "Rejects atomic cutover fantasy and ensures zero downtime during rolling deployments.",
+      "enforcement_scope": {
+        "paths": [
+          "proto/**",
+          "schemas/**",
+          "src/contracts/**",
+          "api/**"
+        ],
+        "patterns": [
+          "optional",
+          "reserved"
+        ],
+        "forbidden_patterns": [
+          "required field removed"
+        ]
+      },
+      "authority": {
+        "record_type": "rollout_record",
+        "record_file": "skills/safe-evolution-and-rollout-choreographer/examples/safe-evolution-record.json",
+        "record_sha256": "1679091c5a880faf6fb5e6087eb1b2dc27ae41e4649b934ca495991b7852b855",
+        "author": "Mamdouh Aboammar"
+      },
+      "status": "active",
+      "reassessment_threshold": "Requires multi-phase deprecation window and backwards compatibility gate."
+    }
+  ]
+}

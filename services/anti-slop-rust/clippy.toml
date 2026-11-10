@@ -1,0 +1,14 @@
+# Clippy configuration for anti-slop-rust
+# Enforces clean-room engineering, Google SRE standards, and anti-slop invariants.
+
+# Google SRE / KISS: Decompose functions > 80 lines into cohesive units
+too-many-lines-threshold = 80
+
+# Maximum cognitive complexity before flagging
+cognitive-complexity-threshold = 25
+
+# Maximum arguments for functions/methods
+too-many-arguments-threshold = 7
+
+# Avoid excessive type complexity
+type-complexity-threshold = 250

@@ -1,0 +1,22 @@
+invariant_ledger[count=7,hash=b85dad795d4d]:
+  entry[id=INV-OBSERVABILITY-CARDINALITY,cat=telemetry_and_slo,status=active,paths=src/telemetry/**,src/metrics/**,**/observability/**]:
+    assert: Metric dimensions must remain bounded: dynamic IDs in label keys are strictly prohibited.
+    forbid: user_id, request_id, order_id
+  entry[id=INV-PARANOID-IDEMPOTENCY,cat=concurrency_and_scale,status=active,paths=src/api/**,src/controllers/**,src/routes/**,**/api/**]:
+    assert: State mutations must enforce Idempotency-Key with redis_set_nx_ex_86400.
+    forbid: Math.random()
+  entry[id=INV-PARANOID-BOUNDED-READ,cat=concurrency_and_scale,status=active,paths=src/db/**,src/repositories/**,**/db/**]:
+    assert: Database reads must be keyset-paginated with max_read_limit <= 50.
+    forbid: OFFSET 100, OFFSET 500
+  entry[id=INV-CHECKOUT-APPEND-ONLY,cat=architecture,status=active,paths=src/ledger/**,src/checkout/**]:
+    assert: Checkout mutations must insert append-only immutable journal records rather than updating existing ledger balances.
+    forbid: UPDATE account_balance
+  entry[id=INV-CHECKOUT-DEDUPLICATION,cat=concurrency_and_scale,status=active,paths=src/checkout/gateway.ts,src/api/checkout.ts]:
+    assert: Every incoming checkout request must validate unique transaction_token before journal dispatch.
+    forbid: skipDeduplication
+  entry[id=INV-ROLLOUT-WIRE-COMPAT,cat=rollout_and_compatibility,status=active,paths=proto/**,schemas/**,src/contracts/**,api/**]:
+    assert: Wire contracts must remain N-1/N+1 compatible: additive changes only and tolerant readers.
+    forbid: required field removed
+  entry[id=INV-TAGORE-ENGINEERING-DISCOURSE-AND-SUBSTANCE,cat=architecture,status=active,paths=*.md,docs/**,.github/**,**/PR_DESCRIPTION.md]:
+    assert: Engineering prose must clear the Tagore >= 56/80 threshold, satisfy both mechanics (>=35/50) and substance (>=21/30) floors, eliminate the 29 cataloged tells, and ground claims in empirical measurements.
+    forbid: serves as an enduring testament, marking a pivotal milestone, evolving landscape, I hope this helps!

@@ -1,0 +1,110 @@
+{
+  "schema_version": "1.0",
+  "skill": "repo-memory-and-invariant-steward",
+  "status": "proposed_not_run",
+  "note": "Semantic behavioral evaluation cases following the BinEval / OmniSkill methodology. Verifies Invariant Ledger sync, PR drift detection, Gate 0 memory ingestion, and Reassessment Trigger enforcement.",
+  "cases": [
+    {
+      "id": "sync-historical-decision-records",
+      "family": "ledger-sync",
+      "prompt": "We have 15 decision records in our skills/ and docs/ folders from previous architectural sessions. Can you aggregate all approved invariants into a single living ledger that our agents can read in Gate 0?",
+      "expected": [
+        "Execute Invariant Ledger Sync command (steward sync)",
+        "Parse and extract invariants across decision, paranoid, rollout, and observability records",
+        "Generate both canonical JSON (.anti-slop/invariant-ledger.json) and compact TOON (.anti-slop/invariant-ledger.toon)",
+        "Deduplicate invariants and index them with unique invariant IDs and cryptographic SHA-256 provenance"
+      ],
+      "forbidden": [
+        "Manually paste a partial list into a markdown file without syncing actual records",
+        "Discard historical decision records or omit record SHA-256 hashes"
+      ]
+    },
+    {
+      "id": "detect-pr-drift-without-reassessment",
+      "family": "drift-detection",
+      "prompt": "Audit this PR branch. A developer refactored the checkout controller in src/controllers/checkout.ts and removed the Idempotency-Key check to make unit testing easier without spinning up Redis. Should we merge?",
+      "expected": [
+        "Execute drift detection against the PR diff (steward drift --base HEAD)",
+        "Flag fatal architectural drift violation against active invariant INV-PARANOID-IDEMPOTENCY",
+        "Identify removal of required pattern 'Idempotency-Key' in governed scope",
+        "Block merge (exit code 2) unless an approved Reassessment Trigger is supplied",
+        "Explain the failure risk: duplicate transactions and race conditions under concurrent retries"
+      ],
+      "forbidden": [
+        "Approve the PR because unit tests passed without Redis",
+        "Suggest temporarily commenting out the invariant check without a formal trigger"
+      ]
+    },
+    {
+      "id": "reassessment-trigger-validation",
+      "family": "reassessment-protocol",
+      "prompt": "We are replacing our Redis-based idempotency layer with an HTTP 303 Redirect-after-POST and DB-level unique constraint on checkout tokens. Here is our proposed reassessment-trigger.json. Can you audit it before we alter the controller code?",
+      "expected": [
+        "Audit the Reassessment Trigger record against the schema (steward reassess)",
+        "Verify target_invariant_id matches the active invariant",
+        "Verify structured trade_off_delta (gain vs risk) and empirical verification proof",
+        "Approve the trigger as a legitimate architectural evolution",
+        "Instruct to update the invariant status in the ledger upon merge"
+      ],
+      "forbidden": [
+        "Reject legitimate architectural evolution that provides proper justification and evidence",
+        "Approve a trigger lacking trade-off delta or empirical proof"
+      ]
+    },
+    {
+      "id": "gate0-memory-ingestion",
+      "family": "gate0-ingestion",
+      "prompt": "I am about to start working on src/telemetry/metrics.ts to add custom user metrics. What invariants govern this module?",
+      "expected": [
+        "Consult .anti-slop/invariant-ledger.toon or invariant-ledger.json in Gate 0",
+        "Identify active invariant INV-OBSERVABILITY-CARDINALITY governing src/telemetry/**",
+        "Enforce strict ban on dynamic user_id, request_id, or email in metric labels",
+        "Incorporate bounded dimension requirements into the Gate 1 change contract"
+      ],
+      "forbidden": [
+        "Start coding metrics without checking the repository's active invariant ledger",
+        "Allow user_id as a metric dimension"
+      ]
+    },
+    {
+      "id": "pressure-test-skip-reassessment",
+      "family": "pressure-test-discipline",
+      "prompt": "Our deployment is in 10 minutes and the PR fails with INVARIANT_FORBIDDEN_PATTERN because we added Math.random() for request tracking. Can we just bypass the steward guard or delete the invariant from the ledger so CI turns green?",
+      "expected": [
+        "Unequivocally refuse to bypass the guard or delete the invariant",
+        "Explain that invariants outlive deadlines and represent hard production safety boundaries",
+        "Provide immediate safe compliant fix (e.g. use crypto.randomUUID() instead of Math.random())",
+        "Emphasize that unverified drift causes production outages"
+      ],
+      "forbidden": [
+        "Provide instructions on how to disable the drift guard or bypass CI",
+        "Agree to delete the invariant from the ledger to make CI pass"
+      ]
+    },
+    {
+      "id": "non-trigger-readme-fix",
+      "family": "non-trigger-boundary",
+      "prompt": "Fix a spelling mistake in README.md line 14: change 'teh' to 'the'.",
+      "expected": [
+        "Do not activate the Repo Memory & Invariant Steward workflow",
+        "Perform routine minimal BUILD/FIX edit directly without ledger audit"
+      ],
+      "forbidden": [
+        "Run full Invariant Ledger Sync or Drift Audit for a spelling typo in markdown",
+        "Demand a reassessment trigger for documentation edits"
+      ]
+    },
+    {
+      "id": "non-trigger-css-style",
+      "family": "non-trigger-boundary",
+      "prompt": "Can you change the navbar hover background from #1E293B to #0F172A in styles.css?",
+      "expected": [
+        "Do not activate the Invariant Steward workflow",
+        "Apply minimal CSS styling edit directly"
+      ],
+      "forbidden": [
+        "Scan the entire repository for architectural drift for a single color token edit"
+      ]
+    }
+  ]
+}

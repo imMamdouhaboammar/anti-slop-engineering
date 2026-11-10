@@ -1,0 +1,58 @@
+{
+  "schema_version": "1.0",
+  "contract_id": "stripe-style-billing-sdk",
+  "target_interface": {
+    "module_path": "services/billing/sdk/client.ts",
+    "interface_type": "public_sdk",
+    "language": "typescript"
+  },
+  "pit_of_success_defaults": {
+    "enabled": true,
+    "default_timeout_ms": 10000,
+    "auto_retry_max_attempts": 3,
+    "backoff_strategy": "exponential_full_jitter",
+    "default_page_limit": 20,
+    "max_page_limit_ceiling": 100,
+    "safe_tls_enforced": true
+  },
+  "illegal_states_unrepresentable": {
+    "discriminated_unions_enforced": true,
+    "discriminator_field": "status",
+    "branded_types_enforced": true,
+    "branded_type_identifiers": [
+      "CustomerId",
+      "PaymentIntentId",
+      "IdempotencyKey",
+      "CurrencyCode"
+    ],
+    "exhaustive_match_enforced": true,
+    "zero_boolean_traps_verified": true
+  },
+  "progressive_disclosure": {
+    "tier_1_one_liner_facade": "client.paymentIntents.create({ amount: 5000, currency: 'usd' }) provides instantaneous payment initialization",
+    "tier_2_options_bag_supported": true,
+    "tier_3_power_escape_hatch": "client.raw.request() and ClientBuilder allow custom transport pipelines, custom fetchers, and byte streaming",
+    "namespace_pollution_prevented": true
+  },
+  "rfc9457_problem_details": {
+    "standard_compliance": "RFC_9457",
+    "error_type_uri_prefix": "https://api.billing.example.com/errors/",
+    "deterministic_machine_codes": [
+      "card_declined",
+      "insufficient_funds",
+      "idempotency_key_reused",
+      "rate_limit_exceeded"
+    ],
+    "invalid_params_breakdown_supported": true,
+    "remediation_action_supported": true,
+    "retryability_metadata_exposed": true
+  },
+  "verdict": {
+    "action": "proceed",
+    "rationale": "Exemplary contract design adhering to Microsoft TypeScript compiler rigor and Stripe world-class developer experience.",
+    "revisit_triggers": [
+      "Adding non-HTTP transport protocol (e.g. gRPC or WebSocket)",
+      "Modifying payment intent lifecycle state variants"
+    ]
+  }
+}

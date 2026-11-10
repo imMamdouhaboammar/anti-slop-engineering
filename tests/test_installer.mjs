@@ -1,0 +1,72 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Mamdouh Aboammar <mamdouhfces1997@gmail.com> and contributors
+
+import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { test } from 'node:test'
+import {
+  AGENTS,
+  CORE_SKILL,
+  listAvailableSkills,
+  resolveTargets,
+  writeBlock,
+} from '../scripts/installer.mjs'
+
+test('Installer: AGENTS list has 14 supported agents', () => {
+  assert.equal(AGENTS.length, 14)
+  const ids = AGENTS.map((a) => a.id)
+  assert.ok(ids.includes('antigravity'))
+  assert.ok(ids.includes('claude'))
+  assert.ok(ids.includes('cursor'))
+  assert.ok(ids.includes('codex'))
+  assert.ok(ids.includes('opencode'))
+  assert.ok(ids.includes('deepseek'))
+  assert.ok(ids.includes('windsurf'))
+})
+
+test('Installer: listAvailableSkills returns core and modular skills', () => {
+  const skills = listAvailableSkills()
+  assert.ok(skills.includes(CORE_SKILL))
+  assert.ok(skills.length >= 10)
+})
+
+test('Installer: resolveTargets deduplicates shared folders', () => {
+  // antigravity, amp, copilot, kimi, deepseek all share .agents/skills
+  const targets = resolveTargets('project', ['antigravity', 'copilot', 'deepseek'])
+  assert.equal(targets.length, 1)
+  assert.equal(targets[0].agents.length, 3)
+})
+
+test('Installer: writeBlock safely injects and replaces pointer block', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'anti-slop-install-test-'))
+  const entryFile = path.join(tmpDir, 'AGENTS.md')
+  try {
+    fs.writeFileSync(entryFile, '# Existing Agent Config\n\nSome custom instructions.\n')
+    const block = [
+      '<!-- anti-slop-engineering:start -->',
+      '## anti-slop-engineering',
+      '- Rule 1: SRE KISS',
+      '<!-- anti-slop-engineering:end -->'
+    ]
+    writeBlock(entryFile, block)
+    let content = fs.readFileSync(entryFile, 'utf8')
+    assert.ok(content.includes('<!-- anti-slop-engineering:start -->'))
+    assert.ok(content.includes('Some custom instructions.'))
+
+    // Second write replaces block cleanly without duplicating
+    writeBlock(entryFile, [
+      '<!-- anti-slop-engineering:start -->',
+      '## anti-slop-engineering',
+      '- Rule 1: Updated SRE KISS',
+      '<!-- anti-slop-engineering:end -->'
+    ])
+    content = fs.readFileSync(entryFile, 'utf8')
+    assert.ok(content.includes('Updated SRE KISS'))
+    const matchCount = (content.match(/<!-- anti-slop-engineering:start -->/g) || []).length
+    assert.equal(matchCount, 1)
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true })
+  }
+})

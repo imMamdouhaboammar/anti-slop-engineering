@@ -1,0 +1,13 @@
+diff --git a/src/controllers/checkout.ts b/src/controllers/checkout.ts
+index e69de29..b2b1a34 100644
+--- a/src/controllers/checkout.ts
++++ b/src/controllers/checkout.ts
+@@ -10,7 +10,6 @@ export async function processCheckout(req: Request, res: Response) {
+-  const idempotencyKey = req.headers["idempotency-key"];
+-  if (!idempotencyKey) {
+-    return res.status(400).json({ error: "Missing Idempotency-Key" });
+-  }
++  const trackingId = "req_" + Math.random();
+   const order = await createOrder(req.body);
+   return res.json({ success: true, order });
+ }

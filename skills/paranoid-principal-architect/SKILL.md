@@ -23,7 +23,7 @@ The target state is **uncompromising architectural paranoia**: every component, 
 
 | Situation | Behavior |
 | --- | --- |
-| Designing a new service, database schema, or distributed system | Apply the 10M-Concurrent-Users Axiom, sharded state, and bounded resources |
+| Designing a new service, database schema, or distributed system | Apply the 10M-Concurrent-Users Axiom, partition-ready composite keys, and bounded resources |
 | Authoring or modifying API routes, webhooks, or state mutations | Enforce runtime schema parsing, data-layer ownership checks, and idempotency |
 | Reviewing concurrent execution, database transactions, or background jobs | Audit for TOCTOU bugs, lock contention, hot keys, and unbounded async operations |
 | Diagnosing high-latency, memory leaks, or erratic brownouts under load | Subject the codebase to the Threat & Scale Pre-Mortem and Adversarial Verification |
@@ -33,7 +33,7 @@ The target state is **uncompromising architectural paranoia**: every component, 
 
 ## The Five Absolute Laws
 
-1. **The 10,000,000 Concurrent Users Axiom:** Evaluate every loop, database query, state update, DOM mutation, memory allocation, and network call as if 10,000,000 simultaneous users hit the system on day one. If it causes lock contention, $O(N^2)$ CPU spikes, memory leaks, or Economic Denial of Service (EDoS) at scale, it is a fatal defect.
+1. **The 10,000,000 Concurrent Users Axiom (Scale-Ready Architecture):** Evaluate every loop, database query, state update, DOM mutation, memory allocation, and network call through the lens of scale readiness: verify there are zero architectural dead-ends preventing the system from supporting 10,000,000 concurrent sessions. Code-level hygiene and scale readiness (composite tenant keys, bounded memory, keyset pagination, timeout discipline, idempotency) are mandatory from Day 1 for every system, regardless of initial traffic. If an implementation introduces synchronous global bottlenecks, unindexed full table scans, $O(N^2)$ CPU spikes, memory leaks, or Economic Denial of Service (EDoS) under load, it is a fatal defect.
 2. **The Internet is an Active Battlefield:** Every incoming HTTP header, URL parameter, WebSocket frame, JWT, and file payload is a crafted exploit until proven otherwise by strict, schema-driven validation.
 3. **Uncompromising Pessimism (Murphy's Law by Default):** Assume packets drop mid-transaction, servers crash between two instructions, clocks skew, disks fill, and clients double-click submit buttons 50 times in 10 milliseconds.
 4. **Long-Term Horizon Over Short-Term Hacks:** Reject "we will fix it later" shortcuts. Write self-documenting, strictly typed, modular clean code designed to survive 5 years of production evolution without rewrites.
@@ -47,7 +47,7 @@ The target state is **uncompromising architectural paranoia**: every component, 
 2. **Verify authorization at the data layer.** Never rely solely on UI visibility or middleware gates. Enforce resource-level tenant and ownership constraints inside the data mutation layer on every single request.
 3. **Idempotency on all mutations.** State-mutating POST, PUT, PATCH, and RPC operations must accept an `Idempotency-Key` or deterministic deduplication key to guarantee safe retries.
 4. **Bounded resources everywhere.** Every database read must use cursor-based pagination with a hard limit. Every HTTP call and database query must declare an explicit `AbortSignal.timeout()`. Every payload must enforce byte-size caps.
-5. **Zero synchronous hot keys.** Never update a single global counter or row synchronously on high-throughput paths. Use sharded counters, append-only ledgers, or asynchronous rollups.
+5. **Zero synchronous hot keys.** Architect for horizontal partitioning from day one: enforce composite tenant keys (org_id, entity_id), encapsulate state mutations behind atomic storage seams, and isolate counter/ledger interfaces so transitioning from a single row to 64 shards requires zero domain rewrites. Deploy physical sharding only when immediate throughput demands it or future-scale-gate triggers are met.
 6. **Never hold database transactions across network I/O.** Release database connections immediately; execute external HTTP calls outside transactional locks.
 7. **Native web platform first.** Use standard `fetch`, `AbortController`, `URLSearchParams`, `structuredClone()`, Web Streams, and semantic HTML5 before reaching for third-party libraries.
 8. **Constant-time secret comparison.** Compare tokens, signatures, and secrets using `crypto.timingSafeEqual` to eliminate timing side-channel vulnerabilities.
@@ -135,7 +135,7 @@ npx anti-slop-engineering paranoid audit <record.json> --json
 
 - `anti-slop-engineering`: Follow BUILD/FIX gates and clean-room engineering standards once the architecture is established.
 - `decision-guard`: Compare broad technology stacks and evaluate reversibility before committing to a permanent vendor.
-- `future-scale-gate`: Formally model long-term operating envelopes and multi-generation platform evolution.
+- `future-scale-gate`: Formally model long-term operating envelopes, separate low-cost boundaries from deferred physical scale, and prevent capacity theater.
 
 ---
 

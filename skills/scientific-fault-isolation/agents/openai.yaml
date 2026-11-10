@@ -1,0 +1,9 @@
+interface:
+  display_name: "Scientific Fault Isolation"
+  short_description: "Microsoft & Meta surgical debugging and bisect discipline"
+  default_prompt: "Diagnose this bug or flaky test using 3-hypothesis differential diagnosis, binary search fault isolation, and determinism pinning before editing production code."
+policy:
+  products:
+    - CHAT
+    - CODEX
+  allow_implicit_invocation: true

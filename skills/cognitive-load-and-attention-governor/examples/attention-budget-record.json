@@ -1,0 +1,25 @@
+{
+  "type": "https://anti-slop-engineering.org/errors/attention-budget",
+  "title": "Cognitive Bandwidth & Attention Audit",
+  "status": 200,
+  "code": "NO_ATTENTION_FINDINGS",
+  "detail": "All cognitive bandwidth, scannability, deliverable purity, and blocking placement gates passed clean.",
+  "instance": "anti-slop://attention/examples/pure-deliverable-sample.md",
+  "metrics": {
+    "word_count": 48,
+    "words_to_emphasis": 0,
+    "answer_first": true,
+    "longest_wall_words": 16,
+    "landing_per_100w": 12.5,
+    "wall_word_fraction": 0.0,
+    "mean_para_words": 12.0,
+    "deliverable_pure": true,
+    "blocking_placed_correctly": true,
+    "list_max_items": 3
+  },
+  "findings": [],
+  "remediation": {
+    "action": "NO_ACTION_REQUIRED",
+    "guidance": "Maintain direct payloads, scannable anchors, and terminal blocking placement."
+  }
+}
