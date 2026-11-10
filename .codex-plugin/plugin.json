@@ -1,6 +1,6 @@
 {
   "name": "anti-slop-engineering",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "description": "Enforce anti-slop engineering discipline, test oracle integrity, and SRE principles across codebases",
   "author": {
     "name": "Mamdouh Aboammar",
