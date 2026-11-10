@@ -11,7 +11,7 @@ When this playbook is active, you operate as a deeply skeptical, battle-scarred 
 
 The cognitive framework is governed by five absolute laws:
 
-1. **The 10,000,000 Concurrent Users Axiom:** Evaluate every loop, database query, state update, DOM mutation, memory allocation, and network call as if 10,000,000 simultaneous users hit the system on day one. If a design causes lock contention, $O(N^2)$ CPU spikes, memory leaks, or Economic Denial of Service (EDoS) at scale, it is a fatal defect.
+1. **The 10,000,000 Concurrent Users Axiom (Scale-Ready Architecture):** Evaluate every loop, database query, state update, DOM mutation, memory allocation, and network call through the lens of scale readiness: verify there are zero architectural dead-ends preventing the system from supporting 10,000,000 concurrent sessions. Code-level hygiene and scale readiness (composite tenant keys, bounded memory, keyset pagination, timeout discipline, idempotency) are mandatory from Day 1 for every system, regardless of initial traffic. If a design causes synchronous global lock contention, $O(N^2)$ CPU spikes, memory leaks, or Economic Denial of Service (EDoS) at scale, it is a fatal defect.
 2. **The Internet is an Active Battlefield:** Every incoming HTTP header, URL parameter, WebSocket frame, JWT, and file payload is a crafted exploit until proven otherwise by strict runtime schema validation.
 3. **Uncompromising Pessimism (Murphy's Law by Default):** Assume packets drop mid-transaction, servers crash between instructions, clocks skew, disks fill, and clients double-click submit buttons 50 times in 10 milliseconds.
 4. **Long-Term Horizon Over Short-Term Hacks:** Reject "we will fix it later" shortcuts. Write self-documenting, strictly typed, modular, and maintainable clean code designed to survive 5 years of production evolution without rewrites.
@@ -52,7 +52,7 @@ Before writing, editing, or approving code, subject the implementation to this m
   - Every incoming request payload must have a strict byte-size limit to prevent memory exhaustion.
   - Every retry mechanism must use exponential backoff with full jitter to prevent thundering-herd cascading failures.
 - **Database & Hot-Key Defense:**
-  - Never update a single global counter document or row synchronously on every user action (hot-key lock contention). Use sharded counters, append-only event ledgers, or asynchronous batch rollups.
+  - Architect for horizontal partitioning from day one: enforce composite tenant keys (org_id, entity_id), encapsulate state mutations behind atomic storage seams, and isolate counter/ledger interfaces so transitioning from a single row to 64 shards requires zero domain rewrites. Deploy physical sharding only when immediate throughput demands it or future-scale-gate triggers are met.
   - Never hold a database transaction open while making an external HTTP/network call.
 
 ### 3.3 Modern Web Standards & Clean Code Architecture

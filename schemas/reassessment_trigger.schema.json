@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/imMamdouhaboammar/anti-slop-engineering/main/schemas/reassessment_trigger.schema.json",
+  "title": "ReassessmentTriggerRecord",
+  "description": "Formal record documenting intentional architectural evolution or waiver of an existing invariant.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "target_invariant_id",
+    "action",
+    "justification",
+    "trade_off_delta",
+    "authority",
+    "verification_proof"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "enum": ["1.0.0", "1.0"]
+    },
+    "target_invariant_id": {
+      "type": "string"
+    },
+    "action": {
+      "type": "string",
+      "enum": ["supersede", "waive", "deprecate"]
+    },
+    "justification": {
+      "type": "string",
+      "minLength": 20
+    },
+    "trade_off_delta": {
+      "type": "object",
+      "required": ["gain", "risk"],
+      "properties": {
+        "gain": {"type": "string"},
+        "risk": {"type": "string"}
+      }
+    },
+    "authority": {
+      "type": "object",
+      "required": ["author"],
+      "properties": {
+        "author": {"type": "string"},
+        "pr_or_issue": {"type": "string"},
+        "approved_at": {"type": "string"}
+      }
+    },
+    "verification_proof": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": false
+}

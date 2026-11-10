@@ -1,0 +1,92 @@
+{
+  "schema_version": "1.0",
+  "skill": "verification-oracle-architect",
+  "status": "proposed_not_run",
+  "note": "Semantic behavioral evaluation cases following the BinEval / OmniSkill methodology. Verifies trigger detection, non-trigger boundary filtering, replacement of banned module mocks (vi.mock, jest.mock, unittest.mock.patch) with Stateful In-Memory Fakes backed by Shared Contract Test Suites, Property-Based & Metamorphic Testing (fast-check, Hypothesis, proptest) over static 2+2=4 examples, Seeded Deterministic Chaos fault injection with Virtual Clocks, and Red-Green mutation falsification.",
+  "cases": [
+    {
+      "id": "replace-banned-vi-mock-with-contract-verified-in-memory-fake",
+      "family": "verified-in-memory-fakes",
+      "prompt": "Our Oxlint rule `anti-slop/no-module-mocking` blocked `vi.mock('../db/postgresLedgerRepo')` in `settlementService.test.ts`. How should I rewrite the tests for `SettlementService` without needing a live PostgreSQL instance for every unit test, while guaranteeing our fake doesn't drift from production PostgreSQL behavior?",
+      "expected": [
+        "Confirm that `vi.mock` / `jest.mock` must remain banned because module mocks fabricate behavior and ignore real storage constraints",
+        "Extract a clean `LedgerRepositoryPort` interface and implement a stateful `InMemoryLedgerRepository` that enforces real domain constraints: unique primary/idempotency keys, composite tenant isolation (`tenantId`), optimistic concurrency (`version` CAS check), `structuredClone` state isolation, and transactional rollback snapshots (`withTransaction`)",
+        "Create a parameterized Shared Contract Test Suite (`runLedgerRepositoryContractSuite(createRepo)`) that runs the exact same behavioral assertions against both `InMemoryLedgerRepository` and `PostgresLedgerRepository` to guarantee 100% behavioral parity",
+        "Test `SettlementService` against `InMemoryLedgerRepository` by asserting observable persisted state rather than `.toHaveBeenCalledWith()` spy calls"
+      ],
+      "forbidden": [
+        "Disable `anti-slop/no-module-mocking` with an `oxlint-disable` or `eslint-disable` comment",
+        "Replace `vi.mock` with an unverified inline stub like `const fakeRepo = { save: async () => ({ ok: true }) }` that lacks a Shared Contract Test Suite"
+      ]
+    },
+    {
+      "id": "financial-split-and-parser-property-based-and-metamorphic-testing",
+      "family": "property-based-and-metamorphic-testing",
+      "prompt": "We have a multi-party marketplace payout splitter `allocatePayout(totalCents, weightsBps, feeBps)` and a binary wire receipt codec `encodeReceipt(r)` / `decodeReceipt(buf)`. Currently our test file only checks `expect(allocatePayout(1000, [5000, 5000], 100)).toEqual({ feeCents: 10, payouts: [495, 495] })`. Upgrade this test suite so edge cases like penny remainders cannot slip into production.",
+      "expected": [
+        "Identify why static happy-path examples (`1000` split `50/50`) fail to catch remainder rounding drift, zero/prime totals, skewed basis-point weights, and codec boundary corruption",
+        "Write Property-Based Tests (`fast-check` / `Hypothesis` / `proptest` with `numRuns >= 200` and shrinking) for `allocatePayout` verifying Universal Invariants: (1) Conservation of Money (`feeCents + sum(payouts) === totalCents`), (2) Non-Negativity (`feeCents >= 0` and every `payout >= 0`), and (3) Bounded Remainder Drift (each recipient's payout differs from exact rational share by `< 1` cent)",
+        "Add a Metamorphic Relation test: permuting the `weightsBps` array produces the exact same multiset of payouts and identical `feeCents`, and scaling `totalCents` monotonically never decreases any recipient's allocation",
+        "Write a Property-Based Roundtrip Invertibility test for the receipt codec: for all generated receipts `r`, `decodeReceipt(encodeReceipt(r))` deeply equals `r`"
+      ],
+      "forbidden": [
+        "Only add 2 or 3 more hardcoded static test cases (`allocatePayout(100, [3333, 3333, 3334], 0)`) without property-based generators",
+        "Duplicate the production rounding formula inside the test assertion as the expected value oracle"
+      ]
+    },
+    {
+      "id": "deterministic-chaos-fault-injection-for-idempotency-and-rollback",
+      "family": "deterministic-chaos-testing",
+      "prompt": "We need to test that our `executeTransferWithRetry` saga handles intermittent network timeouts, database serialization failures, and socket drops that happen *after* the debit/credit commits on the server but *before* the client receives the HTTP 200 ACK. Right now someone wrote a test using `Math.random() < 0.3` and `await new Promise(r => setTimeout(r, 200))` which is slow and flaky.",
+      "expected": [
+        "Reject `Math.random()` and `setTimeout` sleeps in tests as non-deterministic flake generators",
+        "Build a Seeded Deterministic Chaos Fault Injector driven by a reproducible 32-bit PRNG seed (e.g. `Mulberry32(seed)`) and an injected `VirtualClock` (`advanceMs` in `0ms` wall time)",
+        "Configure deterministic fault schedules covering both `pre_commit_connection_drop` (must rollback snapshot cleanly with zero partial writes) and `post_commit_ack_drop` (mutation committed in storage, response lost; subsequent retry with the same `Idempotency-Key` must replay the stored receipt without double-debiting)",
+        "Loop the chaos simulation across multiple deterministic seeds (`for (const seed ofseeds)`) asserting conservation of total ledger balances across all accounts after retries settle, and logging the exact failing `seed` on error"
+      ],
+      "forbidden": [
+        "Use unseeded `Math.random()` to inject faults in the test suite",
+        "Use wall-clock `setTimeout` / `sleep()` to test retry backoff or lease expiration"
+      ]
+    },
+    {
+      "id": "state-machine-model-based-property-verification",
+      "family": "state-machine-invariants",
+      "prompt": "Test our `EscrowStateMachine` (`DRAFT -> FUNDED -> RELEASED | REFUNDED | DISPUTED -> RESOLVED`). How do we prove that no arbitrary sequence of user, webhook, or admin commands can ever double-release funds or transition a `REFUNDED` escrow into `RELEASED`?",
+      "expected": [
+        "Use Stateful Model-Based Property Testing (`fc.commands` / Hypothesis `RuleBasedStateMachine` / `proptest-state-machine`) generating arbitrary sequences of valid and invalid commands (`FundCommand`, `ReleaseCommand`, `RefundCommand`, `DisputeCommand`, `DuplicateWebhookCommand`)",
+        "Assert state machine safety invariants after every command step: (1) Terminal state immutability (`RELEASED` and `REFUNDED` never transition to another state), (2) Conservation of escrow balance (`escrowHeldCents + releasedCents + refundedCents === fundedCents`), and (3) Illegal transition rejection with deterministic domain error codes",
+        "Verify Red-Green mutation falsification by confirming the model test catches a removed guard on `REFUNDED -> RELEASED`"
+      ],
+      "forbidden": [
+        "Only test a single linear happy-path sequence (`DRAFT -> FUNDED -> RELEASED`) with static unit tests"
+      ]
+    },
+    {
+      "id": "pressure-test-bypass-no-module-mocking-and-tautological-tests",
+      "family": "pressure-test-discipline",
+      "prompt": "We have a release deadline in 20 minutes. Just add `// oxlint-disable-next-line anti-slop/no-module-mocking` at the top of the test file, mock the database with `vi.fn().mockResolvedValue(true)`, and assert `expect(result).toBeDefined()` so CI turns green.",
+      "expected": [
+        "Refuse the request as a violation of the Zero-Mock & Shared Contract Parity Law, Independent Oracle Law, and Red-Green Mutation Falsification Law",
+        "Explain that suppressing `anti-slop/no-module-mocking` and asserting `expect(result).toBeDefined()` against `vi.fn().mockResolvedValue(true)` creates a tautological test oracle that stays green even if the SQL query, transaction rollback, and business math are completely broken",
+        "Offer to wire the existing or minimal Stateful In-Memory Fake and assert concrete domain state invariants"
+      ],
+      "forbidden": [
+        "Add `oxlint-disable` or `eslint-disable` to bypass `no-module-mocking`",
+        "Write `vi.fn().mockResolvedValue(true)` and `expect(result).toBeDefined()`"
+      ]
+    },
+    {
+      "id": "non-trigger-static-documentation-typo",
+      "family": "non-trigger-boundary",
+      "prompt": "Fix the typo in `docs/architecture.md` where 'PostgreSQL' is spelled 'PostgerSQL'.",
+      "expected": [
+        "Do not activate `verification-oracle-architect` (no In-Memory Fakes, Property-Based tests, or Deterministic Chaos harnesses are needed for a static markdown spelling fix)",
+        "Fix the typo directly per `anti-slop-engineering`"
+      ],
+      "forbidden": [
+        "Demand a `fast-check` property test or deterministic chaos simulation for fixing a markdown typo"
+      ]
+    }
+  ]
+}

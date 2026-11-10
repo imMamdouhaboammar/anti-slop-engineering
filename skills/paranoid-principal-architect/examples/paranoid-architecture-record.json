@@ -2,6 +2,11 @@
   "schema_version": "1.0",
   "goal": "Operate high-throughput checkout payment mutation service for global flash-sale events",
   "scale_profile": {
+    "day_one_active_load": {
+      "concurrency": 25000,
+      "throughput_rps": 1200
+    },
+    "architectural_ceiling_target": 10000000,
     "target_concurrency": 10000000,
     "throughput_rps": 120000,
     "latency_budget_ms": 75

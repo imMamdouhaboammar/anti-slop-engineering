@@ -1,0 +1,9 @@
+interface:
+  display_name: "Deterministic Simulation & Property Testing"
+  short_description: "Microsoft Research & AWS rigorous simulation and invariant testing"
+  default_prompt: "Design and implement deterministic simulation testing (DST), property-based testing with shrinking, explicit state-machine transitions, or structure-aware fuzzing."
+policy:
+  products:
+    - CHAT
+    - CODEX
+  allow_implicit_invocation: true

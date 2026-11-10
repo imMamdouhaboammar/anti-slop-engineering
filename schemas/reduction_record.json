@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ReductionRecord",
+  "description": "Schema for Musk 5-Step Reduction Algorithm and 10% Add-Back Ledger metrics",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "timestamp",
+    "verdict",
+    "idiot_index_evaluated",
+    "total_removals",
+    "total_addbacks",
+    "addback_rate",
+    "calibration_status",
+    "items"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "enum": ["1.0.0"]
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "verdict": {
+      "type": "string",
+      "enum": ["CALIBRATED", "UNDER_DELETING", "OVER_DELETING", "INSUFFICIENT_DATA"]
+    },
+    "idiot_index_evaluated": {
+      "type": "boolean"
+    },
+    "total_removals": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "total_addbacks": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "addback_rate": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0
+    },
+    "calibration_status": {
+      "type": "string",
+      "enum": ["OPTIMAL_10_TO_25_PERCENT", "TIMID_BELOW_10_PERCENT", "RECKLESS_ABOVE_35_PERCENT", "BASELINE"]
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "item_id",
+          "target_path",
+          "step",
+          "mandated_constraint",
+          "proposal",
+          "re_adding_cost"
+        ],
+        "properties": {
+          "item_id": {
+            "type": "string"
+          },
+          "target_path": {
+            "type": "string"
+          },
+          "step": {
+            "type": "string",
+            "enum": [
+              "1_QUESTION_REQUIREMENT",
+              "2_DELETE_PART_OR_PROCESS",
+              "3_SIMPLIFY_OR_OPTIMIZE",
+              "4_ACCELERATE_CYCLE_TIME",
+              "5_AUTOMATE"
+            ]
+          },
+          "mandated_constraint": {
+            "type": "boolean"
+          },
+          "proposal": {
+            "type": "string",
+            "enum": ["REMOVE", "DEFER", "SIMPLIFY", "KEEP_MANDATED", "AUTOMATE"]
+          },
+          "re_adding_cost": {
+            "type": "string",
+            "enum": ["LOW", "MEDIUM", "HIGH"]
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

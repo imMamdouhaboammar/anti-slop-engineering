@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ChromaDriftRecord",
+  "description": "Schema for chromatic saturation drift, OKLCH color space adherence, and category reflex band audit findings",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "timestamp",
+    "verdict",
+    "actual_mean_lightness",
+    "actual_mean_chroma",
+    "findings_count",
+    "findings"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "enum": ["1.0.0"]
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "verdict": {
+      "type": "string",
+      "enum": ["PROCEED", "REJECT", "WARNING"]
+    },
+    "target_lightness": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "actual_mean_lightness": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "lightness_delta": {
+      "type": "number",
+      "minimum": 0
+    },
+    "target_chroma": {
+      "type": "number",
+      "minimum": 0
+    },
+    "actual_mean_chroma": {
+      "type": "number",
+      "minimum": 0
+    },
+    "chroma_delta": {
+      "type": "number",
+      "minimum": 0
+    },
+    "reflex_band_violations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["band", "color", "file", "line"],
+        "properties": {
+          "band": { "type": "string" },
+          "color": { "type": "string" },
+          "file": { "type": "string" },
+          "line": { "type": "integer", "minimum": 1 }
+        },
+        "additionalProperties": false
+      }
+    },
+    "findings_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "file",
+          "line",
+          "class",
+          "severity",
+          "evidence",
+          "recommendation"
+        ],
+        "properties": {
+          "id": { "type": "string" },
+          "file": { "type": "string" },
+          "line": { "type": "integer", "minimum": 1 },
+          "class": {
+            "type": "string",
+            "enum": [
+              "CHEERFUL_DRIFT",
+              "LIGHTNESS_DRIFT",
+              "CREAM_BAND_REFLEX",
+              "PURPLE_BLUE_GRADIENT_REFLEX",
+              "UNJUSTIFIED_DARK_MODE_REFLEX"
+            ]
+          },
+          "severity": {
+            "type": "string",
+            "enum": ["BLOCKING", "WARNING", "INFORMATIONAL"]
+          },
+          "evidence": { "type": "string" },
+          "recommendation": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

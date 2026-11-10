@@ -48,12 +48,37 @@ def check_scale_profile(record, require):
     require(isinstance(scale, dict), "INVALID_SCALE_PROFILE", "scale_profile must be a dictionary")
     if not isinstance(scale, dict):
         return
+
+    ceiling = scale.get("architectural_ceiling_target")
     concurrency = scale.get("target_concurrency")
-    require(isinstance(concurrency, int) and concurrency >= 10_000_000,
-            "INVALID_CONCURRENCY", "target_concurrency must be an integer >= 10,000,000")
+    require(ceiling is not None or concurrency is not None,
+            "INVALID_CONCURRENCY", "scale_profile requires architectural_ceiling_target or target_concurrency >= 10,000,000")
+    if ceiling is not None:
+        require(isinstance(ceiling, int) and ceiling >= 10_000_000,
+                "INVALID_CONCURRENCY", "architectural_ceiling_target must be an integer >= 10,000,000")
+    if concurrency is not None:
+        require(isinstance(concurrency, int) and concurrency >= 10_000_000,
+                "INVALID_CONCURRENCY", "target_concurrency must be an integer >= 10,000,000")
+
+    day_one = scale.get("day_one_active_load")
     throughput = scale.get("throughput_rps")
-    require(isinstance(throughput, int) and throughput >= 1_000,
-            "INVALID_THROUGHPUT", "throughput_rps must be an integer >= 1,000")
+    require(day_one is not None or throughput is not None,
+            "INVALID_THROUGHPUT", "scale_profile requires day_one_active_load or throughput_rps")
+
+    if day_one is not None:
+        require(isinstance(day_one, dict), "INVALID_DAY_ONE_LOAD", "day_one_active_load must be a dictionary")
+        if isinstance(day_one, dict):
+            c = day_one.get("concurrency")
+            require(isinstance(c, int) and c >= 1,
+                    "INVALID_DAY_ONE_CONCURRENCY", "day_one_active_load.concurrency must be an integer >= 1")
+            r = day_one.get("throughput_rps")
+            require(isinstance(r, int) and r >= 1,
+                    "INVALID_DAY_ONE_THROUGHPUT", "day_one_active_load.throughput_rps must be an integer >= 1")
+
+    if throughput is not None:
+        require(isinstance(throughput, int) and throughput >= 1_000,
+                "INVALID_THROUGHPUT", "throughput_rps must be an integer >= 1,000")
+
     latency = scale.get("latency_budget_ms")
     require(isinstance(latency, int) and 0 < latency <= 500,
             "INVALID_LATENCY_BUDGET", "latency_budget_ms must be an integer between 1 and 500")

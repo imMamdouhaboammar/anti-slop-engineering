@@ -1,0 +1,10 @@
+# TruffleHog Exclusion Patterns (Regex per line)
+.*node_modules/.*
+.*dist/.*
+.*\.git/.*
+.*\.cache/.*
+.*bun\.lock.*
+.*coverage/.*
+.*target/.*
+.*services/anti-slop-rust/target/.*
+.*\.anti-slop/.*

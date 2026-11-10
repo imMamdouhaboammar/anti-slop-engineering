@@ -1,0 +1,9 @@
+interface:
+  display_name: "Apple Craft & Interaction Physics"
+  short_description: "Apple HIG craft, 120Hz interruptible physics, zero-CLS, and state machine audit"
+  default_prompt: "Audit this UI component, interaction flow, or design implementation against Apple HIG craft, 120Hz interruptible physics, Zero CLS, and the Exhaustive UI State Matrix."
+policy:
+  products:
+    - CHAT
+    - CODEX
+  allow_implicit_invocation: true

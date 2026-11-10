@@ -1,0 +1,172 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "StyleSeedRecord",
+  "description": "Schema for StyleSeed Cognitive Grammar, 4-Tier Token Canon DAG, 6-Role Spatial Rhythm, and S1 Multi-Screen Longitudinal Drift audit records.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "timestamp",
+    "verdict",
+    "grammar_profile",
+    "token_layers_summary",
+    "spatial_rhythm_summary",
+    "s1_drift_summary",
+    "decisions_ledger_summary",
+    "findings_count",
+    "findings"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "enum": ["1.0.0"]
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "verdict": {
+      "type": "string",
+      "enum": ["PROCEED", "WARNING", "REJECT"]
+    },
+    "grammar_profile": {
+      "type": "object",
+      "required": ["grammar", "density", "containment", "primary_action_dominance"],
+      "properties": {
+        "grammar": {
+          "type": "string",
+          "enum": [
+            "consumer-service",
+            "operations-console",
+            "technical-instrument",
+            "editorial-reading",
+            "commerce-conversion",
+            "institutional-service",
+            "expressive-marketing",
+            "unspecified"
+          ]
+        },
+        "density": {
+          "type": "string",
+          "enum": ["compact", "balanced", "spacious"]
+        },
+        "containment": {
+          "type": "string",
+          "enum": ["flat", "bordered", "raised", "segmented"]
+        },
+        "primary_action_dominance": {
+          "type": "string",
+          "enum": ["singular", "peer", "subordinate", "distributed"]
+        }
+      }
+    },
+    "token_layers_summary": {
+      "type": "object",
+      "required": [
+        "primitive_tokens_count",
+        "semantic_tokens_count",
+        "spatial_type_tokens_count",
+        "component_tokens_count",
+        "primitive_leakage_violations_count",
+        "circular_alias_violations_count",
+        "contrast_gate_violations_count"
+      ],
+      "properties": {
+        "primitive_tokens_count": { "type": "integer", "minimum": 0 },
+        "semantic_tokens_count": { "type": "integer", "minimum": 0 },
+        "spatial_type_tokens_count": { "type": "integer", "minimum": 0 },
+        "component_tokens_count": { "type": "integer", "minimum": 0 },
+        "primitive_leakage_violations_count": { "type": "integer", "minimum": 0 },
+        "circular_alias_violations_count": { "type": "integer", "minimum": 0 },
+        "contrast_gate_violations_count": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "spatial_rhythm_summary": {
+      "type": "object",
+      "required": [
+        "roles_defined",
+        "roles_missing",
+        "inversion_anomalies_count",
+        "ad_hoc_spacing_violations_count"
+      ],
+      "properties": {
+        "roles_defined": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "roles_missing": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "inversion_anomalies_count": { "type": "integer", "minimum": 0 },
+        "ad_hoc_spacing_violations_count": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "s1_drift_summary": {
+      "type": "object",
+      "required": ["baseline_screen", "screens_evaluated_count", "max_s1_drift_distance", "status"],
+      "properties": {
+        "baseline_screen": { "type": "string" },
+        "screens_evaluated_count": { "type": "integer", "minimum": 0 },
+        "max_s1_drift_distance": { "type": "number", "minimum": 0.0 },
+        "status": {
+          "type": "string",
+          "enum": ["ANCHORED", "DRIFTING", "NOT_EVALUATED"]
+        }
+      }
+    },
+    "decisions_ledger_summary": {
+      "type": "object",
+      "required": [
+        "decisions_count",
+        "approved_exceptions_count",
+        "invalid_exceptions_count",
+        "invariant_waive_attempts_count"
+      ],
+      "properties": {
+        "decisions_count": { "type": "integer", "minimum": 0 },
+        "approved_exceptions_count": { "type": "integer", "minimum": 0 },
+        "invalid_exceptions_count": { "type": "integer", "minimum": 0 },
+        "invariant_waive_attempts_count": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "findings_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "class", "severity", "evidence", "recommendation"],
+        "properties": {
+          "id": { "type": "string" },
+          "file": { "type": "string" },
+          "line": { "type": "integer", "minimum": 1 },
+          "class": {
+            "type": "string",
+            "enum": [
+              "PRIMITIVE_TOKEN_LEAKAGE",
+              "UPWARD_CIRCULAR_ALIAS",
+              "DANGLING_TOKEN_ALIAS",
+              "SEMANTIC_ROLE_GRAPH_INCOMPLETE",
+              "PAIRWISE_CONTRAST_DEFICIT",
+              "SPATIAL_INVERSION_ANOMALY",
+              "AD_HOC_SPATIAL_SLOP",
+              "MISSING_SPATIAL_ROLE",
+              "S1_LONGITUDINAL_DRIFT_EXCEEDED",
+              "ILLEGAL_INVARIANT_WAIVER",
+              "UNSCOPED_DECISION_EXCEPTION",
+              "COGNITIVE_GRAMMAR_MISMATCH"
+            ]
+          },
+          "severity": {
+            "type": "string",
+            "enum": ["BLOCKING", "WARNING", "ADVISORY"]
+          },
+          "evidence": { "type": "string" },
+          "recommendation": { "type": "string" }
+        }
+      }
+    }
+  }
+}

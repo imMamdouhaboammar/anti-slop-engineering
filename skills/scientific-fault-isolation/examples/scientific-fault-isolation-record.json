@@ -1,0 +1,74 @@
+{
+  "schema_version": "1.0",
+  "symptom": {
+    "observable_failure": "Single-use promotional coupon BLACKFRIDAY_SINGLE_USE is redeemed twice under concurrent checkout requests, producing two discounted orders for remainingUses = 1",
+    "reproduction_frequency_before": "intermittent_flaky",
+    "affected_boundary": "CouponRedemptionService.redeemCoupon -> CouponStorePort"
+  },
+  "differential_diagnosis": {
+    "zero_production_edits_before_probe": true,
+    "hypotheses": [
+      {
+        "id": "H1",
+        "mechanism": "TOCTOU read-modify-write race between readCoupon() and unsafeWriteCoupon() allows two concurrent fibers to observe remainingUses = 1 before either decrements the row",
+        "prediction": "Boundary trace at readCoupon() will show two distinct request correlation IDs reading version = 1 and remainingUses = 1 within the same millisecond window",
+        "falsified_if": "Second request reads version = 2 or remainingUses = 0 at readCoupon() entry",
+        "status": "confirmed",
+        "evidence": "In-memory probe recorded req_a and req_b both reading {remainingUses: 1, version: 1} at t+0ms before req_a wrote version 2 at t+4ms"
+      },
+      {
+        "id": "H2",
+        "mechanism": "Frontend checkout button lacks debounce and replays the same idempotency key while the server returns a uncached non-idempotent response",
+        "prediction": "Both redemptions will carry identical client session IDs, user IDs, and idempotency headers",
+        "falsified_if": "Failing duplicate redemptions originate from two distinct authenticated user IDs and distinct correlation IDs",
+        "status": "falsified",
+        "evidence": "Probe showed the two redemptions belonged to distinct users usr_01 and usr_02 with different idempotency keys"
+      },
+      {
+        "id": "H3",
+        "mechanism": "Redis read-replica lag serves stale remainingUses = 1 after primary database commit has already completed",
+        "prediction": "Second request arrives >50ms after first request's write commit and targets the read-only replica pool",
+        "falsified_if": "Both requests execute against the primary database connection pool and overlap before the first transaction commits",
+        "status": "falsified",
+        "evidence": "Probe confirmed both reads hit the primary pool concurrently 3.8ms before the first write completed"
+      }
+    ]
+  },
+  "discriminating_probe": {
+    "probe_type": "structured_boundary_log",
+    "design": "Record in-memory ring-buffer tuple (correlation_id, user_id, pool_role, observed_version, observed_remaining, monotonic_ns) at readCoupon() and writeCoupon() entry/exit",
+    "observed_outcome": "Two distinct users hit primary pool concurrently; both observed version=1, remainingUses=1 before either write completed",
+    "killed_hypothesis_ids": ["H2", "H3"],
+    "confirmed_hypothesis_id": "H1"
+  },
+  "binary_search_isolation": {
+    "method": "layer_boundary_halving",
+    "initial_fault_space": "API Gateway -> CheckoutController -> CouponRedemptionService -> CouponStorePort -> PostgreSQL",
+    "isolated_boundary": "CouponRedemptionService.redeemCoupon non-atomic read-then-write seam into CouponStorePort",
+    "steps_taken": 3
+  },
+  "determinism_pinning": {
+    "controls_applied": [
+      "concurrency_barrier_latch",
+      "frozen_monotonic_clock",
+      "hermetic_fixture_isolation"
+    ],
+    "sleep_based_timing_absent": true,
+    "deterministic_red_test_command": "bun test skills/scientific-fault-isolation/examples/deterministic-race-reproducer.ts",
+    "reproduction_rate_after_pinning": "100_percent_deterministic"
+  },
+  "red_green_verification": {
+    "failed_before_fix": true,
+    "passed_after_fix": true,
+    "failed_again_on_fix_revert": true,
+    "diagnostic_probes_removed": true,
+    "root_fix_owner_layer": "CouponStorePort.compareAndSwapCoupon atomic data mutation boundary"
+  },
+  "verdict": {
+    "action": "proceed",
+    "rationale": "Differential diagnosis falsified H2 and H3 via a single read-only probe, determinism pinning reproduced the H1 TOCTOU race 100% of the time via a 2-party rendezvous barrier without sleep(), and atomic CAS passed Red-Green-Revert verification.",
+    "revisit_triggers": [
+      "Contention rate on high-volume multi-use promo codes exceeds 15% CAS retry threshold (requires sharded counter evolution via paranoid-principal-architect)"
+    ]
+  }
+}

@@ -1,0 +1,77 @@
+{
+  "schema_version": "1.0",
+  "system_id": "customer-identity-and-event-pipeline",
+  "target_system": {
+    "module_under_test": "services/identity-ingress-and-lakehouse-dispatch",
+    "system_archetype": "event_driven_data_lakehouse",
+    "regulatory_regimes": [
+      "gdpr",
+      "ccpa",
+      "apple_privacy_policy"
+    ]
+  },
+  "tainted_pii_types": {
+    "branded_types_enabled": true,
+    "redaction_wrapper": "Redacted<T>",
+    "log_leakage_prevented": true,
+    "unredacted_serialization_banned": true,
+    "audited_pii_fields": [
+      {
+        "field_name": "user_email",
+        "sensitivity": "restricted_pii",
+        "type_brand": "Redacted<UserEmail>",
+        "serialization_policy": "sha256_salted_pseudonym"
+      },
+      {
+        "field_name": "phone_number",
+        "sensitivity": "restricted_pii",
+        "type_brand": "Redacted<E164Phone>",
+        "serialization_policy": "e164_masked_trailing4"
+      },
+      {
+        "field_name": "device_ip_address",
+        "sensitivity": "confidential_telemetry",
+        "type_brand": "Redacted<ClientIp>",
+        "serialization_policy": "subnet_truncate_slash_24"
+      }
+    ]
+  },
+  "cryptographic_erasure": {
+    "mechanism": "crypto_shredding_key_per_subject",
+    "kms_provider": "aws_kms",
+    "key_derivation_algorithm": "AES-256-GCM",
+    "immutable_ledger_coverage": [
+      "kafka_event_stream",
+      "wal_audit_log",
+      "iceberg_data_lake",
+      "s3_glacier_backup"
+    ],
+    "revocation_latency_ms": 150,
+    "confirmation_receipt_verified": true
+  },
+  "data_minimization_and_ttl": {
+    "purpose_binding_declared": true,
+    "retention_ttl_enforced": true,
+    "max_retention_days": 90,
+    "automated_gc_pipeline": "partition_drop_cron_and_ttl_index",
+    "differential_privacy_or_anonymization": "local_differential_privacy_epsilon_1_0"
+  },
+  "data_lineage_and_flow": {
+    "lineage_dag_modeled": true,
+    "forbidden_sinks_guarded": true,
+    "telemetry_egress_allowlist": [
+      "internal_aggregated_metrics",
+      "apple_private_click_measurement"
+    ],
+    "third_party_sharing_fenced": true
+  },
+  "verdict": {
+    "action": "proceed",
+    "rationale": "All customer PII fields are wrapped in compiler-enforced branded types, cryptographic erasure guarantees O(1) GDPR shredding across Kafka and Iceberg, automated 90-day TTL GC is enforced, and telemetry egress is strictly fenced against an allowlist.",
+    "revisit_triggers": [
+      "Addition of new third-party marketing or attribution telemetry sinks",
+      "Schema modification introducing raw biometric or financial identifiers",
+      "KMS provider migration or changes to key-per-subject revocation latency"
+    ]
+  }
+}

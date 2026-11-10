@@ -1,0 +1,96 @@
+{
+  "schema_version": "1.0",
+  "skill": "mechanical-sympathy-profiler",
+  "status": "proposed_not_run",
+  "note": "Semantic behavioral evaluation cases following the BinEval / OmniSkill methodology. Verifies trigger detection, non-trigger boundary filtering, rejection of blind caching/memoization/index guessing without baseline measurement, PostgreSQL EXPLAIN (ANALYZE, BUFFERS) verification, P99 latency and heap allocation micro-benchmarking, bounded-chunk streaming over full-RAM buffering, zero-allocation hot loops, and I/O batching/pipelining over network-in-a-loop.",
+  "cases": [
+    {
+      "id": "blind-caching-and-index-guessing-rejection",
+      "family": "empirical-measurement-and-explain",
+      "prompt": "Our `/api/v1/ledger/settlements` endpoint is taking 1.8 seconds. I want you to immediately wrap the endpoint in a 5-minute Redis cache and add single-column indexes on `status`, `currency`, and `created_at` on the `ledger_entries` table so we can ship this today.",
+      "expected": [
+        "Refuse to add blind Redis caching or unverified single-column indexes before capturing a baseline measurement",
+        "Require running `EXPLAIN (ANALYZE, BUFFERS, VERBOSE)` on the underlying SQL query first to inspect `Shared Hit/Read Blocks`, `Rows Removed by Filter`, and `Sort` spills",
+        "Explain why wrapping a slow query in a 5-minute Redis cache introduces stale financial settlement data and cold-cache stampedes without fixing the physical query bottleneck",
+        "Replace the three guessed single-column indexes with a single composite covering B-Tree index ordered by the Equality-Sort-Range (ESR) rule (`(tenant_id, status, currency, created_at DESC) INCLUDE (...)`) and verify the post-change `EXPLAIN (ANALYZE, BUFFERS)` plan"
+      ],
+      "forbidden": [
+        "Immediately wrap the financial ledger endpoint in a 5-minute Redis cache without profiling the query",
+        "Create three separate single-column indexes on `status`, `currency`, and `created_at` without `EXPLAIN (ANALYZE, BUFFERS)` proof"
+      ]
+    },
+    {
+      "id": "network-in-loop-to-batched-pipelined-io",
+      "family": "io-batching-and-pipelining",
+      "prompt": "Optimize this webhook reconciliation worker. Right now it loops over `for (const event of batch)` (up to 1,000 events), calls `const existing = await db.query('SELECT id, status FROM webhooks WHERE id = $1', [event.id])`, calls `await redis.hincrby('stats:' + event.tenantId, 'processed', 1)`, and then calls `await db.query('UPDATE webhooks SET status = $1 WHERE id = $2', [event.nextStatus, event.id])` inside the loop.",
+      "expected": [
+        "Identify the serial I/O-in-a-loop bottleneck: 1,000 events execute 3,000 sequential network roundtrips (`1,000 SELECTs + 1,000 Redis calls + 1,000 UPDATEs`)",
+        "Collapse the 1,000 `SELECT` queries into a single bulk read using `WHERE id = ANY($1::uuid[])`",
+        "Collapse the 1,000 `UPDATE` queries into a single bulk mutation using PostgreSQL `FROM UNNEST($1::uuid[], $2::text[])`",
+        "Collapse the 1,000 sequential `await redis.hincrby(...)` calls into a single `redis.pipeline()` execution",
+        "Require recording baseline vs. post-change `io_roundtrips_per_request` (`3,000 -> 3`) and `P50`/`P99` batch latency"
+      ],
+      "forbidden": [
+        "Keep the database or Redis calls inside a `for` loop or wrap the loop body in `Promise.all` (which would fire 3,000 concurrent queries and exhaust the connection pool)",
+        "Add an in-memory cache in front of `SELECT` while leaving sequential per-item `UPDATE` and `redis.hincrby` calls inside the loop"
+      ]
+    },
+    {
+      "id": "ram-buffering-and-gc-churn-to-streaming-hot-path",
+      "family": "memory-and-gc-physics",
+      "prompt": "Our Node.js billing ingestion worker keeps crashing with OOM (`JavaScript heap out of memory`) and experiences 400ms P99 latency spikes when processing 800MB NDJSON usage files. The code currently does `const lines = fs.readFileSync(path, 'utf8').split('\\n'); const valid = lines.map(l => JSON.parse(l)).filter(r => r.billable).map(r => ({ ...r, total: r.qty * r.price }));` and then matches each row against a 20,000-item `pricingTiers` array using `pricingTiers.find(t => t.sku === r.sku)`. Fix this.",
+      "expected": [
+        "Identify the $O(N)$ whole-file RAM buffering caused by `fs.readFileSync(path, 'utf8').split('\\n')` on an 800MB file and replace it with bounded-chunk streaming (`fs.createReadStream` + `readline` / `pipeline` with `64KB` `highWaterMark`) so RSS memory remains $O(1)$",
+        "Identify the multi-pass intermediate array allocation churn (`.map().filter().map()`) and object-spread copying (`{ ...r }`), replacing them with a single-pass in-place loop over reusable batch buffers",
+        "Identify the $O(N \\times M)$ quadratic CPU bottleneck caused by calling `pricingTiers.find(...)` inside the row processing loop and pre-index `pricingTiers` once into an $O(1)$ `Map<string, PricingTier>`",
+        "Require baseline and post-change measurements of peak RSS memory, `alloc_bytes_per_op`, and `P99` batch processing latency"
+      ],
+      "forbidden": [
+        "Increase `--max-old-space-size=8192` while keeping `fs.readFileSync` and `.split('\\n')`",
+        "Keep `pricingTiers.find(...)` inside the per-row loop"
+      ]
+    },
+    {
+      "id": "pressure-test-premature-usememo-and-redis-slop",
+      "family": "pressure-test-discipline",
+      "prompt": "To make our codebase faster across the board, wrap every variable and helper function in our React components in `useMemo` and `useCallback`, and add a global `JSON.parse(JSON.stringify(obj))` deep-clone cache decorator to every service method. Do not waste time writing benchmarks—just apply the optimizations.",
+      "expected": [
+        "Refuse the request as a violation of the Empirical Measurement Law and Zero-Allocation Hot-Path Law",
+        "Explain that blanket `useMemo`/`useCallback` on trivial expressions adds closure allocations and dependency-array comparison overhead without reducing measured render time",
+        "Explain that `JSON.parse(JSON.stringify(obj))` inside a hot service decorator is an allocation and CPU bomb that serializes and allocates entire object graphs on the heap, worsening GC pressure and `P99` tail latency",
+        "Insist on profiling actual bottlenecks first and measuring baseline `P50`/`P99` and `alloc_bytes_per_op` before changing any code"
+      ],
+      "forbidden": [
+        "Wrap every variable and function in `useMemo`/`useCallback` without profiling",
+        "Implement a `JSON.parse(JSON.stringify(...))` cache decorator"
+      ]
+    },
+    {
+      "id": "n-squared-loop-and-allocation-microbenchmark",
+      "family": "microbenchmark-and-allocations",
+      "prompt": "This telemetry aggregation function takes 95ms for 15,000 events on every request: `return events.reduce((acc, ev) => { const org = orgs.find(o => o.id === ev.orgId); return { ...acc, [ev.orgId]: (acc[ev.orgId] || 0) + (org ? ev.tokens : 0) }; }, {});`. Speed it up and prove it is faster.",
+      "expected": [
+        "Write and execute (or supply) a reproducible before-and-after micro-benchmark with warmup iterations measuring `P50`, `P99`, and `alloc_bytes_per_op` on 15,000 events",
+        "Eliminate the two fatal mechanical-sympathy defects: (1) `{ ...acc, [ev.orgId]: ... }` inside `.reduce()`, which allocates 15,000 intermediate objects and copies all keys on every step ($O(N^2)$ allocations), and (2) `orgs.find(...)` inside the loop ($O(N \\times M)$ comparisons)",
+        "Pre-index valid `orgId`s in a `Set` ($O(1)$ lookup) and accumulate totals in a single pre-allocated `Map<string, number>` or mutated object in a single `for` loop",
+        "Present the Baseline vs. Post-Change delta table showing the order-of-magnitude reduction in `P99` latency and `alloc_bytes_per_op`"
+      ],
+      "forbidden": [
+        "Keep `{ ...acc }` object spreading inside `.reduce()`",
+        "Claim the refactored function is faster without providing a before/after micro-benchmark protocol and metrics"
+      ]
+    },
+    {
+      "id": "non-trigger-ui-visual-restyling",
+      "family": "non-trigger-boundary",
+      "prompt": "Change the primary CTA button color on the pricing card from indigo to emerald and update the heading text to 'Enterprise Plan'.",
+      "expected": [
+        "Do not activate `mechanical-sympathy-profiler` (no `EXPLAIN (ANALYZE, BUFFERS)` or allocation micro-benchmarks required for a static CSS color and text copy update)",
+        "Apply the minimal targeted edit directly per `anti-slop-engineering`"
+      ],
+      "forbidden": [
+        "Demand a P99 heap allocation micro-benchmark or SQL `EXPLAIN (ANALYZE, BUFFERS)` plan for changing a button color and static heading text"
+      ]
+    }
+  ]
+}

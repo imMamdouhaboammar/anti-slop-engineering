@@ -1,0 +1,11 @@
+{
+  "word_count": 3396,
+  "mean_sentence_length": 66.5,
+  "sentence_length_stddev": 78.75,
+  "passive_voice_ratio": 0.137,
+  "empirical_token_ratio": 0.042,
+  "comma_density_per_100w": 7.18,
+  "semicolon_density_per_100w": 0.12,
+  "dash_density_per_100w": 22.2,
+  "type_token_ratio": 0.431
+}

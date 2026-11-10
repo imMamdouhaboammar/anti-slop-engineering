@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AssetProvenanceRecord",
+  "description": "Schema for physical asset provenance, cryptographic SHA-256 integrity, and open-license ledger audit findings",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "timestamp",
+    "verdict",
+    "ledger_file",
+    "scanned_assets_count",
+    "verified_clean_assets_count",
+    "unverified_assets_count",
+    "findings_count",
+    "findings"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "enum": ["1.0.0"]
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "verdict": {
+      "type": "string",
+      "enum": ["PROCEED", "REJECT", "WARNING"]
+    },
+    "ledger_file": {
+      "type": "string"
+    },
+    "scanned_assets_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "verified_clean_assets_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "unverified_assets_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "findings_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "file",
+          "line",
+          "class",
+          "severity",
+          "evidence",
+          "recommendation"
+        ],
+        "properties": {
+          "id": { "type": "string" },
+          "file": { "type": "string" },
+          "line": { "type": "integer", "minimum": 1 },
+          "class": {
+            "type": "string",
+            "enum": [
+              "MISSING_PROVENANCE_RECORD",
+              "UNAPPROVED_LICENSE",
+              "HASH_MISMATCH",
+              "UNVERIFIED_CDN_HOTLINK"
+            ]
+          },
+          "severity": {
+            "type": "string",
+            "enum": ["BLOCKING", "WARNING", "INFORMATIONAL"]
+          },
+          "evidence": { "type": "string" },
+          "recommendation": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

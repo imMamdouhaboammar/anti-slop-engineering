@@ -39,6 +39,7 @@
     "marketplace.json",
     ".skills.json",
     "install.sh",
+    "action.yml",
     "LICENSE",
     "NOTICE"
   ],
@@ -53,11 +54,24 @@
     "sre-guard": "bun bin/cli.js sre",
     "exec": "bun bin/cli.js exec",
     "cases": "bun bin/cli.js cases",
+    "contrast": "bun bin/cli.js contrast",
+    "pr-guard": "bun bin/cli.js pr-guard",
+    "honeypot": "bun bin/cli.js honeypot",
+    "comment-guard": "bun bin/cli.js comment-guard",
+    "attention": "bun bin/cli.js attention",
+    "cognitive": "bun bin/cli.js attention",
+    "steward": "bun bin/cli.js steward",
+    "invariant": "bun bin/cli.js invariant",
+    "audit": "bun bin/cli.js audit",
+    "install-agents": "bun bin/cli.js install",
     "test": "python3 -m unittest discover -s tests -v",
     "test-all": "make test-all",
     "bump": "python3 scripts/bump_version.py",
+    "oxlint": "oxlint",
+    "lint:oxlint": "oxlint",
     "check": "make check",
-    "check-all": "make check-all"
+    "check-all": "make check-all",
+    "security:audit": "bun run scripts/security-audit.ts"
   },
   "keywords": [
     "agent-skill",
@@ -77,12 +91,19 @@
     "kiss",
     "dry",
     "yagni",
-    "toil-elimination"
+    "toil-elimination",
+    "repo-memory",
+    "invariant-steward",
+    "architectural-memory"
   ],
   "author": "Mamdouh Aboammar <mamdouhfces1997@gmail.com> (https://github.com/imMamdouhaboammar)",
   "license": "MIT",
   "engines": {
     "bun": ">=1.0.0",
     "node": ">=22.23.4"
+  },
+  "devDependencies": {
+    "@oxlint/plugins": "1.93.0",
+    "oxlint": "1.93.0"
   }
 }

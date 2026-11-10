@@ -89,7 +89,7 @@ For a persistent packet, run `python3 scripts/root_fix_guard.py audit <record.js
 
 - `anti-slop-engineering`: Own BUILD/FIX, test integrity, SRE and diff verification after ownership is identified.
 - `decision-guard`: Own independent solution necessity and consequential architecture choices; this Skill owns implementation responsibility.
-- `fable-verify` or the host's test capability: Confirm the causal hypothesis through real system behavior.
+- `future-scale-gate`: Evaluate whether an architectural boundary redesign introduces irreversible evolution constraints.
 
 ## Completion and limits
 

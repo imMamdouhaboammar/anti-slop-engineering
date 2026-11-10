@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "StateNoteRecord",
+  "description": "Schema for compact, zero-slop state notes for recursive self-improvement and context-reset handoffs",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "timestamp",
+    "goal",
+    "token_count",
+    "shower_test_passed",
+    "proven_invariants",
+    "negative_corpus",
+    "next_single_action"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "enum": ["1.0.0"]
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "goal": {
+      "type": "string",
+      "maxLength": 300
+    },
+    "token_count": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1500
+    },
+    "shower_test_passed": {
+      "type": "boolean"
+    },
+    "proven_invariants": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "statement", "evidence_command", "verification_digest"],
+        "properties": {
+          "id": { "type": "string" },
+          "statement": { "type": "string" },
+          "evidence_command": { "type": "string" },
+          "verification_digest": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "negative_corpus": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["discarded_approach", "cause_of_death", "archive_reference"],
+        "properties": {
+          "discarded_approach": { "type": "string" },
+          "cause_of_death": { "type": "string" },
+          "archive_reference": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "next_single_action": {
+      "type": "object",
+      "required": ["action", "target_file", "verification_command"],
+      "properties": {
+        "action": { "type": "string" },
+        "target_file": { "type": "string" },
+        "verification_command": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "handoff_metadata": {
+      "type": "object",
+      "properties": {
+        "source_agent": { "type": "string" },
+        "git_commit": { "type": "string" },
+        "branch": { "type": "string" }
+      }
+    }
+  },
+  "additionalProperties": false
+}

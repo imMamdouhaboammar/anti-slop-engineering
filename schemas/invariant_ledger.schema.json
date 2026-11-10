@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/imMamdouhaboammar/anti-slop-engineering/main/schemas/invariant_ledger.schema.json",
+  "title": "InvariantLedgerRecord",
+  "description": "Living index of architectural invariants synced across historical decision records.",
+  "type": "object",
+  "required": ["schema_version", "invariants_count", "invariants"],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "enum": ["1.0.0", "1.0"]
+    },
+    "generated_at": {
+      "type": "string"
+    },
+    "ledger_hash": {
+      "type": "string"
+    },
+    "invariants_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "invariants": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "category", "assertion", "rationale", "enforcement_scope", "authority", "status"],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "concurrency_and_scale",
+              "security_and_auth",
+              "api_contract",
+              "telemetry_and_slo",
+              "data_lineage",
+              "rollout_and_compatibility",
+              "hardware_and_perf",
+              "testing_and_simulation",
+              "architecture"
+            ]
+          },
+          "assertion": {
+            "type": "string",
+            "minLength": 15
+          },
+          "rationale": {
+            "type": "string",
+            "minLength": 15
+          },
+          "enforcement_scope": {
+            "type": "object",
+            "properties": {
+              "paths": {
+                "type": "array",
+                "items": {"type": "string"}
+              },
+              "patterns": {
+                "type": "array",
+                "items": {"type": "string"}
+              },
+              "forbidden_patterns": {
+                "type": "array",
+                "items": {"type": "string"}
+              }
+            }
+          },
+          "authority": {
+            "type": "object",
+            "required": ["record_type"],
+            "properties": {
+              "record_type": {"type": "string"},
+              "record_file": {"type": "string"},
+              "record_sha256": {"type": "string"},
+              "author": {"type": "string"}
+            }
+          },
+          "status": {
+            "type": "string",
+            "enum": ["active", "superseded", "deprecated", "waived"]
+          },
+          "superseded_by": {
+            "type": ["string", "null"]
+          },
+          "reassessment_threshold": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "additionalProperties": false
+}

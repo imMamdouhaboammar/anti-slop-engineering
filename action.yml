@@ -1,0 +1,90 @@
+name: "Anti-Slop Engineering Guard"
+description: "Clean-room AI coding guard, PR boundary triage, AST slop detector, honeypot sensor, and Google SRE discipline for GitHub Pull Requests."
+author: "Mamdouh Aboammar <mamdouhfces1997@gmail.com>"
+
+inputs:
+  base:
+    description: "Base commit or branch to compare against (default: HEAD~1 or origin/main)"
+    required: false
+    default: "HEAD~1"
+  pr-title:
+    description: "PR title string to evaluate against conventional commits and length bounds"
+    required: false
+    default: ""
+  pr-body-file:
+    description: "Path to file containing PR description markdown"
+    required: false
+    default: ""
+  template-file:
+    description: "Path to repository PR template markdown"
+    required: false
+    default: ".github/pull_request_template.md"
+  fail-on-blocker:
+    description: "Whether to fail the action if blocker-severity findings are detected"
+    required: false
+    default: "true"
+  canary-token:
+    description: "Active HMAC canary token to verify against hallucinated bot echoes"
+    required: false
+    default: ""
+
+outputs:
+  status:
+    description: "Overall audit status (PASSED or BLOCKED)"
+    value: ${{ steps.anti-slop-audit.outputs.status }}
+  findings-count:
+    description: "Total number of findings identified"
+    value: ${{ steps.anti-slop-audit.outputs.findings-count }}
+  blockers-count:
+    description: "Number of blocker-severity findings identified"
+    value: ${{ steps.anti-slop-audit.outputs.blockers-count }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Run Anti-Slop Multi-Guard Audit
+      id: anti-slop-audit
+      shell: bash
+      run: |
+        python3 -u "${{ github.action_path }}/scripts/audit_runner.py" audit --base "${{ inputs.base }}" --json > audit_result.json || true
+        cat audit_result.json
+
+        # Check PR boundary if title or body provided
+        if [ -n "${{ inputs.pr-title }}" ] || [ -f "${{ inputs.pr-body-file }}" ]; then
+          python3 -u "${{ github.action_path }}/scripts/pr_boundary_guard.py" \
+            --base "${{ inputs.base }}" \
+            --pr-title "${{ inputs.pr-title }}" \
+            --pr-body-file "${{ inputs.pr-body-file }}" \
+            --template-file "${{ inputs.template-file }}" \
+            --json > pr_boundary_result.json || true
+          cat pr_boundary_result.json
+        fi
+
+        # Check Honeypots if canary provided
+        if [ -n "${{ inputs.canary-token }}" ]; then
+          python3 -u "${{ github.action_path }}/scripts/honeypot_trap_guard.py" \
+            --pr-title "${{ inputs.pr-title }}" \
+            --pr-body-file "${{ inputs.pr-body-file }}" \
+            --canary-token "${{ inputs.canary-token }}" \
+            --json > honeypot_result.json || true
+          cat honeypot_result.json
+        fi
+
+        # Check comment budget
+        python3 -u "${{ github.action_path }}/scripts/comment_budget_guard.py" \
+          --base "${{ inputs.base }}" \
+          --json > comment_budget_result.json || true
+        cat comment_budget_result.json
+
+        BLOCKERS=$(grep -c '"severity": "blocker"' pr_boundary_result.json honeypot_result.json comment_budget_result.json 2>/dev/null || echo 0)
+        echo "blockers-count=$BLOCKERS" >> $GITHUB_OUTPUT
+        if [ "$BLOCKERS" -gt 0 ]; then
+          echo "status=BLOCKED" >> $GITHUB_OUTPUT
+          if [ "${{ inputs.fail-on-blocker }}" = "true" ]; then
+            echo "❌ Anti-Slop Guard detected $BLOCKERS blocker finding(s)."
+            exit 2
+          fi
+        else
+          echo "status=PASSED" >> $GITHUB_OUTPUT
+          echo "✅ All Anti-Slop checks passed cleanly."
+        fi

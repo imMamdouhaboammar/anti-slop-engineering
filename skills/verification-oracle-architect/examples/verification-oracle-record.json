@@ -1,0 +1,75 @@
+{
+  "schema_version": "1.0",
+  "target_system": {
+    "module_under_test": "MarketplaceEscrowSettlementEngine & LedgerStoragePort (src/ledger/settlementEngine.ts)",
+    "domain_category": "financial_ledger_and_payments",
+    "module_mocking_banned": true
+  },
+  "verified_in_memory_fakes": {
+    "port_interface": "LedgerStoragePort",
+    "fake_adapter_name": "InMemoryLedgerStorage",
+    "real_adapter_name": "PostgresLedgerStorage",
+    "shared_contract_suite": "verifyLedgerStorageContract (runs identical 4-gate contract suite on InMemoryLedgerStorage and PostgresLedgerStorage)",
+    "contract_parity_verified": true,
+    "enforced_fake_mechanics": [
+      "structured_clone_boundary_isolation",
+      "unique_and_check_constraint_enforcement",
+      "optimistic_concurrency_version_cas",
+      "transactional_snapshot_rollback",
+      "composite_tenant_isolation"
+    ]
+  },
+  "property_and_metamorphic_oracles": {
+    "framework": "fast-check",
+    "generated_runs_per_property": 250,
+    "shrinking_enabled": true,
+    "invariants_verified": [
+      {
+        "name": "conservation_of_cents_largest_remainder_split",
+        "category": "conservation_law",
+        "assertion_formula": "feeCents + sum(payoutsCents) === grossCents && all(p >= 0) && all(|p - exactShare| < 1)"
+      },
+      {
+        "name": "metamorphic_weight_permutation_and_monotonic_scaling",
+        "category": "metamorphic_relation",
+        "assertion_formula": "sort(allocate(gross, permute(w)).payoutsCents) === sort(allocate(gross, w).payoutsCents) && sum(allocate(gross + delta, w).payoutsCents) >= sum(allocate(gross, w).payoutsCents)"
+      },
+      {
+        "name": "binary_receipt_wire_codec_roundtrip",
+        "category": "roundtrip_invertibility",
+        "assertion_formula": "decodeTransferReceiptBinary(encodeTransferReceiptBinary(receipt)) deepEquals receipt"
+      }
+    ]
+  },
+  "deterministic_chaos_testing": {
+    "seeded_prng_algorithm": "mulberry32",
+    "reproduction_seeds": [
+      "0x5EED1001",
+      "0x5EED1002",
+      "0x5EED1003",
+      "0x9F4A2C01"
+    ],
+    "virtual_clock_injected": true,
+    "zero_wall_clock_sleeps": true,
+    "injected_fault_modes": [
+      "pre_commit_connection_drop",
+      "post_commit_ack_drop",
+      "transient_cas_version_conflict",
+      "duplicate_out_of_order_delivery"
+    ],
+    "idempotency_and_rollback_proven": true
+  },
+  "mutation_falsification": {
+    "red_green_falsification_verified": true,
+    "mutated_production_invariant": "Temporarily disabled post-commit Idempotency-Key receipt lookup in executeIdempotentTransferWithRetry and dropped remainder cent loop in allocatePayoutsExactCents",
+    "observed_red_failure_signal": "Chaos seed 0x5EED1001 immediately failed with ConservationInvariantError (sender double-debited 2x on post_commit_ack_drop retry) and Property test failed on shrunk counterexample grossCents=1, weightsBps=[1, 1, 1]"
+  },
+  "verdict": {
+    "action": "proceed",
+    "rationale": "Eliminated all banned vi.mock/jest.mock stubs. InMemoryLedgerStorage passes the shared 4-gate contract suite with structuredClone isolation, CAS versioning, and snapshot rollback. Property-based & metamorphic tests verify exact cent conservation and codec invertibility across 250 seeded runs, and Mulberry32 + VirtualClock chaos simulations prove atomic rollback and post-commit idempotency in 0ms of wall-clock sleep.",
+    "revisit_triggers": [
+      "New method or constraint added to LedgerStoragePort (must extend verifyLedgerStorageContract first)",
+      "Multi-currency FX conversion added to settlement split (add triangular arbitrage & inverse FX bounds property)"
+    ]
+  }
+}

@@ -1,0 +1,134 @@
+name: Security Audit & Vulnerability Gate
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  dependency-review:
+    name: GitHub Advisory PR Review Gate
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Dependency Review (GitHub Advisory Database)
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: high
+          comment-summary-in-pr: always
+
+  security-audit:
+    name: Repository Dependency Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@4bc047ad259df6fc24a6c9b0f9a0cb08cf17fbe5 # v2.0.1
+        with:
+          bun-version: latest
+
+      - name: Setup Python
+        uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0
+        with:
+          python-version: '3.12'
+
+      - name: Install Node & Bun Dependencies
+        run: bun install
+
+      - name: Install verified OSV-Scanner
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          scanner_path="$RUNNER_TEMP/osv-scanner_linux_amd64"
+          if ! curl --fail --silent --show-error --location \
+            --retry 5 --retry-all-errors --retry-delay 3 \
+            --connect-timeout 20 --max-time 180 \
+            https://github.com/google/osv-scanner/releases/download/v2.7.0/osv-scanner_linux_amd64 \
+            --output "$scanner_path"; then
+            # GitHub release CDN can return 504 even after retries.
+            # The pinned release asset is also available through the GitHub API.
+            gh api -H 'Accept: application/octet-stream' \
+              repos/google/osv-scanner/releases/assets/632251666 > "$scanner_path"
+          fi
+          printf '%s  %s\n' \
+            '160c6253e2922e9e0a6a9771c5c4c40a4b3c6090b34a3cdd5e80c96cc2e4218b' \
+            "$scanner_path" | sha256sum --check --
+          sudo install -m 0755 "$scanner_path" /usr/local/bin/osv-scanner
+          osv-scanner --version
+
+      - name: Run Multi-Ecosystem Dependency Audit (Fail on High or Critical)
+        run: bun run security:audit
+
+      - name: Zero-Dependency & Python Standard Library Audit
+        run: |
+          python3 -c "
+          import ast, glob, os, sys, sysconfig, importlib.util
+
+          stdlib_dir = sysconfig.get_path('stdlib')
+          builtin_names = set(sys.builtin_module_names)
+          stdlib_names = getattr(sys, 'stdlib_module_names', None)
+
+          def is_stdlib(mod_name):
+              if mod_name in builtin_names:
+                  return True
+              if stdlib_names and mod_name in stdlib_names:
+                  return True
+              try:
+                  spec = importlib.util.find_spec(mod_name)
+                  if spec is None:
+                      return False
+                  if spec.origin in (None, 'built-in', 'frozen'):
+                      return True
+                  origin = os.path.realpath(spec.origin)
+                  return origin.startswith(os.path.realpath(stdlib_dir))
+              except Exception:
+                  return False
+
+          guards = glob.glob('scripts/*_guard.py') + glob.glob('scripts/diff_guard.py') + glob.glob('scripts/sre_guard.py')
+          for g in guards:
+              tree = ast.parse(open(g).read())
+              for node in ast.walk(tree):
+                  if isinstance(node, ast.Import):
+                      for alias in node.names:
+                          root = alias.name.split('.')[0]
+                          if root not in ['scripts', 'skills'] and not is_stdlib(root):
+                              print(f'Disallowed third-party dependency in {g}: {alias.name}')
+                              sys.exit(1)
+                  elif isinstance(node, ast.ImportFrom):
+                      if node.module:
+                          root = node.module.split('.')[0]
+                          if root not in ['scripts', 'skills'] and not is_stdlib(root):
+                              print(f'Disallowed third-party dependency in {g}: {node.module}')
+                              sys.exit(1)
+          print(f'✅ All {len(guards)} Python guard engines verified: 100% standard library, zero external pip dependencies.')
+          "
+
+  secret-scan:
+    name: TruffleHog Secret & Credential Scanning
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+
+      - name: TruffleHog OSS
+        uses: trufflesecurity/trufflehog@75259fddb4d05671cf15be3fb371afa62e32151e # main
+        with:
+          path: ./
+          base: ${{ github.event_name == 'pull_request' && github.event.repository.default_branch || '' }}
+          head: ${{ github.event_name == 'pull_request' && 'HEAD' || '' }}
+          extra_args: --exclude-paths=.trufflehog-exclude --only-verified

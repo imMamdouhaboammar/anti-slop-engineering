@@ -1,0 +1,207 @@
+{
+  "schema_version": "1.0.0",
+  "generated_at": "2026-11-10T18:00:00Z",
+  "invariants_count": 7,
+  "invariants": [
+    {
+      "id": "INV-OBSERVABILITY-CARDINALITY",
+      "category": "telemetry_and_slo",
+      "assertion": "Metric dimensions must remain bounded: dynamic IDs in label keys are strictly prohibited.",
+      "rationale": "Prevents metric storage explosion and OOMs in time-series telemetry systems.",
+      "enforcement_scope": {
+        "paths": [
+          "src/telemetry/**",
+          "src/metrics/**",
+          "**/observability/**"
+        ],
+        "patterns": [
+          "histogram",
+          "counter"
+        ],
+        "forbidden_patterns": [
+          "user_id",
+          "request_id",
+          "order_id"
+        ]
+      },
+      "authority": {
+        "record_type": "observability_record",
+        "record_file": "skills/observability-and-slo-architect/examples/observability-slo-record.json",
+        "record_sha256": "01138b9dc9d7d781d4c9096de6e1cce3f9c83fa8953e26b484c7bdd1fedcc3ac"
+      },
+      "status": "active",
+      "reassessment_threshold": "Requires Monarch telemetry capacity review."
+    },
+    {
+      "id": "INV-PARANOID-IDEMPOTENCY",
+      "category": "concurrency_and_scale",
+      "assertion": "State mutations must enforce Idempotency-Key with redis_set_nx_ex_86400.",
+      "rationale": "Eliminates duplicate execution and race conditions under 10M concurrent sessions.",
+      "enforcement_scope": {
+        "paths": [
+          "src/api/**",
+          "src/controllers/**",
+          "src/routes/**",
+          "**/api/**"
+        ],
+        "patterns": [
+          "Idempotency-Key"
+        ],
+        "forbidden_patterns": [
+          "Math.random()"
+        ]
+      },
+      "authority": {
+        "record_type": "paranoid_record",
+        "record_file": "skills/paranoid-principal-architect/examples/paranoid-architecture-record.json",
+        "record_sha256": "fccdb11c561a8fa3c423f34a27dce65beaf3e4287b9f962ace6aba19b2790742"
+      },
+      "status": "active",
+      "reassessment_threshold": "Requires distributed idempotency benchmark and load-test verification."
+    },
+    {
+      "id": "INV-PARANOID-BOUNDED-READ",
+      "category": "concurrency_and_scale",
+      "assertion": "Database reads must be keyset-paginated with max_read_limit <= 50.",
+      "rationale": "Prevents memory exhaustion and full-table-scan database brownouts.",
+      "enforcement_scope": {
+        "paths": [
+          "src/db/**",
+          "src/repositories/**",
+          "**/db/**"
+        ],
+        "patterns": [
+          "limit",
+          "cursor"
+        ],
+        "forbidden_patterns": [
+          "OFFSET 100",
+          "OFFSET 500"
+        ]
+      },
+      "authority": {
+        "record_type": "paranoid_record",
+        "record_file": "skills/paranoid-principal-architect/examples/paranoid-architecture-record.json",
+        "record_sha256": "fccdb11c561a8fa3c423f34a27dce65beaf3e4287b9f962ace6aba19b2790742"
+      },
+      "status": "active",
+      "reassessment_threshold": "Requires database index and query latency proof."
+    },
+    {
+      "id": "INV-CHECKOUT-APPEND-ONLY",
+      "category": "architecture",
+      "assertion": "Checkout mutations must insert append-only immutable journal records rather than updating existing ledger balances.",
+      "rationale": "Preserves audit trail and eliminates hot-row database lock contention.",
+      "enforcement_scope": {
+        "paths": [
+          "src/ledger/**",
+          "src/checkout/**"
+        ],
+        "patterns": [
+          "INSERT INTO journal",
+          "appendJournalEntry"
+        ],
+        "forbidden_patterns": [
+          "UPDATE account_balance"
+        ]
+      },
+      "authority": {
+        "record_type": "decision-record-with-invariants",
+        "record_file": "skills/repo-memory-and-invariant-steward/examples/decision-record-with-invariants.json",
+        "record_sha256": "17ebbe683ba49256dbf79d831a6bc290f23bfe0d6272e3d8e05e5ba3ff483936",
+        "author": "Mamdouh Aboammar"
+      },
+      "status": "active",
+      "reassessment_threshold": "Requires compliance team signoff and formal accounting audit."
+    },
+    {
+      "id": "INV-CHECKOUT-DEDUPLICATION",
+      "category": "concurrency_and_scale",
+      "assertion": "Every incoming checkout request must validate unique transaction_token before journal dispatch.",
+      "rationale": "Guarantees zero duplicate debit transactions during gateway retries.",
+      "enforcement_scope": {
+        "paths": [
+          "src/checkout/gateway.ts",
+          "src/api/checkout.ts"
+        ],
+        "patterns": [
+          "transaction_token",
+          "deduplicateToken"
+        ],
+        "forbidden_patterns": [
+          "skipDeduplication"
+        ]
+      },
+      "authority": {
+        "record_type": "decision-record-with-invariants",
+        "record_file": "skills/repo-memory-and-invariant-steward/examples/decision-record-with-invariants.json",
+        "record_sha256": "17ebbe683ba49256dbf79d831a6bc290f23bfe0d6272e3d8e05e5ba3ff483936",
+        "author": "Mamdouh Aboammar"
+      },
+      "status": "active",
+      "reassessment_threshold": "Requires proof of alternative idempotent wire protocol."
+    },
+    {
+      "id": "INV-ROLLOUT-WIRE-COMPAT",
+      "category": "rollout_and_compatibility",
+      "assertion": "Wire contracts must remain N-1/N+1 compatible: additive changes only and tolerant readers.",
+      "rationale": "Rejects atomic cutover fantasy and ensures zero downtime during rolling deployments.",
+      "enforcement_scope": {
+        "paths": [
+          "proto/**",
+          "schemas/**",
+          "src/contracts/**",
+          "api/**"
+        ],
+        "patterns": [
+          "optional",
+          "reserved"
+        ],
+        "forbidden_patterns": [
+          "required field removed"
+        ]
+      },
+      "authority": {
+        "record_type": "invariant-ledger-example",
+        "record_file": "skills/repo-memory-and-invariant-steward/examples/invariant-ledger-example.json",
+        "record_sha256": "2387d600cf9b9cd216727e34e8b4986cc285d2e9220e03a515553f78edf46b96",
+        "author": "Unknown"
+      },
+      "status": "active",
+      "reassessment_threshold": "Requires multi-phase deprecation window and backwards compatibility gate."
+    },
+    {
+      "id": "INV-TAGORE-ENGINEERING-DISCOURSE-AND-SUBSTANCE",
+      "category": "architecture",
+      "assertion": "Engineering prose must clear the Tagore >= 56/80 threshold, satisfy both mechanics (>=35/50) and substance (>=21/30) floors, eliminate the 29 cataloged tells, and ground claims in empirical measurements.",
+      "rationale": "Eliminates AI significance puffery, copula avoidance, superficial participle chaining, and sterile soulless wire-copy lacking technical conviction or operational trade-offs.",
+      "enforcement_scope": {
+        "paths": [
+          "*.md",
+          "docs/**",
+          ".github/**",
+          "**/PR_DESCRIPTION.md"
+        ],
+        "patterns": [
+          "PROCEED",
+          "clean",
+          "ssr"
+        ],
+        "forbidden_patterns": [
+          "serves as an enduring testament",
+          "marking a pivotal milestone",
+          "evolving landscape",
+          "I hope this helps!"
+        ]
+      },
+      "authority": {
+        "record_type": "tagore_record",
+        "record_file": "skills/tagore-guard/examples/clean-tagore-record.json",
+        "record_sha256": "a9524ca09595e60c387ed0d25d4a8240c25845719b3d90a746991a0cf8b07ae0"
+      },
+      "status": "active",
+      "reassessment_threshold": "Requires formal technical writing and maintainer consensus."
+    }
+  ],
+  "ledger_hash": "b85dad795d4d7592e12c8db1e24c1b730f3b82bc29236ed96868d37a75a68647"
+}

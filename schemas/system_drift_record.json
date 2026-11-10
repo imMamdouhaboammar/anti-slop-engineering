@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SystemDriftRecord",
+  "description": "Schema for cross-route design system drift, component variant budgets, and focus-ring accessibility audit findings",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "timestamp",
+    "verdict",
+    "scanned_routes_or_files",
+    "entropy_index",
+    "variant_budgets",
+    "findings_count",
+    "findings"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "enum": ["1.0.0"]
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "verdict": {
+      "type": "string",
+      "enum": ["PROCEED", "REJECT", "WARNING"]
+    },
+    "scanned_routes_or_files": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "entropy_index": {
+      "type": "number",
+      "minimum": 0
+    },
+    "variant_budgets": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["budget", "actual", "exceeded"],
+        "properties": {
+          "budget": { "type": "integer", "minimum": 0 },
+          "actual": { "type": "integer", "minimum": 0 },
+          "exceeded": { "type": "boolean" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "orphaned_tokens": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "focus_ring_violations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["element", "file", "line"],
+        "properties": {
+          "element": { "type": "string" },
+          "file": { "type": "string" },
+          "line": { "type": "integer", "minimum": 1 }
+        },
+        "additionalProperties": false
+      }
+    },
+    "findings_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "file",
+          "line",
+          "class",
+          "severity",
+          "evidence",
+          "recommendation"
+        ],
+        "properties": {
+          "id": { "type": "string" },
+          "file": { "type": "string" },
+          "line": { "type": "integer", "minimum": 1 },
+          "class": {
+            "type": "string",
+            "enum": [
+              "VARIANT_BUDGET_EXCEEDED",
+              "FOCUS_RING_SUPPRESSED",
+              "ORPHANED_ROUTE_TOKEN",
+              "CROSS_ROUTE_STYLE_DRIFT"
+            ]
+          },
+          "severity": {
+            "type": "string",
+            "enum": ["BLOCKING", "WARNING", "INFORMATIONAL"]
+          },
+          "evidence": { "type": "string" },
+          "recommendation": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,121 @@
+{
+  "$schema": "../references/simulation-record-contract.md",
+  "schema_version": "1.0",
+  "target_system": {
+    "module_under_test": "distributed_raft_consensus_engine",
+    "system_archetype": "distributed_consensus_and_replication",
+    "example_based_tests_only_banned": true
+  },
+  "property_testing": {
+    "framework": "fast-check",
+    "min_test_cases": 1000,
+    "shrinking_enabled": true,
+    "invariants": [
+      {
+        "id": "INV-01",
+        "category": "round_trip_invertibility",
+        "description": "Log entry serialization and deserialization is perfectly lossless and canonical.",
+        "shrink_counterexample_verified": true
+      },
+      {
+        "id": "INV-02",
+        "category": "state_model_equivalence",
+        "description": "State transition outcome matches formal TLA+ state machine oracle across 10,000 steps.",
+        "shrink_counterexample_verified": true
+      },
+      {
+        "id": "INV-03",
+        "category": "idempotency",
+        "description": "Replaying duplicate committed RPC log entries produces zero state mutations.",
+        "shrink_counterexample_verified": true
+      }
+    ]
+  },
+  "deterministic_simulation": {
+    "virtual_clock_enabled": true,
+    "prng_algorithm": "mulberry32",
+    "seed": "0xCAFE_BABE",
+    "reproducibility_verified": true,
+    "fault_injection_matrix": [
+      {
+        "fault_type": "network_packet_loss",
+        "probability_or_cadence": 0.05,
+        "mitigation_or_invariant": "Heartbeat quorum ensures leader election completes within 3 simulated ticks."
+      },
+      {
+        "fault_type": "clock_skew_drift",
+        "probability_or_cadence": "+/-500ms jitter",
+        "mitigation_or_invariant": "Logical Lamport clocks prevent split-brain under severe monotonic skew."
+      },
+      {
+        "fault_type": "message_reordering",
+        "probability_or_cadence": 0.1,
+        "mitigation_or_invariant": "Strict sequence numbers reject stale RPC frames and duplicate votes."
+      },
+      {
+        "fault_type": "partition_split_brain",
+        "probability_or_cadence": "periodic_partition_every_50_ticks",
+        "mitigation_or_invariant": "Majority quorum barrier prevents minority partitions from committing entries."
+      }
+    ]
+  },
+  "state_machine_modeling": {
+    "model_name": "RaftNodeStateMachine",
+    "type_level_impossible_states_prevented": true,
+    "states": [
+      "Follower",
+      "Candidate",
+      "Leader",
+      "Terminated"
+    ],
+    "transitions": [
+      {
+        "from_state": "Follower",
+        "event": "ElectionTimeout",
+        "to_state": "Candidate",
+        "guard_or_effect": "Increment term, vote for self, broadcast RequestVote RPC."
+      },
+      {
+        "from_state": "Candidate",
+        "event": "QuorumVotesReceived",
+        "to_state": "Leader",
+        "guard_or_effect": "Initialize nextIndex/matchIndex, broadcast initial AppendEntries heartbeat."
+      },
+      {
+        "from_state": "Leader",
+        "event": "HigherTermDiscovered",
+        "to_state": "Follower",
+        "guard_or_effect": "Update currentTerm, step down to Follower immediately."
+      },
+      {
+        "from_state": "Candidate",
+        "event": "HigherTermDiscovered",
+        "to_state": "Follower",
+        "guard_or_effect": "Update currentTerm, clear votes, step down to Follower."
+      }
+    ],
+    "generative_model_test_executed": true
+  },
+  "structure_aware_fuzzing": {
+    "target_boundary": "raft_rpc_frame_decoder",
+    "fuzz_engine": "libfuzzer",
+    "corpus_strategy": "Grammar-based RPC seed corpus mutated across malformed headers, negative terms, and payload sizes.",
+    "crash_freedom_verified": true,
+    "bounded_recursion_and_memory": true,
+    "max_payload_bytes": 1048576
+  },
+  "mutation_falsification": {
+    "red_green_falsification_verified": true,
+    "mutated_invariant": "Invert term comparison from strictly greater to greater-or-equal in RequestVote handler.",
+    "observed_failure_seed_or_counterexample": "Seed 0xCAFE_BABE failed at tick 412: candidate granted vote to lower term."
+  },
+  "verdict": {
+    "action": "proceed",
+    "rationale": "All invariants, seeded DST simulation with virtual clock, state machine model, and structure-aware fuzzing are verified.",
+    "revisit_triggers": [
+      "Addition of new consensus RPC message types",
+      "Modification of election timeout intervals or clock drift models",
+      "Introduction of persistent disk WAL sync modifications"
+    ]
+  }
+}

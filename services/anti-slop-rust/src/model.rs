@@ -15,6 +15,11 @@ pub enum ViolationCategory {
     TaskThrashing,
     LadderViolation,
     MissingBuiltIn,
+    CommentSlop,
+    AttentionSlop,
+    DemockViolation,
+    StyleSeedViolation,
+    TagoreDiscourseViolation,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AntiSlopPrBoundaryRecord",
+  "type": "object",
+  "required": [
+    "type",
+    "title",
+    "status",
+    "code",
+    "detail",
+    "git_topology",
+    "pr_metadata",
+    "findings",
+    "remediation"
+  ],
+  "properties": {
+    "type": { "type": "string", "format": "uri" },
+    "title": { "type": "string" },
+    "status": { "type": "integer" },
+    "code": {
+      "type": "string",
+      "enum": [
+        "ERR_PR_TOPOLOGY_INVALID",
+        "ERR_COMMIT_AUTHOR_MISMATCH",
+        "ERR_METADATA_BLOAT_DETECTED",
+        "ERR_TEMPLATE_CONTRACT_VIOLATION",
+        "NO_PR_BOUNDARY_FINDINGS"
+      ]
+    },
+    "detail": { "type": "string" },
+    "instance": { "type": "string" },
+    "git_topology": {
+      "type": "object",
+      "required": ["base_ref", "head_ref", "commit_count", "is_shallow", "is_detached_head"],
+      "properties": {
+        "base_ref": { "type": "string" },
+        "head_ref": { "type": "string" },
+        "commit_count": { "type": "integer" },
+        "is_shallow": { "type": "boolean" },
+        "is_detached_head": { "type": "boolean" }
+      }
+    },
+    "pr_metadata": {
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description_length": { "type": "integer" },
+        "emoji_count": { "type": "integer" },
+        "code_references": { "type": "integer" },
+        "radio_sections_checked": { "type": "integer" }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["rule", "severity", "message", "evidence"],
+        "properties": {
+          "rule": { "type": "string" },
+          "severity": { "type": "string", "enum": ["blocker", "review", "nit"] },
+          "message": { "type": "string" },
+          "evidence": { "type": "string" }
+        }
+      }
+    },
+    "remediation": {
+      "type": "object",
+      "required": ["action", "guidance"],
+      "properties": {
+        "action": { "type": "string" },
+        "guidance": { "type": "string" }
+      }
+    }
+  }
+}

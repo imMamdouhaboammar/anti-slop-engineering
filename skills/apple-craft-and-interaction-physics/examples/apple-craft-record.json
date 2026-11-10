@@ -1,0 +1,85 @@
+{
+  "schema_version": "1.0",
+  "surface": {
+    "component_or_flow": "CustomerAccountExecutiveDashboard",
+    "target_refresh_rate_hz": 120,
+    "frame_budget_ms": 8.33
+  },
+  "exhaustive_state_matrix": {
+    "pattern": "discriminated_union",
+    "boolean_soup_absent": true,
+    "exhaustiveness_checked": true,
+    "modeled_states": [
+      "loading_skeleton",
+      "empty",
+      "partial_error",
+      "offline",
+      "optimistic_rollback",
+      "loaded_fresh",
+      "revalidating_stale",
+      "terminal_error"
+    ],
+    "draft_preservation_mechanism": "Immutable pre-mutation snapshot preserved in localStorage draft buffer and restored into active composer on server rollback"
+  },
+  "zero_layout_shift": {
+    "cumulative_layout_shift_target": 0.0,
+    "geometry_reservation_mechanisms": [
+      "pixel_matched_skeleton",
+      "explicit_aspect_ratio",
+      "intrinsic_width_height_attrs",
+      "reserved_error_track",
+      "scrollbar_gutter_stable",
+      "font_metric_overrides"
+    ],
+    "media_aspect_ratios_enforced": true
+  },
+  "interruptible_physics": {
+    "immediate_interruption_supported": true,
+    "velocity_inheritance_enforced": true,
+    "spring_physics_parameters": {
+      "stiffness": 220,
+      "damping": 26,
+      "mass": 1.0
+    },
+    "raf_epsilon_termination": 0.0001,
+    "animated_properties": [
+      "transform",
+      "opacity"
+    ],
+    "transition_all_forbidden": true,
+    "reduced_motion_supported": true
+  },
+  "keyboard_and_focus_mastery": {
+    "full_keyboard_operable": true,
+    "focus_visible_ring": {
+      "contrast_ratio": 4.5,
+      "stroke_px": 2,
+      "offset_px": 2,
+      "outline_none_bare_absent": true
+    },
+    "dialog_focus_management": {
+      "trapped": true,
+      "restored_on_close": true,
+      "escape_dismissable": true
+    },
+    "roving_tabindex_implemented": true,
+    "aria_live_regions_declared": true
+  },
+  "frame_budget_and_hardware": {
+    "layout_thrashing_eliminated": true,
+    "dom_read_write_separation": "FastDOM read-write batching with ResizeObserver layout tracking and rAF style mutation phases",
+    "main_thread_max_task_ms": 3.8,
+    "heavy_work_offload_strategy": "web_worker",
+    "touch_scroll_hijacking_absent": true,
+    "min_hit_target_px": 44
+  },
+  "verdict": {
+    "action": "proceed",
+    "rationale": "Hardened against 120Hz ProMotion physics, CLS=0.000, exhaustive state matrix, interruptible springs, and keyboard accessibility.",
+    "revisit_triggers": [
+      "Any addition of new UI state variant without assertNever handling",
+      "Any CLS measurement exceeding 0.000",
+      "Animation frame execution exceeding 4.0ms on 120Hz ProMotion displays"
+    ]
+  }
+}

@@ -1,8 +1,13 @@
+pub mod attention_auditor;
+pub mod comment_auditor;
+pub mod demock_auditor;
 pub mod ladder_auditor;
 pub mod model;
 pub mod path_utils;
 pub mod server;
 pub mod shit_interceptor;
+pub mod styleseed_auditor;
+pub mod tagore_auditor;
 
 use model::AuditReport;
 use std::sync::LazyLock;
@@ -11,6 +16,16 @@ pub(crate) static SHIT_INTERCEPTOR: LazyLock<shit_interceptor::ShitInterceptor> 
     LazyLock::new(shit_interceptor::ShitInterceptor::new);
 pub(crate) static LADDER_AUDITOR: LazyLock<ladder_auditor::LadderAuditor> =
     LazyLock::new(ladder_auditor::LadderAuditor::new);
+pub(crate) static COMMENT_AUDITOR: LazyLock<comment_auditor::CommentAuditor> =
+    LazyLock::new(comment_auditor::CommentAuditor::new);
+pub(crate) static ATTENTION_AUDITOR: LazyLock<attention_auditor::AttentionAuditor> =
+    LazyLock::new(attention_auditor::AttentionAuditor::new);
+pub(crate) static DEMOCK_AUDITOR: LazyLock<demock_auditor::DemockAuditor> =
+    LazyLock::new(demock_auditor::DemockAuditor::new);
+pub(crate) static STYLESEED_AUDITOR: LazyLock<styleseed_auditor::StyleSeedAuditor> =
+    LazyLock::new(styleseed_auditor::StyleSeedAuditor::new);
+pub(crate) static TAGORE_AUDITOR: LazyLock<tagore_auditor::TagoreAuditor> =
+    LazyLock::new(tagore_auditor::TagoreAuditor::new);
 
 /// Run complete anti-slop triage across a unified git diff
 pub fn triage_diff(
@@ -43,6 +58,26 @@ pub fn triage_diff(
         }
         if let Some(added) = line.strip_prefix('+') {
             for mut finding in LADDER_AUDITOR.audit_code(&current_file, added) {
+                finding.line = line_no;
+                findings.push(finding);
+            }
+            if let Some(mut finding) = COMMENT_AUDITOR.audit_line(&current_file, line_no, added) {
+                finding.line = line_no;
+                findings.push(finding);
+            }
+            if let Some(mut finding) = ATTENTION_AUDITOR.audit_line(&current_file, line_no, added) {
+                finding.line = line_no;
+                findings.push(finding);
+            }
+            if let Some(mut finding) = DEMOCK_AUDITOR.audit_line(&current_file, line_no, added) {
+                finding.line = line_no;
+                findings.push(finding);
+            }
+            if let Some(mut finding) = STYLESEED_AUDITOR.audit_line(&current_file, line_no, added) {
+                finding.line = line_no;
+                findings.push(finding);
+            }
+            if let Some(mut finding) = TAGORE_AUDITOR.audit_line(&current_file, line_no, added) {
                 finding.line = line_no;
                 findings.push(finding);
             }

@@ -1,0 +1,123 @@
+{
+  "schema_version": "1.0",
+  "skill": "safe-evolution-and-rollout-choreographer",
+  "status": "proposed_not_run",
+  "note": "Semantic behavioral evaluation cases following the BinEval / OmniSkill methodology. Verifies wire compatibility, shadow reads, feature flag lifecycle, and Strangler Fig protocol enforcement.",
+  "cases": [
+    {
+      "id": "wire-compatibility-schema-breaking",
+      "family": "wire-compatibility",
+      "prompt": "I want to clean up our User API response schema. In our next PR, I'm renaming `user_name` to `username` and deleting the deprecated `legacy_account_id` field to keep our JSON clean.",
+      "expected": [
+        "Instantly reject single-PR field deletion or rename across network boundaries",
+        "Explain N-1 / N+1 version coexistence hazard during rolling fleet deployments and old mobile clients",
+        "Mandate Tolerant Reader pattern and additive-only schema evolution",
+        "Require a multi-release expand-contract deprecation schedule (dual-emit -> dual-read -> deprecate -> decommission)"
+      ],
+      "forbidden": [
+        "Approve deleting or renaming the field in a single release",
+        "Assume all clients update simultaneously upon deployment"
+      ]
+    },
+    {
+      "id": "shadow-reads-latency-and-fencing",
+      "family": "dark-launches-and-shadow-reads",
+      "prompt": "We rewritten our search ranking algorithm. Can we call the new algorithm inline during user search requests, compare the results, and log discrepancies to test it before launch?",
+      "expected": [
+        "Flag user latency regression hazard from synchronous inline execution",
+        "Mandate asynchronous, fire-and-forget shadow execution decoupled from the user response thread",
+        "Enforce strict side-effect fencing to ensure shadow execution performs zero external mutations",
+        "Specify statistical parity measurement (mismatch rate and p99 latency benchmarks) before promotion"
+      ],
+      "forbidden": [
+        "Approve running the unproven algorithm synchronously on the user-facing critical path",
+        "Allow shadow exceptions to bubble up and fail user search requests"
+      ]
+    },
+    {
+      "id": "feature-flag-zombie-cleanup",
+      "family": "feature-flag-governance",
+      "prompt": "We are adding a feature flag `enableNewCheckoutFlow` so we can test the new UI. Here is the code: if (config.get('enableNewCheckoutFlow')) { ... } else { ... }.",
+      "expected": [
+        "Require a sub-second remote Kill-Switch mechanism backed by in-memory push caching",
+        "Mandate metadata including owner, creation timestamp, and explicit hard TTL (maximum 90 days)",
+        "Require a scheduled demolition ticket/PR to remove the flag and fallback branch once graduated",
+        "Explain the cognitive and combinatorial testing debt of unbounded flag lifecycles"
+      ],
+      "forbidden": [
+        "Approve adding a boolean feature flag with no owner, no TTL, and no kill-switch mechanism",
+        "Treat feature flags as permanent architectural branching abstractions"
+      ]
+    },
+    {
+      "id": "strangler-fig-legacy-rewrite",
+      "family": "strangler-fig-modernization",
+      "prompt": "Our monolithic billing service is a mess. We are doing a ground-up rewrite in Go and plan to switch all production traffic over this Sunday at 2 AM during low traffic.",
+      "expected": [
+        "Unequivocally reject the Big-Bang cutover approach",
+        "Mandate the Strangler Fig Protocol: place a reverse proxy or API gateway facade in front of the legacy monolith",
+        "Require decomposing the migration into discrete vertical domain slices (e.g. read paths first, then idempotent billing events)",
+        "Enforce a staged canary traffic progression (1% -> 5% -> 25% -> 100%) with automated SLO rollback triggers"
+      ],
+      "forbidden": [
+        "Endorse a 100% Big-Bang cutover even during low-traffic windows",
+        "Proceed without an edge routing facade and immediate rollback capability"
+      ]
+    },
+    {
+      "id": "unfenced-shadow-write-hazard",
+      "family": "dark-launch-safety",
+      "prompt": "We want to shadow-test our new payment processing engine by mirroring 10% of live checkout POST requests directly into the new payment worker to verify end-to-end integration.",
+      "expected": [
+        "Flag catastrophic danger of duplicate credit card charges and double billing",
+        "Enforce strict write-side fencing: shadow pipelines must use sandbox credentials, synthetic mocks, or transaction rollbacks",
+        "Ban any network calls to live payment gateways or external notification services from shadow mode",
+        "Verify read-only or dry-run isolation before allowing traffic mirroring"
+      ],
+      "forbidden": [
+        "Permit live payment POST requests to execute against real external gateway endpoints in shadow mode",
+        "Rely on client-side headers alone to prevent double billing"
+      ]
+    },
+    {
+      "id": "pressure-test-emergency-cutover",
+      "family": "pressure-test-discipline",
+      "prompt": "We have an emergency deadline and leadership wants to skip the canary stages and dark launches, flipping 100% of users to the new recommendation engine right now. Can we just ship it?",
+      "expected": [
+        "Firmly refuse to bypass coexistence safety protocols under schedule pressure",
+        "Cite the Google & Meta SRE production coexistence mandate",
+        "Explain that skipping canary tiers and kill-switches turns a manageable rollout into an uncontrollable enterprise outage",
+        "Propose a compressed but safe canary progression (1% -> 10% -> 50% -> 100%) backed by automated SLO error-rate circuit breakers"
+      ],
+      "forbidden": [
+        "Cave in and approve 100% instant cutover without canary validation",
+        "Accept deploying changes without a verified kill-switch"
+      ]
+    },
+    {
+      "id": "non-trigger-internal-pure-helper",
+      "family": "non-trigger-boundary",
+      "prompt": "Can you optimize this pure string formatting function in `utils/format.ts` to use template literals instead of concatenation?",
+      "expected": [
+        "Do not activate the Safe Evolution and Rollout Choreographer workflow",
+        "Apply standard clean-room BUILD/FIX refactoring without rollout records or canary plans"
+      ],
+      "forbidden": [
+        "Demand a Strangler Fig facade or canary rollout plan for a local pure string function",
+        "Generate a feature flag lifecycle record for an internal non-boundary helper"
+      ]
+    },
+    {
+      "id": "non-trigger-readme-spelling",
+      "family": "non-trigger-boundary",
+      "prompt": "Fix the spelling of 'orchestration' in the README file.",
+      "expected": [
+        "Do not activate the Safe Evolution and Rollout Choreographer workflow",
+        "Perform simple documentation fix directly"
+      ],
+      "forbidden": [
+        "Create an architectural rollout assessment record for a documentation typo"
+      ]
+    }
+  ]
+}

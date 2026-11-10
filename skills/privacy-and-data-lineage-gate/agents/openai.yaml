@@ -1,0 +1,9 @@
+interface:
+  display_name: "Privacy & Data Lineage Gate"
+  short_description: "Apple Privacy & Meta Data Infra user data protection from the system"
+  default_prompt: "Audit this service, data model, or event pipeline for PII tainted types, cryptographic erasure, retention TTL, and data lineage compliance."
+policy:
+  products:
+    - CHAT
+    - CODEX
+  allow_implicit_invocation: true

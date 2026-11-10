@@ -1,0 +1,37 @@
+{
+  "type": "https://antislop.dev/problems/tagore-discourse-deficit",
+  "title": "Tagore Engineering Discourse Audit",
+  "status": 200,
+  "code": "NO_TAGORE_FINDINGS",
+  "detail": "Prose satisfies Tagore substance floors (>=21/30) and mechanics floors (>=35/50).",
+  "instance": "docs/solutions/cache-ring-buffer.md",
+  "metrics": {
+    "total_score": 79,
+    "mechanics_subtotal": 49,
+    "substance_subtotal": 30,
+    "dimensions": {
+      "directness": 10,
+      "rhythm": 9,
+      "trust": 10,
+      "authenticity": 10,
+      "density": 10,
+      "specificity": 10,
+      "restraint": 10,
+      "voice": 10
+    },
+    "discourse_vector": "clean",
+    "slop_to_substance_ratio": 0.0,
+    "passive_voice_ratio": 0.042,
+    "mean_sentence_length": 14.8,
+    "sentence_length_stddev": 6.85,
+    "empirical_token_density": 8.4,
+    "catalog_tells_count": 0,
+    "checklist_violations_count": 0,
+    "verdict": "PROCEED"
+  },
+  "findings": [],
+  "remediation": {
+    "action": "NO_ACTION_REQUIRED",
+    "guidance": "Prose satisfies Tagore substance floors (>=21/30) and mechanics floors (>=35/50)."
+  }
+}

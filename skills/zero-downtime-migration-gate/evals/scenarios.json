@@ -1,0 +1,97 @@
+{
+  "schema_version": "1.0",
+  "skill": "zero-downtime-migration-gate",
+  "status": "proposed_not_run",
+  "note": "Semantic behavioral evaluation cases following the BinEval / OmniSkill methodology. Verifies trigger detection, non-trigger boundary filtering, 3-phase Expand-Migrate-Contract decomposition, lock-free PostgreSQL/MySQL DDL, and forward/backward N and N-1 wire compatibility.",
+  "cases": [
+    {
+      "id": "live-column-rename-decomposition",
+      "family": "expand-migrate-contract",
+      "prompt": "We need to rename the column `phone` to `mobile_number` on our production `customers` table (80M rows) in PostgreSQL and update our JSON API response to return `mobile_number`. Write the migration and code change.",
+      "expected": [
+        "Reject single-step ALTER TABLE customers RENAME COLUMN phone TO mobile_number",
+        "Explain that Version N-1 pods and active mobile/frontend clients will crash during rolling deployment",
+        "Decompose into Phase 1 (Expand: add nullable mobile_number column + dual-write in app + return both phone and mobile_number in JSON)",
+        "Define Phase 2 (Migrate: out-of-band batched keyset backfill of 1000 rows + NOT VALID constraint validation + switch reads to mobile_number)",
+        "Define Phase 3 (Contract: after N-1 pods and client horizon drain, remove dual-write and DROP COLUMN phone)",
+        "Include explicit SET LOCAL lock_timeout = '2s' in SQL DDL"
+      ],
+      "forbidden": [
+        "Emit ALTER TABLE customers RENAME COLUMN phone TO mobile_number",
+        "Drop or stop returning the legacy `phone` field in JSON responses while N-1 clients are still active",
+        "Run an unbatched UPDATE customers SET mobile_number = phone inside the DDL migration"
+      ]
+    },
+    {
+      "id": "postgresql-lock-free-index-and-constraint",
+      "family": "lock-free-ddl",
+      "prompt": "Review this PostgreSQL migration for our high-traffic `orders` table: BEGIN; CREATE INDEX idx_orders_user_id ON orders(user_id); ALTER TABLE orders ADD CONSTRAINT fk_orders_user FOREIGN KEY (user_id) REFERENCES users(id); ALTER TABLE orders ALTER COLUMN total_cents SET NOT NULL; COMMIT;",
+      "expected": [
+        "Flag CREATE INDEX without CONCURRENTLY as a critical write-blocking lock hazard",
+        "Explain that CREATE INDEX CONCURRENTLY cannot execute inside a BEGIN ... COMMIT transaction block",
+        "Flag ADD CONSTRAINT ... FOREIGN KEY without NOT VALID as acquiring an ACCESS EXCLUSIVE table scan lock",
+        "Mandate ADD CONSTRAINT ... NOT VALID followed by a separate ALTER TABLE orders VALIDATE CONSTRAINT",
+        "Flag direct SET NOT NULL as scanning the entire table under ACCESS EXCLUSIVE lock; prescribe adding a NOT VALID CHECK (total_cents IS NOT NULL) constraint, validating it, and then promoting to SET NOT NULL",
+        "Mandate explicit SET LOCAL lock_timeout"
+      ],
+      "forbidden": [
+        "Approve the migration as safe because it is wrapped in a transaction",
+        "Put CREATE INDEX CONCURRENTLY inside a BEGIN ... COMMIT block"
+      ]
+    },
+    {
+      "id": "protobuf-and-json-wire-compatibility",
+      "family": "wire-compatibility-n-minus-1",
+      "prompt": "In our gRPC and REST payment service, we are deleting the `legacy_fee` (tag 3) field from `ChargeResponse`, reusing tag 3 for `discount_code`, and adding a new `CRYPTO_PENDING` enum value to `ChargeStatus` returned to mobile apps. Any issues?",
+      "expected": [
+        "Reject reusing Protobuf tag 3 for discount_code due to binary wire corruption with N-1 peers",
+        "Mandate marking deleted tag 3 and field name as reserved: `reserved 3; reserved \"legacy_fee\";`",
+        "Warn that removing `legacy_fee` immediately breaks active N-1 mobile and frontend clients during rolling rollout",
+        "Flag adding a new response enum variant `CRYPTO_PENDING` as a forward-compatibility hazard that breaks exhaustive switch statements on N-1 clients unless mapped to a fallback or gated by client API version"
+      ],
+      "forbidden": [
+        "Approve reusing tag 3 since legacy_fee is being removed",
+        "Claim that Protobuf field renames or tag reassignments are automatically backward compatible"
+      ]
+    },
+    {
+      "id": "pressure-test-single-pr-drop-column",
+      "family": "pressure-test-discipline",
+      "prompt": "Our product manager wants everything done in one single PR today: add the new `status_v2` column, backfill all 25 million rows inside the migration file, update the backend code to only use `status_v2`, and `DROP COLUMN status_v1` at the end of the migration. Do it in one script.",
+      "expected": [
+        "Refuse to combine expansion, 25M-row unbatched backfill, and column drop into a single deployment script",
+        "Explain that dropping `status_v1` in the migration immediately crashes running N-1 pods before the new binary finishes rolling out and makes binary rollback impossible",
+        "Explain that a 25M-row in-migration UPDATE causes massive MVCC bloat, replication lag, and table lock outages",
+        "Provide the separated Phase 1 (Expand + Dual-Write), Phase 2 (Batched Backfill + Cutover), and Phase 3 (Contract) artifacts ready to execute safely"
+      ],
+      "forbidden": [
+        "Comply and emit a single SQL script that adds status_v2, updates 25M rows, and drops status_v1",
+        "Suggest that wrapping the drop in a transaction avoids rolling deployment downtime"
+      ]
+    },
+    {
+      "id": "non-trigger-greenfield-local-prototype",
+      "family": "non-trigger-boundary",
+      "prompt": "I am writing a local unit test with an in-memory SQLite database created fresh inside `beforeEach`. Can you rename the test helper column from `foo` to `bar` in the test fixture schema?",
+      "expected": [
+        "Do not activate the 3-phase Expand-Migrate-Contract production ceremony for an ephemeral in-memory unit test fixture",
+        "Update the in-memory test schema directly and cleanly"
+      ],
+      "forbidden": [
+        "Demand a 3-stage rolling deployment plan and dual-write backfill worker for an ephemeral `beforeEach` unit test fixture"
+      ]
+    },
+    {
+      "id": "non-trigger-css-button-padding",
+      "family": "non-trigger-boundary",
+      "prompt": "Increase the horizontal padding on the primary checkout button from 12px to 16px in `Button.module.css`.",
+      "expected": [
+        "Do not activate the Zero-Downtime Migration Gate workflow",
+        "Apply the CSS padding change directly"
+      ],
+      "forbidden": [
+        "Generate a database lock pre-mortem or Protobuf wire compatibility matrix for a CSS padding edit"
+      ]
+    }
+  ]
+}

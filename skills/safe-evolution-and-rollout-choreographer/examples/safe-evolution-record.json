@@ -1,0 +1,58 @@
+{
+  "schema_version": "1.0",
+  "system_identity": {
+    "service_name": "catalog-item-service",
+    "component": "pricing-and-metadata-engine",
+    "owner_team": "core-commerce-sre",
+    "target_environment": "production"
+  },
+  "wire_compatibility": {
+    "protocol": "json_rest",
+    "compatibility_mode": "bidirectional_n_minus_one_n_plus_one",
+    "tolerant_reader_enforced": true,
+    "additive_only_verified": true,
+    "deprecation_phase": "expand"
+  },
+  "dark_launch_and_shadow": {
+    "shadow_mode_enabled": true,
+    "traffic_mirror_percentage": 100.0,
+    "execution_isolation": "asynchronous_worker",
+    "side_effect_fencing": {
+      "storage_mutations_blocked": true,
+      "external_apis_mocked": true,
+      "user_communications_suppressed": true
+    },
+    "parity_gate": {
+      "sample_size_evaluated": 250000,
+      "measured_mismatch_rate": 0.00004,
+      "p99_latency_shadow_ms": 42,
+      "p99_latency_baseline_ms": 48
+    }
+  },
+  "feature_flag_governance": {
+    "flag_id": "commerce_catalog_v2_engine",
+    "lifecycle_phase": "canary",
+    "kill_switch_mechanism": "in_memory_push",
+    "kill_switch_tested": true,
+    "kill_switch_latency_ms": 320,
+    "created_at": "2026-11-01T08:00:00Z",
+    "expires_at": "2027-01-15T08:00:00Z",
+    "demolition_ticket": "SRE-4920-cleanup-catalog-v1"
+  },
+  "strangler_fig_protocol": {
+    "facade_type": "reverse_proxy",
+    "active_vertical_slice": "catalog_read_and_pricing",
+    "canary_percentage": 10.0,
+    "automated_rollback_slo_triggers": [
+      "http_5xx_rate > 0.05% over 1m window",
+      "p99_latency > 80ms over 2m window",
+      "shadow_mismatch_rate > 0.001%"
+    ],
+    "decommission_target_date": "2027-01-20T00:00:00Z"
+  },
+  "verdict": {
+    "status": "proceed",
+    "findings": [],
+    "sign_off_sre": "principal-sre@company.internal"
+  }
+}

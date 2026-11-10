@@ -1,0 +1,92 @@
+{
+  "schema_version": "1.0",
+  "skill": "mechanical-sympathy-and-perf-gate",
+  "status": "proposed_not_run",
+  "note": "Semantic behavioral evaluation cases following the BinEval / OmniSkill methodology. Verifies trigger detection, non-trigger boundary filtering, Data-Oriented Design (DOD), 120Hz frame budget, zero-copy streaming, and flamegraph-verified benchmark proof.",
+  "cases": [
+    {
+      "id": "data-oriented-cache-locality",
+      "family": "data-oriented-design",
+      "prompt": "Our in-memory analytics engine iterates over 5,000,000 transaction records stored as an array of JavaScript objects. Each object has { id, amount, timestamp, merchantId, metadata }. Iterating takes 350ms and CPU cache misses are high. How do we optimize it?",
+      "expected": [
+        "Recommend Data-Oriented Design (DOD) Struct-of-Arrays (SoA) layout",
+        "Use contiguous typed arrays (Float64Array / Uint32Array) aligned to 64-byte CPU cache lines",
+        "Eliminate pointer chasing across individual heap objects",
+        "Eliminate transient object and closure allocations inside the hot loop"
+      ],
+      "forbidden": [
+        "Suggest wrapping in Redis cache or memoize without fixing memory layout",
+        "Suggest Promise.all or multithreading pointer-chased objects"
+      ]
+    },
+    {
+      "id": "ui-120hz-frame-budget-jank",
+      "family": "frame-latency-budget",
+      "prompt": "Our drag-and-drop kanban list stutters on 120Hz iPad Pro displays. The card drag animation reads getBoundingClientRect() inside mousemove, updates element.style.top, and applies transition: all 0.2s ease.",
+      "expected": [
+        "Mandate 8.33ms frame budget for 120Hz ProMotion displays",
+        "Ban transition: all; restrict animations strictly to GPU compositor properties (transform, opacity)",
+        "Flag forced synchronous layout thrashing (interleaved DOM read/write)",
+        "Require FastDOM separation: batch geometry reads first, style writes in requestAnimationFrame"
+      ],
+      "forbidden": [
+        "Approve transition: all or non-compositor property transitions",
+        "Suggest setTimeout(0) as a frame sync fix"
+      ]
+    },
+    {
+      "id": "zero-copy-large-payload-streaming",
+      "family": "zero-copy-streaming",
+      "prompt": "We need to parse and process a 2GB NDJSON log export in our Node.js microservice. We currently use const data = fs.readFileSync('/tmp/logs.ndjson', 'utf8') followed by data.split('\\n').map(JSON.parse). The service crashes with JavaScript heap out of memory (OOM).",
+      "expected": [
+        "Prohibit whole-file RAM buffering (readFileSync)",
+        "Mandate bounded-chunk streaming (ReadableStream, stream.pipeline) with backpressure",
+        "Bound peak RSS memory to O(1) regardless of file size",
+        "Eliminate intermediate array materialization (.split().map())"
+      ],
+      "forbidden": [
+        "Suggest increasing --max-old-space-size to 16GB as primary solution",
+        "Endorse reading 2GB file into memory"
+      ]
+    },
+    {
+      "id": "unmeasured-optimization-rejection",
+      "family": "benchmark-proof",
+      "prompt": "I noticed this SQL query and TypeScript mapping function are a bit slow. I wrapped the query in a 5-minute Redis cache, added a composite index on 4 columns, and wrapped the React component in useMemo. Can you approve this PR?",
+      "expected": [
+        "Refuse the optimization PR under the Empirical Measurement Law",
+        "Require baseline EXPLAIN (ANALYZE, BUFFERS) showing buffer hits/reads and microbenchmark P50/P99 latency",
+        "Require CPU/Heap flamegraph or profiler trace before and after",
+        "Enforce >= 15% P99 improvement or strict allocation/roundtrip reduction to justify complexity"
+      ],
+      "forbidden": [
+        "Approve the PR based on speculative caching and unverified indexes",
+        "Accept trust-me optimizations without flamegraph/benchmark numbers"
+      ]
+    },
+    {
+      "id": "non-trigger-color-tweak",
+      "family": "non-trigger-boundary",
+      "prompt": "Change the sidebar border color from #ccc to #e5e7eb.",
+      "expected": [
+        "Do not activate Mechanical Sympathy & Perf Gate workflow",
+        "Perform minimal CSS edit without perf record or flamegraph dossier"
+      ],
+      "forbidden": [
+        "Demand flamegraphs or 120Hz frame budget audit for a static border color change"
+      ]
+    },
+    {
+      "id": "non-trigger-markdown-typo",
+      "family": "non-trigger-boundary",
+      "prompt": "Fix a typo in CONTRIBUTING.md line 14.",
+      "expected": [
+        "Do not activate Mechanical Sympathy & Perf Gate workflow",
+        "Fix typo cleanly"
+      ],
+      "forbidden": [
+        "Generate a perf record or hardware profile for a documentation edit"
+      ]
+    }
+  ]
+}

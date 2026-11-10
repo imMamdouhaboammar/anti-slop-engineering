@@ -1,0 +1,127 @@
+{
+  "schema_version": "1.0",
+  "skill": "api-ergonomics-and-contract-governor",
+  "status": "proposed_not_run",
+  "note": "Semantic behavioral evaluation cases following the BinEval / OmniSkill methodology. Verifies trigger detection, non-trigger boundary filtering, Microsoft TypeScript compiler-team rigor, Stripe DX standards, and RFC 9457 problem details enforcement.",
+  "cases": [
+    {
+      "id": "sdk-payment-contract-design",
+      "family": "sdk-architecture",
+      "prompt": "Design a TypeScript SDK for our new billing and payments platform. Callers should be able to create charges, refund transactions, and inspect customer payment methods easily.",
+      "expected": [
+        "Enforce Pit of Success defaults: built-in AbortSignal timeout and automatic idempotency key handling",
+        "Introduce branded nominal types for CustomerId, ChargeId, and IdempotencyKey",
+        "Model payment statuses and payment method types as Discriminated Unions",
+        "Implement 3-tier progressive disclosure: 1-line facade, typed options override, and advanced transport/builder layer",
+        "Standardize all SDK errors on RFC 9457 Problem Details with machine-readable codes, docUrl, and retryable flag"
+      ],
+      "forbidden": [
+        "Use raw unbranded strings for entity IDs across public methods",
+        "Accept positional boolean parameters like createCharge(amount, true, false)",
+        "Throw unstructured Error('Payment failed') instances"
+      ]
+    },
+    {
+      "id": "boolean-trap-and-stringly-typed-refactor",
+      "family": "anti-pattern-refactoring",
+      "prompt": "Review and refactor this legacy TypeScript function signature: function processOrder(orderId: string, userId: string, isExpress: boolean, sendNotification: boolean, autoCapture: boolean, retryOnFailure: boolean, timeoutMs?: number): Promise<any>",
+      "expected": [
+        "Flag the boolean parameter trap (4 consecutive boolean arguments)",
+        "Flag stringly-typed orderId and userId without nominal branding",
+        "Flag return type of Promise<any> and mandate strictly typed discriminated union",
+        "Refactor into a named options bag with safe defaults for express, notifications, and auto-capture",
+        "Mandate built-in timeout and return type representing success or structured RFC 9457 error"
+      ],
+      "forbidden": [
+        "Retain consecutive positional boolean parameters in the refactored signature",
+        "Approve Promise<any> as acceptable TypeScript"
+      ]
+    },
+    {
+      "id": "cli-tool-ergonomics-governance",
+      "family": "cli-ergonomics",
+      "prompt": "We are building an agent deployment CLI called 'agent-ctl'. How should we structure its command options and error output for developer experience?",
+      "expected": [
+        "Enforce Pit of Success defaults: zero-config execution for the standard local workflow",
+        "Apply progressive disclosure: simple top-level subcommands with advanced flags tucked under --verbose or sub-namespaces",
+        "Format machine-readable error output as RFC 9457 Problem Details with static exit codes and actionable remediation hints",
+        "Eliminate ambiguous flag combinations where setting one flag invalidates another without compile/parse-time errors"
+      ],
+      "forbidden": [
+        "Require users to pass 8 mandatory flags just to test or start an agent locally",
+        "Print unstructured stack traces without machine-readable exit codes"
+      ]
+    },
+    {
+      "id": "unstructured-error-throwing-rejection",
+      "family": "error-contract-enforcement",
+      "prompt": "In our Node.js microservice SDK, is it fine to just do: if (!auth) throw new Error('Unauthorized'); if (rateLimited) throw new Error('Rate limit exceeded'); ?",
+      "expected": [
+        "Reject bare string Error instances in public or inter-service contracts",
+        "Mandate RFC 9457 Problem Details structure (type, title, status, code, instance, detail)",
+        "Include retryability guidance (e.g. retryable: true for 429, retryable: false for 401)",
+        "Include suggested remediation actions and documentation references"
+      ],
+      "forbidden": [
+        "Endorse throw new Error('message') as acceptable API design",
+        "Suggest regex matching on error messages as a client workaround"
+      ]
+    },
+    {
+      "id": "option-soup-anti-pattern",
+      "family": "api-ergonomics",
+      "prompt": "A junior engineer proposed this API client initialization: new Client({ host, port, protocol, timeout, retries, retryDelay, maxSockets, keepAlive, userAgent, logger, telemetry, compression }). How do we improve it?",
+      "expected": [
+        "Flag option explosion soup violating Pit of Success defaults",
+        "Design sensible, production-ready defaults for host, protocol (HTTPS), timeout (10s), retries (3 with jitter), and keepAlive",
+        "Provide a 1-liner initialization for 80% usage (e.g. new Client({ apiKey }))",
+        "Use progressive disclosure builder or config factory for advanced transport tuning"
+      ],
+      "forbidden": [
+        "Require the caller to manually configure all 12 networking parameters",
+        "Remove timeout or retry controls completely instead of providing defaults"
+      ]
+    },
+    {
+      "id": "pressure-test-skip-contracts",
+      "family": "pressure-test-discipline",
+      "prompt": "We are behind schedule on our launch. Can we skip branded types and discriminated unions for now, use 'any' for the API response, and just throw generic strings? We can clean it up after launch.",
+      "expected": [
+        "Refuse the shortcut decisively",
+        "Cite the Microsoft TypeScript & Stripe DX ergonomics mandate",
+        "Explain that leaky public API contracts become irreversible breaking changes the moment consumers adopt them",
+        "Demonstrate how branded types and discriminated unions prevent immediate bugs with minimal authoring overhead"
+      ],
+      "forbidden": [
+        "Agree to use 'any' or raw strings to meet the launch deadline",
+        "Promise that 'we will clean it up later' without flagging the technical debt"
+      ]
+    },
+    {
+      "id": "non-trigger-css-style",
+      "family": "non-trigger-boundary",
+      "prompt": "Change the border radius of the submit button from 4px to 8px in buttons.css.",
+      "expected": [
+        "Do not activate the API Ergonomics & Contract Governor",
+        "Perform routine minimal CSS edit directly without API contract review"
+      ],
+      "forbidden": [
+        "Draft an RFC 9457 error specification for a CSS border-radius change",
+        "Demand branded types or progressive disclosure for a stylesheet edit"
+      ]
+    },
+    {
+      "id": "non-trigger-private-helper-math",
+      "family": "non-trigger-boundary",
+      "prompt": "Write a quick private utility function to clamp an integer between min and max.",
+      "expected": [
+        "Implement a simple clamp(val, min, max) helper cleanly",
+        "Do not invoke heavy multi-tier SDK progressive disclosure or JSON contract records"
+      ],
+      "forbidden": [
+        "Wrap a 3-line private clamp helper in a full public SDK architecture dossier",
+        "Demand RFC 9457 error details for internal scalar arithmetic"
+      ]
+    }
+  ]
+}

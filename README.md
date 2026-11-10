@@ -12,7 +12,7 @@
 [![Skills.sh](https://img.shields.io/badge/Skills.sh-Compatible-000000?style=flat-square&logo=vercel&logoColor=white)](https://skills.sh)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-Certified%20Skill-D97706?style=flat-square&logo=anthropic&logoColor=white)](https://claude.ai)
 
-[Install](#install) · [What it catches](#what-it-catches) · [Engines](#engines) · [Decision Guard](#decision-guard) · [Root-Fix Gate](#root-fix-gate) · [Future-Scale Gate](#future-scale-gate) · [Paranoid Architect](#the-paranoid-principal-architect) · [Forensic Bug Hunter](#forensic-bug-hunter-scanner) · [Execution Guard](#in-flight-execution-guard) · [Install Anti-Slop](#install-anti-slop-oxlint--skill) · [Agent skill](#agent-skill) · [Anti-pattern catalog](#anti-pattern-catalog-217-patterns)
+[Install](#install) · [What it catches](#what-it-catches) · [Engines](#engines) · [Decision Guard](#decision-guard) · [Root-Fix Gate](#root-fix-gate) · [Future-Scale Gate](#future-scale-gate) · [Paranoid Architect](#the-paranoid-principal-architect) · [Forensic Bug Hunter](#forensic-bug-hunter-scanner) · [Execution Guard](#in-flight-execution-guard) · [AST Slop Gate](#type-level--ast-slop-gate) · [Install Anti-Slop](#install-anti-slop-oxlint--skill) · [Agent skill](#agent-skill) · [Anti-pattern catalog](#anti-pattern-catalog-217-patterns)
 
 </div>
 
@@ -285,6 +285,22 @@ bunx anti-slop-engineering paranoid audit skills/paranoid-principal-architect/ex
 
 ---
 
+## Observability & SLO Architect (Google Monarch & Dapper)
+
+The [Observability & SLO Architect](skills/observability-and-slo-architect/SKILL.md) skill transforms observability from passive `logger.error` statements into a proactive telemetry architecture following Google Monarch & Dapper specifications:
+
+1. **OpenTelemetry by Default:** Binds every network I/O, database query, cache fetch, and queue operation to standard Spans with unbroken W3C `traceparent` (`00-<traceId>-<spanId>-<flags>`) and `correlation_id` context propagation.
+2. **Google Monarch Low-Cardinality Discipline:** Strictly separates low-cardinality time-series metrics ($\prod |L_i| \le 1,000$) from high-cardinality traces and logs. Collapses unmatched 404 paths to `"__unmatched__"` to neutralize TSDB cardinality denial-of-service attacks.
+3. **Automated RED & USE Metrics:** Automatically emits Rate, Errors, and Duration (Histograms with P50/P95/P99 quantiles and Trace Exemplars) for endpoints, and Utilization, Saturation, and Errors for resources (CPU, Memory, DB Connection Pools, Worker Queues).
+4. **SLI/SLO-Driven Alerts:** Bans non-impact threshold alerts (e.g. CPU > 80%). Production alerts are gated strictly on Google SRE Multi-Window Multi-Burn-Rate Error Budget policies (14.4x 1h/5m for paging; 6.0x 6h/30m for ticketing).
+
+```bash
+# Audit an Observability & SLO record and scan source files for cardinality or tracing hazards:
+bunx anti-slop-engineering observability audit skills/observability-and-slo-architect/examples/observability-slo-record.json --source skills/observability-and-slo-architect/examples/dapper-monarch-telemetry-pipeline.ts --json
+```
+
+---
+
 ## Forensic Bug Hunter Scanner
 
 Zero-trust static analysis scanner across 9 application stacks detecting booby traps, concurrency leaks, race conditions, memory leaks, and EDoS vulnerabilities:
@@ -302,6 +318,42 @@ Modular playbooks and architectural checklists are located in [`skills/paranoid-
 
 ---
 
+## Apple Craft & Interaction Physics
+
+The [Apple Craft & Interaction Physics module](skills/apple-craft-and-interaction-physics/SKILL.md) elevates client user interfaces from baseline hygiene to Apple HIG design engineering excellence. It enforces four physical pillars:
+
+1. **Exhaustive UI State Matrix:** Eliminates boolean soup in favor of typed Discriminated Union state machines handling all 8 operational states (`loading_skeleton`, `empty`, `partial_error`, `offline`, `optimistic_rollback`, `loaded_fresh`, `revalidating_stale`, and `terminal_error`) with compile-time exhaustiveness.
+2. **Zero Layout Shift (CLS = 0.000):** Strictly pre-reserves dynamic element geometry, skeleton dimensions, media aspect ratios, and stable scrollbar gutters.
+3. **Interruptible Physics & Velocity Continuity:** Mandates mass-spring-damper motion ($F = -kx - cv$) with immediate gesture interruption, momentum handover ($v_0$), compositor-only execution, and epsilon termination ($\epsilon \le 10^{-4}$).
+4. **Keyboard & Focus Mastery:** Guarantees full keyboard operability, high-contrast `:focus-visible` rings with offset (bans naked `outline: none`), modal focus trapping with return restoration, and polite ARIA live regions.
+
+```bash
+# Audit an assessment record and scan component for layout thrashing, transition:all, or bare outline:none:
+node bin/cli.js apple-craft audit skills/apple-craft-and-interaction-physics/examples/apple-craft-record.json --source skills/apple-craft-and-interaction-physics/examples/interactive-craft-component.ts --json
+
+# Package CLI invocation:
+bunx anti-slop-engineering apple-craft audit path/to/record.json --json
+```
+
+---
+
+## Type-Level & AST Slop Gate
+
+Prevents evidence fabrication, quadratic reductions, eager array allocations, and test-oracle erosion in TypeScript and JavaScript. Runs across two complementary tiers:
+
+```bash
+# Tier 1: Zero-dependency pre-commit diff scan (<100ms):
+bunx anti-slop-engineering ast --base HEAD
+
+# Direct file or directory sweep:
+bunx anti-slop-engineering ast src/ --json
+
+# Strict gate (exit code 2 on blockers):
+bunx anti-slop-engineering ast --base origin/main --strict
+```
+
+---
+
 ## Install Anti-Slop (Oxlint & Skill)
 
 Opinionated anti-slop Oxlint lint rules and agent skill for TypeScript and JavaScript codebases. Catches runtime type assertion risks, unconstrained object parameters, type widening, and module mocking leaks at lint-time:
@@ -310,16 +362,17 @@ Opinionated anti-slop Oxlint lint rules and agent skill for TypeScript and JavaS
 
 Invoke `/install-anti-slop` in any supported AI coding agent (Claude Code, Antigravity, Gemini CLI, Cursor, Windsurf) to automatically inspect the target repository, detect package managers, vendor the AST plugins, and configure `oxlint.config.ts` or `.oxlintrc.json`.
 
-### CLI Command
+### Install & Update Vendored Oxlint Plugin
 
 ```bash
 # Install Oxlint plugin directly into target repository (creates tools/oxlint/anti-slop/):
 bunx anti-slop-engineering install-oxlint
-# Or via npx:
-npx anti-slop-engineering install-oxlint
+
+# Reconcile and update vendored rules while preserving local custom modifications:
+bunx anti-slop-engineering update-oxlint tools/oxlint/anti-slop --apply
 ```
 
-Follow the procedure in [install-anti-slop](skills/install-anti-slop/SKILL.md) to register the bundled plugins (`anti-slop` and optional `anti-slop-effect`) directly into `oxlint.config.ts` or `.oxlintrc.json`:
+Register the generic and optional Effect plugins in `oxlint.config.ts` or `.oxlintrc.json`:
 
 ```ts
 // oxlint.config.ts or .oxlintrc.json
@@ -332,9 +385,13 @@ export default {
     "tools/oxlint/anti-slop/**"
   ],
   jsPlugins: [
-    { name: "anti-slop", specifier: "./tools/oxlint/anti-slop/index.ts" }
+    { name: "anti-slop", specifier: "./tools/oxlint/anti-slop/index.ts" },
+    { name: "anti-slop-effect", specifier: "./tools/oxlint/anti-slop/effect/index.ts" }
   ],
   rules: {
+    "oxc/no-accumulating-spread": "error",
+    "anti-slop/no-array-filter-map": "error",
+    "anti-slop/no-reduce-accumulator-copy": "error",
     "anti-slop/no-chained-type-assertions": "error",
     "anti-slop/no-conditional-empty-object-spread": "error",
     "anti-slop/no-known-value-widening": "error",
@@ -349,7 +406,13 @@ export default {
     "anti-slop/no-unknown-type-aliases": "error",
     "anti-slop/no-unsafe-dictionary-type": "error",
     "anti-slop/no-widen-then-assert": "error",
-    "anti-slop/require-safety-comment-for-type-assertion": "error"
+    "anti-slop/require-readable-spacing": "error",
+    "anti-slop/require-safety-comment-for-type-assertion": "error",
+    "anti-slop-effect/no-manual-effect-error-tag": "error",
+    "anti-slop-effect/no-manual-tag-comparison": "error",
+    "anti-slop-effect/no-manual-tagged-construction": "error",
+    "anti-slop-effect/no-service-constructor-imports": "error",
+    "anti-slop-effect/prefer-effect-match": "error"
   }
 };
 ```
@@ -378,6 +441,74 @@ bunx anti-slop-engineering exec check-action --tool edit_file --args '{"Path": "
 
 # Run declarative pairwise evaluation cases (16 cases across H, I, S, T):
 bunx anti-slop-engineering cases
+```
+
+---
+
+## Cognitive Bandwidth & Attention Economy Governor
+
+Inspired by human attention scarcity, scannability science, and executive cognitive load reduction (attention-span & i-have-adhd), the Attention Governor statically audits agent responses, PR descriptions, standup briefs, and multi-agent TOON handoffs against 5 deterministic cognitive invariants:
+
+| Metric | Target | Failure / Blocker |
+| --- | --- | --- |
+| **Terminal Blocking Placement ($\mathcal{B}_{pos}$)** | Last block | Question buried mid-reply before trailing status prose |
+| **Line-1 Skimmer Flag** | Explicit flag on line 1 | Asks in long replies ($\ge 40$ words) without a line-1 prompt |
+| **Deliverable Purity ($\mathcal{P}_{deliv}$)** | 100% clean payload | Opener wrappers (`Here is...`), closer offers (`Hope this helps!`), and lead-ins |
+| **Time-to-Point ($TTP$)** | $\le 20$ words | Answers buried behind conversational preamble |
+| **Max Wall Words ($W_{max}$)** | $\le 60$ words | Dense, anchor-free prose paragraphs causing cognitive bounce |
+| **Working Memory Cap ($\mathcal{M}_{cap}$)** | $\le 5$ items | Unchunked flat lists exceeding working memory capacity |
+| **Non-Regression Gate** | 100% preservation | Dropped numeric thresholds, scoped conditions, or safety caveats |
+
+```bash
+# Audit markdown documentation for cognitive scannability:
+bunx anti-slop-engineering attention --file docs/rfc.md --json
+
+# Verify 100% deliverable purity on generated commit message or PR body:
+bunx anti-slop-engineering attention --text "$COMMIT_MSG" --check-deliverable
+
+# Audit git diff additions across documentation:
+bunx anti-slop-engineering attention --base HEAD
+```
+
+---
+
+## Tagore Engineering Discourse & Substance Guard
+
+Inspired by Rabindranath Tagore's literary philosophy of restraint, empirical specificity, and authentic human voice over statistical predictability and mechanical puffery, Tagore Guard audits PR descriptions, commit messages, ADRs, documentation, and agent reasoning traces against a dual-direction attack:
+
+1. **Scrub the Tells:** Eliminates 29 cataloged AI tells (significance inflation, copula avoidance, superficial -ing chains, rule-of-three, em-dash addiction, and marketing hype).
+2. **Inject the Substance:** Mandates active engineering agency, empirical measurements, and explicit operational trade-offs/failure modes.
+
+### 8-Dimension Scoring Rubric
+
+$$\text{Total Score} \ge 56/80 \quad \land \quad \text{Mechanics} \ge 35/50 \quad \land \quad \text{Substance} \ge 21/30$$
+
+| Category | Dimension | Max | Floor | Focus |
+| --- | --- | :---: | :---: | --- |
+| **Mechanics** | Directness | 10 | — | Immediate technical statements; zero announcements or throat-clearing |
+| | Rhythm | 10 | — | Varied sentence length cadence ($\text{stddev} \ge 5.0$); no em-dash crutches |
+| | Trust | 10 | — | Zero affordance narration, zero hand-holding, zero servile hedging |
+| | Authenticity | 10 | — | Free of AI buzzwords (`delve`, `tapestry`, `testament`), copula avoidance, and triads |
+| | Density | 10 | — | Free of filler phrases (`in order to`), bolding abuse, and passive voice ($< 35\%$) |
+| *Subtotal* | **Mechanics Floor** | **50** | **35** | *Substance cannot mask slop-shaped mechanics* |
+| **Substance** | Specificity | 10 | — | Empirical numbers, benchmark percentages, latencies, and exact file paths |
+| | Restraint | 10 | — | Achievements sized at actual technical magnitude; zero promotional puffery |
+| | Technical Voice | 10 | — | Explicit trade-offs, concurrency race conditions, and failure modes |
+| *Subtotal* | **Substance Floor** | **30** | **21** | *Mechanics cannot mask sterile, soulless wire-copy* |
+| **Total** | **Pass Gate** | **80** | **56** | *Both floors + $\ge 56$ required for `PROCEED`* |
+
+```bash
+# Audit inline text with suggested deslopping rewrites:
+bunx anti-slop-engineering tagore --text "$PR_BODY" --suggest
+
+# Audit markdown documentation or ADR file:
+bunx anti-slop-engineering tagore --file docs/adr/ADR-007.md --json
+
+# Calibrate repository voice profile against maintainer ground truth:
+bunx anti-slop-engineering tagore --calibrate README.md
+
+# Inspect active repository voice profile:
+bunx anti-slop-engineering tagore --profile
 ```
 
 ---

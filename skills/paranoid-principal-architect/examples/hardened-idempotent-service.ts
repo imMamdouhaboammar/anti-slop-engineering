@@ -62,7 +62,9 @@ export function verifyWebhookSignature(payload: string, signature: string, secre
   return timingSafeEqual(expectedHmac, actualHmac);
 }
 
-// --- 4. Concurrency & Hot-Key Defense (16-Shard Counter) ---
+// --- 4. Concurrency & Hot-Key Defense (Scale-Ready Storage Seam) ---
+// State mutations and counters are encapsulated behind a storage seam (StorageAdapter),
+// allowing single-row atomic/OCC updates on day one while scaling to 16-64 shards without domain rewrites.
 const NUM_SHARDS = 16;
 
 export function selectShardIndex(resourceId: string): number {

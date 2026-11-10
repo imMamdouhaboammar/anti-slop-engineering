@@ -15,23 +15,15 @@ const functionBoundaryTypes = new Set([
   "TSEmptyBodyFunctionExpression",
 ]);
 
-function unwrapExpressionParentheses(expression: ESTree.Expression, maxDepth = 32): ESTree.Expression {
+function unwrapExpressionParentheses(expression: ESTree.Expression): ESTree.Expression {
   let current = expression;
-  let depth = 0;
-  while (current.type === "ParenthesizedExpression" && depth < maxDepth) {
-    current = current.expression;
-    depth++;
-  }
+  while (current.type === "ParenthesizedExpression") current = current.expression;
   return current;
 }
 
-function unwrapTypeParentheses(type: ESTree.TSType, maxDepth = 32): ESTree.TSType {
+function unwrapTypeParentheses(type: ESTree.TSType): ESTree.TSType {
   let current = type;
-  let depth = 0;
-  while (current.type === "TSParenthesizedType" && depth < maxDepth) {
-    current = current.typeAnnotation;
-    depth++;
-  }
+  while (current.type === "TSParenthesizedType") current = current.typeAnnotation;
   return current;
 }
 
@@ -57,14 +49,13 @@ function isBroadRecordKeyType(type: ESTree.TSType): boolean {
   return unwrapped.type === "TSTypeReference" && typeReferenceName(unwrapped) === "PropertyKey";
 }
 
-function isBroadRecordType(type: ESTree.TSType, depth = 0, maxDepth = 32): boolean {
-  if (depth > maxDepth) return false;
-  const unwrapped = unwrapTypeParentheses(type, maxDepth);
+function isBroadRecordType(type: ESTree.TSType): boolean {
+  const unwrapped = unwrapTypeParentheses(type);
 
   if (unwrapped.type === "TSTypeReference") {
     if (typeReferenceName(unwrapped) === "Readonly") {
       const [inner] = unwrapped.typeArguments?.params ?? [];
-      return inner !== undefined && isBroadRecordType(inner, depth + 1, maxDepth);
+      return inner !== undefined && isBroadRecordType(inner);
     }
 
     if (typeReferenceName(unwrapped) !== "Record") return false;
@@ -149,9 +140,8 @@ function isDefinitelyObjectType(type: ESTree.TSType): boolean {
   }
 }
 
-function isDefinitelyNarrowerRecordType(type: ESTree.TSType, depth = 0, maxDepth = 32): boolean {
-  if (depth > maxDepth) return false;
-  const unwrapped = unwrapTypeParentheses(type, maxDepth);
+function isDefinitelyNarrowerRecordType(type: ESTree.TSType): boolean {
+  const unwrapped = unwrapTypeParentheses(type);
   if (unwrapped.type === "TSTypeLiteral") {
     return unwrapped.members.some((member) => member.type !== "TSIndexSignature");
   }
@@ -159,7 +149,7 @@ function isDefinitelyNarrowerRecordType(type: ESTree.TSType, depth = 0, maxDepth
   if (unwrapped.type !== "TSTypeReference") return false;
   if (typeReferenceName(unwrapped) === "Readonly") {
     const [inner] = unwrapped.typeArguments?.params ?? [];
-    return inner !== undefined && isDefinitelyNarrowerRecordType(inner, depth + 1, maxDepth);
+    return inner !== undefined && isDefinitelyNarrowerRecordType(inner);
   }
   if (typeReferenceName(unwrapped) !== "Record") return false;
 
@@ -169,13 +159,11 @@ function isDefinitelyNarrowerRecordType(type: ESTree.TSType, depth = 0, maxDepth
   );
 }
 
-function functionBoundary(node: ESTree.Node, maxDepth = 64): ESTree.Node | null {
+function functionBoundary(node: ESTree.Node): ESTree.Node | null {
   let current = node.parent;
-  let depth = 0;
-  while (current !== null && current.type !== "Program" && depth < maxDepth) {
+  while (current !== null && current.type !== "Program") {
     if (functionBoundaryTypes.has(current.type)) return current;
     current = current.parent;
-    depth++;
   }
   return null;
 }

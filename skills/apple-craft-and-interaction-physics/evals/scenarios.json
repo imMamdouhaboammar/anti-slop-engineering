@@ -1,0 +1,117 @@
+{
+  "schema_version": "1.0",
+  "skill": "apple-craft-and-interaction-physics",
+  "status": "proposed_not_run",
+  "note": "Semantic behavioral evaluation cases following the BinEval / OmniSkill methodology. Verifies trigger detection, non-trigger boundary filtering, exhaustive state matrix, zero CLS geometry reservation, interruptible physics, keyboard/focus mastery, and 120Hz frame budgeting.",
+  "cases": [
+    {
+      "id": "exhaustive-state-matrix-audit",
+      "family": "state-machine-hygiene",
+      "prompt": "Here is our customer dashboard: const [loading, setLoading] = useState(false); const [error, setError] = useState(null); const [data, setData] = useState(null); return <div>{loading ? <Spinner /> : error ? <Error text={error} /> : <List items={data} />}</div>; How can we improve this for production?",
+      "expected": [
+        "Flag combinatorial Boolean Soup anti-pattern",
+        "Mandate Discriminated Union State Machine with explicit tag (status)",
+        "Enforce coverage for loading_skeleton with pixel-matched dimensions",
+        "Enforce coverage for loaded_empty with actionable guidance and CTA",
+        "Enforce coverage for partial_error with localized retry without blanking screen",
+        "Enforce coverage for offline with non-intrusive indicator and queued actions",
+        "Enforce optimistic_rollback with previousStateSnapshot and user draft preservation",
+        "Enforce compile-time exhaustiveness checking with assertNever"
+      ],
+      "forbidden": [
+        "Recommend adding more boolean flags like isSuccess or isSubmitting",
+        "Accept full-screen spinner as adequate loading experience",
+        "Ignore the empty or offline states"
+      ]
+    },
+    {
+      "id": "zero-cls-geometry-reservation",
+      "family": "layout-stability",
+      "prompt": "Our product grid has images streaming in and asynchronous price badges that pop in after calculation. Users report buttons jumping around while clicking. How do we fix this?",
+      "expected": [
+        "Enforce strict Zero Cumulative Layout Shift (CLS = 0.000)",
+        "Mandate explicit aspect-ratio or width and height attributes on all images",
+        "Mandate reserved grid slot and skeleton bounding box matching resolved dimensions",
+        "Pre-allocate fixed layout tracks for price badges and dynamic validation messages",
+        "Enforce scrollbar-gutter: stable to eliminate scrollbar insertion layout shift"
+      ],
+      "forbidden": [
+        "Suggest loading placeholders with height: auto",
+        "Permit dynamic elements to inject into document flow without pre-reserved dimensions"
+      ]
+    },
+    {
+      "id": "interruptible-spring-physics",
+      "family": "interaction-physics",
+      "prompt": "We implemented a slide-out drawer with CSS: .drawer { transition: all 500ms cubic-bezier(0.4, 0, 0.2, 1); }. When users quickly swipe back and forth, the drawer feels sluggish, stutters, and ignores reverse swipes until the animation completes. What is the root cause and remedy?",
+      "expected": [
+        "Ban transition: all due to layout property capture and animation locking",
+        "Explain lack of interruptibility in duration-based CSS transitions",
+        "Mandate interruptible spring physics (F = -kx - cv) with continuous velocity inheritance (v0)",
+        "Restrict animated properties strictly to GPU compositor (transform, opacity)",
+        "Enforce epsilon termination check (epsilon <= 1e-4) to cancel rAF loops on convergence",
+        "Honor prefers-reduced-motion media query"
+      ],
+      "forbidden": [
+        "Recommend reducing CSS transition duration to 200ms as a fix",
+        "Suggest chaining setTimeout calls to synchronize animations"
+      ]
+    },
+    {
+      "id": "keyboard-and-focus-mastery",
+      "family": "accessibility-and-keyboard",
+      "prompt": "Our designer removed the blue browser focus outline using button { outline: none; } because it looked ugly. Also, when our modal dialog opens, pressing Tab focuses links underneath on the main page. How should this be re-engineered?",
+      "expected": [
+        "Condemn bare outline: none as an accessibility violation",
+        "Enforce high-contrast :focus-visible ring with >= 3:1 contrast ratio, 2px stroke, and 2px outline-offset",
+        "Mandate role=\"dialog\" and aria-modal=\"true\" on modal dialog container",
+        "Implement active focus trap constraining Tab and Shift+Tab cycles inside dialog",
+        "Mandate focus restoration to trigger element on dialog dismissal (Escape or close)"
+      ],
+      "forbidden": [
+        "Approve button { outline: none; } without providing an accessible :focus-visible replacement",
+        "Allow focus to bleed into background DOM while modal is open"
+      ]
+    },
+    {
+      "id": "promotion-120hz-frame-budget",
+      "family": "frame-budget-and-perf",
+      "prompt": "On iPhone ProMotion displays, our list reordering animation stutters. In our drag listener, we measure el.getBoundingClientRect().top and immediately update el.style.top = `${newY}px`. Also, we call localStorage.setItem('order', JSON.stringify(items)) on every drag move. What is wrong?",
+      "expected": [
+        "Flag forced synchronous reflow (Layout Thrashing) from interleaving getBoundingClientRect and style write",
+        "Ban animating layout property 'top'; mandate compositor 'transform: translate3d'",
+        "Flag main-thread blocking synchronous localStorage.setItem and JSON.stringify during drag frame",
+        "Batch DOM reads before writes via FastDOM or rAF scheduling",
+        "Keep JavaScript execution under 4ms per frame to meet 8.33ms 120Hz ProMotion budget"
+      ],
+      "forbidden": [
+        "Suggest using requestIdleCallback during active 120Hz drag interaction",
+        "Approve style.top animation"
+      ]
+    },
+    {
+      "id": "non-trigger-boundary-backend-ddl",
+      "family": "negative-boundary",
+      "prompt": "Write a PostgreSQL migration script to add an index on user_accounts(email, tenant_id) using CONCURRENTLY.",
+      "expected": [
+        "Do NOT activate apple-craft-and-interaction-physics",
+        "Route to zero-downtime-migration-gate or paranoid-principal-architect"
+      ],
+      "forbidden": [
+        "Enforce UI state matrices or 120Hz frame budgets on SQL DDL migrations"
+      ]
+    },
+    {
+      "id": "non-trigger-boundary-cli-batch",
+      "family": "negative-boundary",
+      "prompt": "Create a Node.js CLI script that parses a directory of CSV files and computes the total revenue sum.",
+      "expected": [
+        "Do NOT activate apple-craft-and-interaction-physics",
+        "Route to standard CLI or data streaming patterns"
+      ],
+      "forbidden": [
+        "Enforce focus rings, CLS = 0, or skeleton loaders on non-interactive headless CLI tools"
+      ]
+    }
+  ]
+}

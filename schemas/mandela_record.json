@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MandelaRecord",
+  "description": "Schema for test-oracle self-grading and evaluation leakage audit findings",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "timestamp",
+    "verdict",
+    "scanned_files",
+    "findings_count",
+    "findings"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "enum": ["1.0.0"]
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "verdict": {
+      "type": "string",
+      "enum": ["PROCEED", "REJECT", "WARNING"]
+    },
+    "scanned_files": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "findings_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "file",
+          "line",
+          "pattern",
+          "severity",
+          "evidence",
+          "independence_fix"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "file": {
+            "type": "string"
+          },
+          "line": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "pattern": {
+            "type": "string",
+            "enum": [
+              "TAUTOLOGICAL_ASSERTION",
+              "VERIFIER_IS_DESIGNER",
+              "SWALLOWED_TEST_FAILURE",
+              "ZERO_ASSERTION_TEST",
+              "SHARED_HALLUCINATION_ORACLE",
+              "WRONG_NULL_HYPOTHESIS",
+              "CIRCULAR_MOCK_CONFIRMATION",
+              "FRAME_INJECTION_EVAL"
+            ]
+          },
+          "severity": {
+            "type": "string",
+            "enum": ["BLOCKING", "WARNING", "INFORMATIONAL"]
+          },
+          "evidence": {
+            "type": "string"
+          },
+          "independence_fix": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

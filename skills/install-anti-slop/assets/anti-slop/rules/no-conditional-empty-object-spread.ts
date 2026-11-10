@@ -1,18 +1,15 @@
 import { defineRule } from "@oxlint/plugins";
 import type { ESTree } from "@oxlint/plugins";
 
-function unwrapParentheses(node: ESTree.Expression, maxDepth = 32): ESTree.Expression {
+function unwrapParentheses(node: ESTree.Expression): ESTree.Expression {
   let current = node;
-  let depth = 0;
-  while (current.type === "ParenthesizedExpression" && depth < maxDepth) {
+  while (current.type === "ParenthesizedExpression") {
     current = current.expression;
-    depth++;
   }
   return current;
 }
 
-function isEmptyObjectExpression(node: ESTree.Expression, depth = 0, maxDepth = 32): boolean {
-  if (depth > maxDepth) return false;
+function isEmptyObjectExpression(node: ESTree.Expression): boolean {
   return node.type === "ObjectExpression" && node.properties.length === 0;
 }
 

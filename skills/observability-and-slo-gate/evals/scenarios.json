@@ -1,0 +1,79 @@
+{
+  "schema_version": "1.0",
+  "skill": "observability-and-slo-gate",
+  "status": "proposed_not_run",
+  "note": "Semantic behavioral evaluation cases following the BinEval / OmniSkill methodology. Verifies trigger detection, non-trigger boundary filtering, elimination of high-cardinality metric labels (user_id, request_id, raw req.url), P50/P95/P99 Histogram quantile instrumentation with Exemplars, unbroken W3C traceparent and correlation_id propagation across HTTP, async queues/outbox workers, and database spans, trace-correlated structured JSON logging with secret redaction, and Google SRE Multi-Window Burn-Rate SLO alerting.",
+  "cases": [
+    {
+      "id": "prevent-prometheus-datadog-cardinality-explosion-on-checkout-metrics",
+      "family": "low-cardinality-metrics-and-histograms",
+      "prompt": "We added Prometheus and Datadog metrics to our checkout endpoint: `checkoutCounter.inc({ user_id: req.user.id, order_id: req.body.orderId, path: req.originalUrl, status: res.statusCode })` and `latencyGauge.set({ user_id: req.user.id }, durationMs)`. Our Datadog custom metrics bill just jumped by $45,000 and Prometheus OOM-crashed twice today. Fix our telemetry architecture without losing the ability to debug which user or order failed.",
+      "expected": [
+        "Identify the Metric Cardinality Explosion: placing unbounded `user_id`, `order_id`, and raw `req.originalUrl` into metric labels spawns millions of active time series ($\\prod |L_i|$)",
+        "Enforce the Low-Cardinality Metric & High-Cardinality Trace/Log Split Law: strip `user_id` and `order_id` from all metric labels, normalize `req.originalUrl` to the parameterized router template (`http.route = '/v1/checkout/:id'`) and collapse unmatched 404 paths to `'__unmatched__'` so total label combinations stay $\\le 1,000$",
+        "Replace `latencyGauge.set(durationMs)` with an explicit-bucket `Histogram` (`http.server.request.duration_ms`) to accurately measure fleet-wide P50, P95, and P99 quantiles and attach OpenTelemetry Trace Exemplars (`trace_id`, `span_id`)",
+        "Move `app.user_id`, `app.order_id`, and `http.request_id` into OpenTelemetry Span Attributes (`span.setAttribute`) and trace-correlated Structured JSON Logs"
+      ],
+      "forbidden": [
+        "Keep `user_id`, `order_id`, `request_id`, or unparameterized `req.originalUrl` inside Prometheus/Datadog metric labels",
+        "Use a `Gauge` or arithmetic average (`sum/count`) without a `Histogram` to track P50/P95/P99 request latency"
+      ]
+    },
+    {
+      "id": "propagate-w3c-traceparent-across-queue-outbox-and-worker-to-db",
+      "family": "w3c-context-propagation",
+      "prompt": "When a customer clicks 'Pay' on the frontend, our API gateway logs a `traceparent` header, writes a job to BullMQ / SQS (and our `outbox_events` table), and a background worker processes the payment and writes to PostgreSQL. In Grafana Tempo / Jaeger, the trace stops dead at the API gateway, and the worker + PostgreSQL queries show up as completely separate disconnected traces with no `correlation_id`. How do we connect the entire chain from the frontend click to the final SQL query?",
+      "expected": [
+        "Enforce the Unbroken W3C Context Propagation Law (`traceparent` + `correlation_id`) across every synchronous and asynchronous seam",
+        "At the API gateway ingress, extract or mint W3C `traceparent` (`00-<traceId>-<spanId>-<flags>`), `tracestate`, and `correlation_id`",
+        "When publishing to BullMQ/SQS or inserting into `outbox_events`, start a `PRODUCER` span and inject `traceparent` and `correlation_id` into the message envelope headers / outbox columns via `propagation.inject()`",
+        "In the background worker consumer, extract `traceparent` and `correlation_id` via `propagation.extract()` before starting a `CONSUMER` span (`parentSpanId = producer.spanId`, preserving `traceId`), and propagate that active context into the PostgreSQL client span and parameterized SQLcommenter (`/*traceparent='00-...'*/`)"
+      ],
+      "forbidden": [
+        "Start a new disconnected root trace inside the queue worker without extracting `traceparent` from the message envelope",
+        "Interpolate raw unparameterized user inputs into SQL strings when adding SQLcommenter metadata"
+      ]
+    },
+    {
+      "id": "structured-json-logging-and-multi-window-burn-rate-slo-alerts",
+      "family": "structured-logs-and-burn-rate-slos",
+      "prompt": "Our payment service currently uses `console.error('Payment failed:', err, req.headers)` and alerts on-call whenever 5xx errors exceed 1% over any 1-minute window, which wakes engineers up 6 times a night for transient 10-second blips that self-heal. Upgrade our logging and SLO alerting to Google SRE production standards for a 99.9% availability target and P95 <= 150ms / P99 <= 400ms latency target.",
+      "expected": [
+        "Replace raw `console.error` calls with a Structured JSON Logger that automatically injects `trace_id`, `span_id`, `correlation_id`, `service.name`, and `error.code` from the active span context",
+        "Enforce deterministic redaction of sensitive headers and fields (`authorization`, `cookie`, `password`, `api_key`, `secret`, Bearer tokens -> `'[REDACTED]'`) before JSON serialization instead of dumping raw `req.headers`",
+        "Replace the noisy 1-minute threshold alert with Google SRE Multi-Window, Multi-Burn-Rate Error Budget alerts against the 99.9% SLO ($0.1\\%$ error budget): (1) Fast-Burn Page at `14.4x` burn rate across both `1h` AND `5m` windows (2% budget consumed in 1h), and (2) Slow-Burn Ticket at `6.0x` burn rate across both `6h` AND `30m` windows (5% budget consumed in 6h)",
+        "Define the Latency SLI using `histogram_quantile(0.95, ...)` and `histogram_quantile(0.99, ...)` over the request duration Histogram buckets"
+      ],
+      "forbidden": [
+        "Log raw `req.headers` containing unredacted `Authorization` or `Cookie` values",
+        "Keep single-window 1-minute error spike paging without a short/long multi-window burn-rate confirmation gate"
+      ]
+    },
+    {
+      "id": "pressure-test-put-user-id-in-prometheus-label-for-quick-dashboard",
+      "family": "pressure-test-discipline",
+      "prompt": "Product management wants a Grafana Prometheus panel right now showing API request counts per `user_id` and `email`. Just add `user_id` and `email` as labels on `http_requests_total` so we can ship in 5 minutes.",
+      "expected": [
+        "Refuse adding `user_id` and `email` to Prometheus metric labels as a direct violation of the Low-Cardinality Metric Law and PII Redaction Law",
+        "Explain the concrete production impact: unbounded per-user labels multiply time-series cardinality ($\\prod |L_i|$) into millions of series, causing Prometheus TSDB OOM crashes, astronomical metric billing, and leaking PII (`email`) into unencrypted metric scrape endpoints",
+        "Provide the clean Dapper/OpenTelemetry alternative: keep `http_requests_total` labels strictly bounded (`method`, `http.route`, `status_class`), attach `app.user_id` (or a privacy-safe user identifier) to Trace Span Attributes and Structured JSON Logs, and query top users via log/trace aggregation (Loki / ClickHouse / Tempo / BigQuery)"
+      ],
+      "forbidden": [
+        "Add `user_id` or `email` as a label on `http_requests_total`",
+        "Claim that high-cardinality user labels in Prometheus are safe if traffic is currently low"
+      ]
+    },
+    {
+      "id": "non-trigger-static-readme-badge-edit",
+      "family": "non-trigger-boundary",
+      "prompt": "Update the license badge color in `README.md` from blue to green.",
+      "expected": [
+        "Do not activate `observability-and-slo-gate` (no OpenTelemetry spans, Prometheus histograms, or Multi-Window Burn-Rate SLOs are needed for a static markdown badge edit)",
+        "Apply the markdown edit directly per `anti-slop-engineering`"
+      ],
+      "forbidden": [
+        "Demand an OpenTelemetry `traceparent` propagation setup or SLO burn-rate record for editing `README.md`"
+      ]
+    }
+  ]
+}

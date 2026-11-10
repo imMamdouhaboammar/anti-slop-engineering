@@ -1,0 +1,90 @@
+{
+  "schema_version": "1.0",
+  "skill": "privacy-and-data-lineage-gate",
+  "status": "proposed_not_run",
+  "note": "Semantic behavioral evaluation cases following OmniSkill and BinEval methodology. Verifies Apple Privacy & Meta Data Infra engineering discipline: Tainted PII Types, Cryptographic Erasure (Crypto-Shredding), Data Minimization with Retention TTL, and Data Lineage Flow Enforcement.",
+  "cases": [
+    {
+      "id": "tainted-pii-types-logging",
+      "family": "tainted-pii-types",
+      "prompt": "We are building an authentication and user notification service in TypeScript. How do we ensure engineers do not accidentally log user emails, phone numbers, or residential addresses to Datadog or Sentry?",
+      "expected": [
+        "Mandate nominal branded or opaque wrapper types (e.g. Redacted<Email>, Tainted<PII, Sensitivity>)",
+        "Override toString(), toJSON(), and Symbol.for('nodejs.util.inspect.custom') to emit [REDACTED] by default",
+        "Enforce explicit boundary unwrapping (e.g. revealSensitiveData(auditContext)) requiring an audited reason",
+        "Implement static analysis or linter guards preventing unredacted PII fields in console.log or logger.info calls",
+        "Block raw string assignments to PII variables at compile time"
+      ],
+      "forbidden": [
+        "Rely on manual developer vigilance or code review comments to catch unredacted logging",
+        "Suggest a global regex scrubber in the logging transport as the sole defense",
+        "Store emails and phones as plain string types in domain models"
+      ]
+    },
+    {
+      "id": "gdpr-cryptographic-erasure-kafka",
+      "family": "cryptographic-erasure",
+      "prompt": "Our microservices publish immutable event streams to Kafka and append-only WAL tables. How do we implement GDPR Article 17 right-to-be-forgotten when an event broker does not allow deleting individual messages inside a topic partition without catastrophic rewrite overhead?",
+      "expected": [
+        "Mandate Cryptographic Erasure (Crypto-Shredding / Key-per-Subject envelope encryption)",
+        "Assign each user an isolated Data Encryption Key (DEK) wrapped by a Key Encryption Key (KEK) in KMS/HSM",
+        "Encrypt all payload PII fields with the user DEK before writing to Kafka topics, event ledgers, or WALs",
+        "Execute user erasure by destroying the user DEK from the KMS, rendering historical immutable messages unrecoverable in O(1) time",
+        "Emit tombstone events to purge active read caches and secondary indices with verifiable audit receipts"
+      ],
+      "forbidden": [
+        "Propose rewriting petabyte-scale Kafka partition segments or compacted topics synchronously per deletion request",
+        "Rely on soft deletion (setting is_deleted = true or deleted_at timestamp) as compliant GDPR erasure",
+        "Assume cold backup snapshots will expire naturally without cryptographic key destruction"
+      ]
+    },
+    {
+      "id": "data-minimization-retention-ttl",
+      "family": "data-minimization-ttl",
+      "prompt": "Review this schema migration for a new user analytics and profile table: CREATE TABLE user_device_history (user_id UUID, ip_address VARCHAR(45), raw_gps_lat DOUBLE, raw_gps_lng DOUBLE, user_agent TEXT, recorded_at TIMESTAMP);",
+      "expected": [
+        "Reject the migration immediately due to lack of purpose binding, data minimization, and automated retention TTL",
+        "Require an explicit business purpose justification and legal basis (e.g. fraud prevention vs marketing)",
+        "Mandate data minimization: replace raw high-precision GPS coordinates with coarse geohashes or city-level locality",
+        "Enforce a mandatory retention TTL (e.g. retention_ttl_days: 30) backed by an automated partition dropping or TTL background task",
+        "Prohibit indefinite retention of raw IP addresses and user agents"
+      ],
+      "forbidden": [
+        "Approve the schema migration without asking for retention policy or purpose binding",
+        "Suggest adding an index on ip_address without addressing data minimization",
+        "Treat high-precision GPS coordinates as standard non-sensitive attributes"
+      ]
+    },
+    {
+      "id": "data-lineage-telemetry-fencing",
+      "family": "data-lineage-and-flow",
+      "prompt": "Our growth marketing team wants to instrument third-party analytics (Mixpanel and Facebook Pixel) across our mobile and web applications. How do we prevent customer PII from leaking into external telemetry sinks?",
+      "expected": [
+        "Enforce a formal Data Lineage Graph (DAG) mapping all data flows from ingestion sources to egress sinks",
+        "Deploy a telemetry egress gateway with an explicit allowlist and payload schema validator",
+        "Strip all tainted PII types and device persistent identifiers before payloads leave the internal trust boundary",
+        "Apply Apple Privacy principles: local Differential Privacy with noise injection or client-side aggregation before transmission",
+        "Ban passing raw user identifiers (email, phone, national ID) into third-party SDK identify() or track() calls"
+      ],
+      "forbidden": [
+        "Allow direct client-side SDK integration without an intermediate sanitization proxy or lineage contract",
+        "Approve sending hashed emails (SHA-256) to third parties without acknowledging they remain re-identifiable linkable PII",
+        "Trust third-party analytics privacy dashboards instead of enforcing code-level egress boundaries"
+      ]
+    },
+    {
+      "id": "near-miss-ddos-rate-limiting",
+      "family": "near-miss-negative",
+      "prompt": "We are getting flooded with 50,000 HTTP requests per second on our login route from a botnet. How should we configure token-bucket rate limiting and Cloudflare WAF rules?",
+      "expected": [
+        "Recognize that network-layer DDoS mitigation and external attacker protection belong to paranoid-principal-architect and security-review",
+        "Do not invoke privacy-and-data-lineage-gate workflows for pure external traffic rate limiting",
+        "Focus on token-bucket algorithms, IP reputation, WAF rules, and Cloudflare Turnstile without inventing unneeded PII lineage requirements"
+      ],
+      "forbidden": [
+        "Conflate network DDoS mitigation with GDPR compliance or user data lineage",
+        "Force cryptographic erasure or differential privacy concepts onto a botnet mitigation task"
+      ]
+    }
+  ]
+}
