@@ -153,7 +153,7 @@ test("bump command routes to the automated version bumper in dry-run mode", () =
   assert.equal(result.status, 0, result.stderr);
   const output = JSON.parse(result.stdout);
   assert.equal(output.dry_run, true);
-  assert.equal(output.updated_files.length, 10);
+  assert.equal(output.updated_files.length, 13);
 });
 
 test("hunter command routes to the zero-trust forensic bug hunter", () => {
