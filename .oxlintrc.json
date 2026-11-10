@@ -12,6 +12,10 @@
     "**/node_modules/**",
     "**/dist/**",
     "**/.git/**",
+    "agent/**",
+    "agents/**",
+    "**/agent/**",
+    "**/agents/**",
     "**/.agent/**",
     "**/.agents/**",
     "**/.claude/**",
@@ -28,7 +32,8 @@
     "**/.bugkiller/**",
     "**/.codex-plugin/**",
     "scripts/security-audit.ts",
-    "skills/**"
+    "skills/**",
+    "**/skills/**"
   ],
   "jsPlugins": [
     {

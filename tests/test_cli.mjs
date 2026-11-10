@@ -396,13 +396,23 @@ test("tagore command routes to the Tagore engineering discourse & substance guar
   assert.match(result.stdout, /Self-test passed: Tagore Engineering Discourse Guard operational/);
 });
 
-test("clippy command routes to cargo clippy runner", () => {
+test("clippy command routes to cargo clippy runner", (t) => {
+  const check = spawnSync("cargo", ["clippy", "--version"]);
+  if (check.error || check.status !== 0) {
+    t.skip("cargo clippy is not available on PATH in this environment");
+    return;
+  }
   const result = invoke("anti-slop-engineering", ["clippy", "--help"]);
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout + result.stderr, /clippy/i);
 });
 
-test("ruff command routes to ruff runner", () => {
+test("ruff command routes to ruff runner", (t) => {
+  const check = spawnSync("ruff", ["--version"]);
+  if (check.error || check.status !== 0) {
+    t.skip("ruff is not available on PATH in this environment");
+    return;
+  }
   const result = invoke("anti-slop-engineering", ["ruff", "--version"]);
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout + result.stderr, /ruff/i);

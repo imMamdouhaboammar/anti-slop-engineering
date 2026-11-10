@@ -234,7 +234,7 @@ Commands:
   clippy, lint-rust      Run Cargo Clippy linter on Rust engine (-D warnings)
   install-oxlint         Install bundled Oxlint anti-slop plugin into target repo
   update-oxlint          Reconcile and update vendored Oxlint anti-slop rules preserving local edits
-  bump [part]            Bump version across all 10 manifests (patch, minor, major, or explicit)
+  bump [part]            Bump version across all 13 manifests (patch, minor, major, or explicit)
   test                   Run unit test suite
   contribute             Print guidelines on reporting noted slop or opening PRs
 

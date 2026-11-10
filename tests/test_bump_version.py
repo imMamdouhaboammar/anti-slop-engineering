@@ -107,7 +107,7 @@ class BumpVersionTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
         data = json.loads(result.stdout)
         self.assertTrue(data["dry_run"])
-        self.assertEqual(len(data["updated_files"]), 10)
+        self.assertEqual(len(data["updated_files"]), 13)
 
 
 if __name__ == "__main__":

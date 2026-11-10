@@ -73,6 +73,21 @@ MANIFEST_TARGETS = [
         "pattern": sre_compile.compile(r'("version"\s*:\s*)"[^"]+"'),
         "replacement": r'\g<1>"{version}"',
     },
+    {
+        "file": "scripts/diff_guard.py",
+        "pattern": sre_compile.compile(r"(__version__\s*=\s*)'[^']+'"),
+        "replacement": r"\g<1>'{version}'",
+    },
+    {
+        "file": "scripts/sre_guard.py",
+        "pattern": sre_compile.compile(r"(__version__\s*=\s*)'[^']+'"),
+        "replacement": r"\g<1>'{version}'",
+    },
+    {
+        "file": ".codex-plugin/plugin.json",
+        "pattern": sre_compile.compile(r'("version"\s*:\s*)"[^"]+"'),
+        "replacement": r'\g<1>"{version}"',
+    },
 ]
 
 
