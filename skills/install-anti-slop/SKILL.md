@@ -21,10 +21,14 @@ Complete when the operation and target path are established and pre-existing wor
 1. Copy the bundled plugin from this skill. Run from the target repository:
 
    ```bash
-   node <skill-directory>/scripts/install.mjs
+   # Via npm package CLI:
+   bunx anti-slop-engineering install-oxlint [destination]
+
+   # Or via direct script from skill directory:
+   node <skill-directory>/scripts/install.mjs [destination]
    ```
 
-   This creates `tools/oxlint/anti-slop/`. Pass another relative destination as the first argument when the repository has an established tooling layout. The script refuses to replace an existing destination; route existing copies through the update procedure rather than `--force`.
+   This creates `tools/oxlint/anti-slop/` (or your chosen relative destination). The script refuses to replace an existing destination; route existing copies through the update procedure (`bunx anti-slop-engineering update-oxlint`) rather than `--force`.
 
    Preserve the nested `vendor/eslint-stylistic/LICENSE` and `UPSTREAM.md`; they travel with the copied rule. Readability enforcement is self-contained and requires no Stylistic plugin dependency.
 
