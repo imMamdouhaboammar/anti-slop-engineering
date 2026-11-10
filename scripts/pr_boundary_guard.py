@@ -207,7 +207,7 @@ def audit_pr_boundary(
         head_branch = os.environ.get("GITHUB_HEAD_REF") or os.environ.get("GITHUB_REF_NAME") or "HEAD"
 
     # 1. Branch Topology Checks
-    if not detached and head_branch in blocked_source_branches:
+    if head_branch in blocked_source_branches:
         findings.append({
             "rule": "BLOCKED_SOURCE_BRANCH",
             "severity": "review",
@@ -223,6 +223,9 @@ def audit_pr_boundary(
         author_key = f"{commit['author_name']} <{commit['author_email']}>"
         unique_authors.add(author_key)
         subject = commit["subject"]
+
+        if subject.startswith("Merge "):
+            continue
 
         if len(subject) > max_subject_length:
             findings.append({

@@ -175,10 +175,15 @@ function scanMarkers(lines) {
 }
 
 export function writeBlock(entry, block) {
-  const existing = fs.existsSync(entry) ? fs.readFileSync(entry, 'utf8') : ''
+  let existing = ''
+  try {
+    existing = fs.readFileSync(entry, 'utf8')
+  } catch (err) {
+    if (err && err.code !== 'ENOENT') throw err
+  }
   const crlf = (existing.match(/\r\n/g) || []).length
   const eol = crlf > (existing.match(/\n/g) || []).length - crlf ? '\r\n' : '\n'
-  const lines = existing.split(/\r?\n/)
+  const lines = existing ? existing.split(/\r?\n/) : []
   const { starts, ends } = scanMarkers(lines)
   const start = starts.length ? starts[0] : -1
   const end = start === -1 ? -1 : ends.find((i) => i > start) ?? -1

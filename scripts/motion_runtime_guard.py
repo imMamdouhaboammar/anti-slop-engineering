@@ -248,7 +248,7 @@ def main() -> int:
             fps=args.fps,
             dpr=args.dpr,
             max_longtask_ms=args.longtask,
-            audio_silent=not args.unmuted-autoplay if hasattr(args, "unmuted-autoplay") else True,
+            audio_silent=not getattr(args, "unmuted_autoplay", False),
             reduced_motion_present=not args.no_reduced_motion,
             is_dev_server=args.dev_server,
         )

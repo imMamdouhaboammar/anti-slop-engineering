@@ -123,6 +123,8 @@ Update the pattern count in `README.md` and add an entry under `[Unreleased]` or
 | `make test` | Runs the Python unit test suite (`tests/test_diff_guard.py`) |
 | `make guard` | Runs `scripts/diff_guard.py --base HEAD` on current changes |
 | `make check` | Runs compilation syntax checks, test suite, and self-guard |
+| `make clippy` | Runs Cargo Clippy linter on Rust engine with strict warnings (`-D warnings`) |
+| `make check-all` | Runs full polyglot verification: Python, Go, and Rust test suites + Clippy |
 | `bun ./bin/cli.js test` | Runs test suite through the multi-agent CLI wrapper |
 | `bun ./bin/cli.js --help` | Validates CLI options and banner output |
 

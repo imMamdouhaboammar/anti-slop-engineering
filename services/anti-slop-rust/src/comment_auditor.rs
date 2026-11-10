@@ -5,6 +5,7 @@ use crate::model::{Finding, Severity, ViolationCategory};
 use crate::path_utils::is_doc_file;
 use regex::Regex;
 
+#[derive(Debug)]
 pub struct CommentAuditor {
     re_syntax_narration: Vec<Regex>,
     re_protected: Vec<Regex>,

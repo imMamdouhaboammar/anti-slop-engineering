@@ -2,6 +2,7 @@ use crate::model::{Finding, Severity, ViolationCategory};
 use crate::path_utils::{is_doc_file, is_test_file};
 use regex::Regex;
 
+#[derive(Debug)]
 pub struct ShitInterceptor {
     re_companion_hash: Regex,
     re_swallow_error: Regex,
@@ -215,8 +216,7 @@ fn check_scope_creep(
             severity: Severity::Blocker,
             code: "STS-S01".to_string(),
             message: format!(
-                "Scope creep: file '{}' modified outside allowed scope: {:?}",
-                file, allowed
+                "Scope creep: file '{file}' modified outside allowed scope: {allowed:?}",
             ),
             suggestion: "Restrict edits strictly to designated files for this task.".to_string(),
         })

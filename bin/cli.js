@@ -166,6 +166,9 @@ const executableAliases = {
   "audit": "audit",
   "installer": "install",
   "setup": "install",
+  "ruff": "ruff",
+  "clippy": "clippy",
+  "lint-rust": "clippy",
 };
 const args = process.argv.slice(2);
 if (executableAliases[invokedAs]) args.unshift(executableAliases[invokedAs]);
@@ -226,7 +229,9 @@ Commands:
   mode [during|after|ask] Configure anti-slop execution mode (active inline vs post-hoc audit)
   install, setup         Install anti-slop skills and pointer blocks across 14 AI coding agents
   update                 Upgrade installed skills and refresh agent pointer blocks in one shot
+  ruff                   Run Ruff linter on Python codebase
   oxlint                 Run Oxlint linter with configured anti-slop rules
+  clippy, lint-rust      Run Cargo Clippy linter on Rust engine (-D warnings)
   install-oxlint         Install bundled Oxlint anti-slop plugin into target repo
   update-oxlint          Reconcile and update vendored Oxlint anti-slop rules preserving local edits
   bump [part]            Bump version across all 10 manifests (patch, minor, major, or explicit)
@@ -462,10 +467,30 @@ if (cmd === "build") {
   spawnProcess("node", [installerScript, ...args.slice(1)], "installer");
 } else if (cmd === "update") {
   spawnProcess("node", [installerScript, "update", ...args.slice(1)], "installer");
+} else if (cmd === "ruff") {
+  const ruffArgs = args.slice(1);
+  if (ruffArgs.includes("--version") || ruffArgs.includes("-V")) {
+    spawnProcess("ruff", ["--version"], "ruff");
+  } else {
+    spawnProcess("ruff", ["check", ...(ruffArgs.length ? ruffArgs : ["."])], "ruff");
+  }
 } else if (cmd === "oxlint") {
   const isBun = typeof process.versions.bun !== "undefined";
   const runner = isBun ? "bunx" : "npx";
   spawnProcess(runner, ["oxlint", ...args.slice(1)], "oxlint");
+} else if (cmd === "clippy" || cmd === "lint-rust") {
+  const rustDir = resolve(rootDir, "services", "anti-slop-rust");
+  const child = spawn("cargo", ["clippy", "--all-targets", "--all-features", "--", "-D", "warnings", ...args.slice(1)], {
+    cwd: rustDir,
+    stdio: "inherit",
+  });
+  child.on("error", (err) => {
+    console.error(`Failed to launch cargo clippy: ${err.message}`);
+    process.exit(1);
+  });
+  child.on("close", (code) => {
+    process.exit(code ?? 1);
+  });
 } else if (cmd === "update-oxlint") {
   if (!existsSync(updateOxlintScript)) {
     console.error(`Error: update script not found at ${updateOxlintScript}`);

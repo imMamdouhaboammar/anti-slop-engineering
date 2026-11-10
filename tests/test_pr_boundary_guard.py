@@ -1,12 +1,14 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 Mamdouh Aboammar <mamdouhfces1997@gmail.com> and contributors
 
+import tempfile
 import unittest
 from scripts.pr_boundary_guard import (
     count_emojis,
     count_code_references,
     parse_markdown_sections,
     audit_pr_boundary,
+    run_git,
 )
 
 
@@ -86,39 +88,52 @@ Another hallucinated section.
         self.assertEqual(len(hallucinations), 1)
 
     def test_clean_pr_passes_without_findings(self):
-        template = """## Type of Change
+        with tempfile.TemporaryDirectory() as temp_dir:
+            run_git(["init"], cwd=temp_dir)
+            run_git(["config", "user.name", "Test Committer"], cwd=temp_dir)
+            run_git(["config", "user.email", "test@example.com"], cwd=temp_dir)
+            run_git(["commit", "--allow-empty", "-m", "feat(engine): initial commit"], cwd=temp_dir)
+
+            template = """## Type of Change
 - [ ] Bugfix
 - [ ] Feature
 
 ## Summary
 Brief explanation.
 """
-        body = """## Type of Change
+            body = """## Type of Change
 - [ ] Bugfix
 - [x] Feature
 
 ## Summary
 Refactor core mathematical calculation for cleaner separation.
 """
-        record = audit_pr_boundary(
-            pr_title="feat(engine): refactor core calculation",
-            pr_body=body,
-            template_content=template,
-            require_conventional=True,
-            blocked_source_branches=[],
-        )
-        self.assertEqual(record["code"], "NO_PR_BOUNDARY_FINDINGS")
-        self.assertEqual(len(record["findings"]), 0)
+            record = audit_pr_boundary(
+                repo_root=temp_dir,
+                pr_title="feat(engine): refactor core calculation",
+                pr_body=body,
+                template_content=template,
+                require_conventional=True,
+                blocked_source_branches=[],
+            )
+            self.assertEqual(record["code"], "NO_PR_BOUNDARY_FINDINGS")
+            self.assertEqual(len(record["findings"]), 0)
 
     def test_blocked_source_branch_flags_review(self):
-        record = audit_pr_boundary(
-            pr_title="feat: update feature",
-            blocked_source_branches=["main", "master"],
-        )
-        # In current repo, we are on branch 'main'
-        branch_findings = [f for f in record["findings"] if f["rule"] == "BLOCKED_SOURCE_BRANCH"]
-        self.assertEqual(len(branch_findings), 1)
-        self.assertEqual(branch_findings[0]["severity"], "review")
+        with tempfile.TemporaryDirectory() as temp_dir:
+            run_git(["init"], cwd=temp_dir)
+            run_git(["checkout", "-b", "blocked-branch"], cwd=temp_dir)
+            run_git(["config", "user.name", "Test Committer"], cwd=temp_dir)
+            run_git(["config", "user.email", "test@example.com"], cwd=temp_dir)
+            run_git(["commit", "--allow-empty", "-m", "feat: initial commit"], cwd=temp_dir)
+            record = audit_pr_boundary(
+                repo_root=temp_dir,
+                pr_title="feat: update feature",
+                blocked_source_branches=["blocked-branch"],
+            )
+            branch_findings = [f for f in record["findings"] if f["rule"] == "BLOCKED_SOURCE_BRANCH"]
+            self.assertEqual(len(branch_findings), 1)
+            self.assertEqual(branch_findings[0]["severity"], "review")
 
 
 if __name__ == "__main__":

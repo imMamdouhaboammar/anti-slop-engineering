@@ -18,7 +18,7 @@ struct HealthResponse {
     version: &'static str,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 pub struct ShitCheckRequest {
     pub diff: String,
     pub allowed_files: Option<Vec<String>>,
@@ -26,13 +26,13 @@ pub struct ShitCheckRequest {
     pub read_only: bool,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 pub struct LadderAuditRequest {
     pub file: String,
     pub content: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 pub struct TriageRequest {
     pub diff: String,
     pub allowed_files: Option<Vec<String>>,
@@ -94,7 +94,7 @@ pub async fn run_server(port: u16) -> Result<(), Box<dyn std::error::Error>> {
     let app = create_router();
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
     let listener = tokio::net::TcpListener::bind(addr).await?;
-    println!("anti-slop-rust daemon listening on http://{}", addr);
+    println!("anti-slop-rust daemon listening on http://{addr}");
     axum::serve(listener, app).await?;
     Ok(())
 }

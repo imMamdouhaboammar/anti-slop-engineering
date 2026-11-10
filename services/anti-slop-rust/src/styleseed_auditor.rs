@@ -2,10 +2,17 @@ use crate::model::{Finding, Severity, ViolationCategory};
 use crate::path_utils::is_test_file;
 use regex::Regex;
 
+#[derive(Debug)]
 pub struct StyleSeedAuditor {
     inline_hex_re: Regex,
     ad_hoc_spatial_re: Regex,
     hardcoded_height_re: Regex,
+}
+
+impl Default for StyleSeedAuditor {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl StyleSeedAuditor {
@@ -64,7 +71,7 @@ impl StyleSeedAuditor {
                 category: ViolationCategory::StyleSeedViolation,
                 severity: Severity::Blocker,
                 code: "STYLESEED-002".to_string(),
-                message: format!("Ad-hoc spatial class '{}' violates 6-role spatial scale", matched_str),
+                message: format!("Ad-hoc spatial class '{matched_str}' violates 6-role spatial scale"),
                 suggestion: "Replace arbitrary pixel class with canonical spatial role token (pageInset, sectionGap, stackGap, etc.)".to_string(),
             });
         }
@@ -78,7 +85,7 @@ impl StyleSeedAuditor {
                 category: ViolationCategory::StyleSeedViolation,
                 severity: Severity::Review,
                 code: "STYLESEED-003".to_string(),
-                message: format!("Hardcoded control height '{}' detected", matched_str),
+                message: format!("Hardcoded control height '{matched_str}' detected"),
                 suggestion: "Bind control height to declared cognitive output grammar scale (e.g. 36px, 40px, 44px)".to_string(),
             });
         }

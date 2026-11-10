@@ -49,6 +49,11 @@ Homepage = "https://github.com/imMamdouhaboammar/anti-slop-engineering"
 Repository = "https://github.com/imMamdouhaboammar/anti-slop-engineering"
 Issues = "https://github.com/imMamdouhaboammar/anti-slop-engineering/issues"
 
+[project.optional-dependencies]
+dev = [
+  "ruff>=0.17.4",
+]
+
 [project.scripts]
 diff-guard = "scripts.diff_guard:main"
 sre-guard = "scripts.sre_guard:main"
@@ -58,5 +63,56 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 
 [tool.ruff]
-line-length = 120
 target-version = "py39"
+line-length = 120
+src = ["scripts", "tests"]
+exclude = [
+  ".git",
+  ".ruff_cache",
+  ".venv",
+  "node_modules",
+  "dist",
+  "services",
+  ".fable",
+  ".agents",
+  ".anti-slop",
+  ".aegis",
+  ".bugkiller",
+  ".codex-plugin",
+  "skills",
+]
+
+[tool.ruff.lint]
+select = [
+  "E4",
+  "E7",
+  "E9",
+  "F",
+  "W",
+  "B",
+]
+ignore = [
+  "E501",  # Line length handled by formatter / permitted for long regex & test fixtures
+  "E701",  # Multiple statements on one line (colon)
+  "E731",  # Do not assign a lambda expression, use a def (used for concise local helpers)
+  "E741",  # Ambiguous variable name (e.g. math/color variables like l in OkLCh/stats formulas)
+  "F401",  # Module imported but unused
+  "F541",  # f-string without placeholder
+  "F841",  # Local variable assigned but never used
+  "B007",  # Loop control variable not used within loop body
+  "B008",  # Do not perform function calls in argument defaults
+  "W293",  # Blank line contains whitespace
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = [
+  "E402",  # Module level import not at top of file (sys.path.insert required for standalone discovery)
+  "F401",  # Module imported but unused (test fixtures and helper imports)
+  "B018",  # Useless expression
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "auto"
+docstring-code-format = true

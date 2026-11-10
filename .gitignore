@@ -90,3 +90,6 @@ services/toil-guard-go/bin/
 
 # Generated audit dossiers
 /anti-slop/
+
+# Fable local logs
+.fable/

@@ -2,10 +2,17 @@ use crate::model::{Finding, Severity, ViolationCategory};
 use crate::path_utils::is_test_file;
 use regex::Regex;
 
+#[derive(Debug)]
 pub struct DemockAuditor {
     test_double_re: Regex,
     sqlite_fallback_re: Regex,
     unimplemented_re: Regex,
+}
+
+impl Default for DemockAuditor {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl DemockAuditor {

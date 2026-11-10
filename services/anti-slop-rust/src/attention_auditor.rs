@@ -5,6 +5,7 @@ use crate::model::{Finding, Severity, ViolationCategory};
 use crate::path_utils::is_doc_file;
 use regex::Regex;
 
+#[derive(Debug)]
 pub struct AttentionAuditor {
     re_opener_wrappers: Regex,
     re_closer_offers: Regex,
