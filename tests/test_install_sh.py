@@ -105,6 +105,77 @@ class BashInstallerSafetyTests(unittest.TestCase):
         self.assertIn("Conflicts retained: SKILL.md", result.stdout)
         self.assertEqual(installed.read_text(), "user edit\n")
 
+    def test_universal_only_install_creates_executable_cli_links(self):
+        result = self.install()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        cli = self.home / ".agents/skills/anti-slop-engineering/bin/cli.js"
+        for name in ("anti-slop-engineering", "diff-guard", "sre-guard", "rust-guard", "toil-guard"):
+            link = self.home / ".local/bin" / name
+            self.assertTrue(link.is_symlink(), f"Missing {link}")
+            self.assertEqual(link.resolve(), cli)
+            self.assertEqual(subprocess.run([str(link), "--help"], capture_output=True).returncode, 0)
+
+    def test_codex_install_links_to_existing_codex_cli(self):
+        (self.home / ".codex").mkdir()
+        result = self.install()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        link = self.home / ".local/bin/anti-slop-engineering"
+        self.assertEqual(link.resolve(), self.home / ".codex/skills/anti-slop-engineering/bin/cli.js")
+
+    def test_multi_agent_install_uses_verified_gemini_cli(self):
+        (self.home / ".gemini").mkdir()
+        (self.home / ".codex").mkdir()
+        result = self.install()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        link = self.home / ".local/bin/anti-slop-engineering"
+        self.assertEqual(link.resolve(), self.home / ".gemini/config/skills/anti-slop-engineering/bin/cli.js")
+
+    def test_existing_user_owned_links_are_preserved(self):
+        bin_dir = self.home / ".local/bin"
+        bin_dir.mkdir(parents=True)
+        external = self.home / "custom-tool"
+        external.write_text("keep this\n", encoding="utf-8")
+        (bin_dir / "anti-slop-engineering").symlink_to(external)
+        (bin_dir / "diff-guard").write_text("my guard\n", encoding="utf-8")
+        result = self.install()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((bin_dir / "anti-slop-engineering").resolve(), external)
+        self.assertEqual((bin_dir / "diff-guard").read_text(), "my guard\n")
+        self.assertIn("conflict", result.stdout.lower())
+        self.assertTrue((bin_dir / "sre-guard").is_symlink())
+
+    def test_repeated_install_preserves_existing_valid_links(self):
+        self.assertEqual(self.install().returncode, 0)
+        link = self.home / ".local/bin/anti-slop-engineering"
+        first = link.lstat().st_ino
+        result = self.install()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(link.lstat().st_ino, first)
+
+    def test_non_executable_cli_never_becomes_a_link_target(self):
+        source = self.home / "incomplete-source"
+        (source / "scripts").mkdir(parents=True)
+        (source / "bin").mkdir()
+        shutil.copy2(REPO / "install.sh", source / "install.sh")
+        shutil.copy2(REPO / "scripts/safe_install.py", source / "scripts/safe_install.py")
+        (source / "SKILL.md").write_text("fixture\n", encoding="utf-8")
+        (source / "bin/cli.js").write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
+        (source / "bin/cli.js").chmod(0o755)
+        result = subprocess.run(["bash", "install.sh"], cwd=source,
+                                env={**os.environ, "HOME": str(self.home), "PATH": "/usr/bin:/bin"},
+                                capture_output=True, text=True)
+        self.assertIn("No executable CLI target", result.stderr)
+        self.assertFalse((self.home / ".local/bin/anti-slop-engineering").exists())
+
+    def test_symlinked_cli_directory_is_never_written_through(self):
+        outside = self.home / "other-bin"
+        outside.mkdir()
+        (self.home / ".local").symlink_to(outside, target_is_directory=True)
+        result = self.install()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("symbolic link", result.stderr.lower())
+        self.assertEqual(list(outside.iterdir()), [])
+
 
 if __name__ == "__main__":
     unittest.main()
