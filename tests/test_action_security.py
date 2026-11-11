@@ -69,6 +69,7 @@ class CompositeActionInputTests(unittest.TestCase):
                 "GITHUB_WORKSPACE": str(workspace),
                 "GITHUB_OUTPUT": str(workspace / "outputs"),
                 "GITHUB_ACTION_PATH": str(fake_action),
+                "ACTION_PATH": str(fake_action),
             })
             for name, key in re.findall(r"(?m)^\s+([A-Z][A-Z_]+):\s*\$\{\{\s*inputs\.([\w-]+)\s*}}", source):
                 env[name] = expressions[key]
@@ -81,8 +82,46 @@ class CompositeActionInputTests(unittest.TestCase):
             )
             self.assertFalse(marker.exists(), result.stderr)
             self.assertEqual(result.returncode, 0, result.stderr)
-            pr_result = json.loads((workspace / "pr_boundary_result.json").read_text())
+            pr_text = (workspace / "pr_boundary_result.json").read_text()
+            self.assertTrue(pr_text.strip(), result.stdout + result.stderr)
+            pr_result = json.loads(pr_text)
             self.assertEqual(pr_result["pr_metadata"]["title"], title)
+
+    def test_rejects_invalid_base_and_escaped_input_paths(self):
+        _, shell = action_step()
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            subprocess.run(["git", "init", "-q"], cwd=workspace, check=True)
+            subprocess.run(
+                ["git", "-c", "user.name=Test", "-c", "user.email=test@example.com",
+                 "commit", "-q", "--allow-empty", "-m", "fixture"],
+                cwd=workspace, check=True,
+            )
+            env = os.environ.copy()
+            env.update({
+                "GITHUB_WORKSPACE": str(workspace),
+                "GITHUB_OUTPUT": str(workspace / "outputs"),
+                "ACTION_PATH": str(workspace / "action"),
+                "AUDIT_BASE": "HEAD",
+                "PR_TITLE": "",
+                "PR_BODY_FILE": "",
+                "TEMPLATE_FILE": "",
+                "CANARY_TOKEN": "",
+                "FAIL_ON_BLOCKER": "false",
+            })
+            for overrides in (
+                {"AUDIT_BASE": "--upload-pack=bad"},
+                {"PR_BODY_FILE": "../outside.md"},
+                {"TEMPLATE_FILE": "/etc/passwd"},
+                {"FAIL_ON_BLOCKER": "$(touch invalid-boolean)"},
+            ):
+                with self.subTest(overrides=overrides):
+                    result = subprocess.run(
+                        ["bash", "-eo", "pipefail", "-c", shell], cwd=workspace,
+                        env={**env, **overrides}, text=True, capture_output=True,
+                    )
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertFalse((workspace / "invalid-boolean").exists())
 
 
 if __name__ == "__main__":
