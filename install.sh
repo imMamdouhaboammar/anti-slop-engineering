@@ -29,11 +29,10 @@ if [ -z "$SOURCE_DIR" ] || [ ! -f "$SOURCE_DIR/SKILL.md" ]; then
   SOURCE_DIR="$TEMP_DIR/repo"
 fi
 
-install_to() {
-  local dest="$1"
+report_install() {
+  local result="$1"
   local label="$2"
-  local result
-  result="$(python3 "$SOURCE_DIR/scripts/safe_install.py" --source "$SOURCE_DIR" --dest "$dest")"
+  local dest="$3"
   python3 -c '
 import json, sys
 r = json.loads(sys.argv[1])
@@ -45,11 +44,20 @@ if r["conflicted"]:
 if r["backup"]:
     print("  Recovery backup: " + r["backup"])
 ' "$result" "$label" "$dest"
+}
+
+install_to() {
+  local dest="$1"
+  local label="$2"
+  local result
+  result="$(python3 "$SOURCE_DIR/scripts/safe_install.py" --source "$SOURCE_DIR" --dest "$dest")"
+  report_install "$result" "$label" "$dest"
   # Install each bundled module as a discoverable top-level skill.
   for module in decision-guard root-fix-gate future-scale-gate paranoid-principal-architect install-anti-slop; do
     if [ -d "$SOURCE_DIR/skills/$module" ]; then
       local module_dest="$(dirname "$dest")/$module"
-      python3 "$SOURCE_DIR/scripts/safe_install.py" --source "$SOURCE_DIR/skills/$module" --dest "$module_dest"
+      result="$(python3 "$SOURCE_DIR/scripts/safe_install.py" --source "$SOURCE_DIR/skills/$module" --dest "$module_dest")"
+      report_install "$result" "$module" "$module_dest"
     fi
   done
 }
