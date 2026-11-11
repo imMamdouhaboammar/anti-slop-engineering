@@ -135,6 +135,8 @@ def normalize_finding(name: str, finding: Dict[str, Any], report: Dict[str, Any]
     } else "HIGH"
     if severity in {"blocker", "block", "blocking", "error", "critical"}:
         level = "BLOCKER"
+    elif severity == "high":
+        level = "HIGH"
     elif severity == "low":
         level = "LOW"
     elif severity in {"medium", "warning"}:
