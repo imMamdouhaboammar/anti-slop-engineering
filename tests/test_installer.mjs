@@ -90,3 +90,35 @@ test('Installer: overwriting a managed skill preserves modified files and user a
     fs.rmSync(root, { recursive: true, force: true })
   }
 })
+
+test('Installer: refuses skill IDs containing path traversal', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'anti-slop-traversal-'))
+  const target = { path: path.join(root, 'skills'), agents: [{ id: 'codex', entry: 'AGENTS.md' }] }
+  try {
+    assert.throws(
+      () => installSkills({ skills: ['../scripts'], targets: [target], overwrite: true }),
+      /Invalid skill|Unknown skill/,
+    )
+    assert.equal(fs.existsSync(path.join(root, 'scripts')), false)
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('Installer: never follows symlinked agent instruction files', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'anti-slop-pointer-'))
+  const config = path.join(root, 'AGENTS.md')
+  const victim = path.join(root, 'outside.md')
+  try {
+    fs.writeFileSync(victim, 'owner data\n')
+    fs.symlinkSync(victim, config)
+    assert.throws(() => writeBlock(config, [
+      '<!-- anti-slop-engineering:start -->',
+      'payload',
+      '<!-- anti-slop-engineering:end -->',
+    ]), /symbolic link/i)
+    assert.equal(fs.readFileSync(victim, 'utf8'), 'owner data\n')
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})
