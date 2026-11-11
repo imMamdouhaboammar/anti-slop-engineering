@@ -78,6 +78,16 @@ class AuditRunnerFailureContractTests(unittest.TestCase):
         self.assertEqual(report["guards"]["diff_guard"]["exit_code"], 2)
         self.assertEqual(self.run_report(json_mode=False)[0], exit_code)
 
+    def test_invalid_settings_file_reports_fallback_reason(self):
+        config = self.root / "settings.json"
+        config.write_text("invalid-json", encoding="utf-8")
+        diagnostics = io.StringIO()
+        with patch.object(audit_runner, "get_settings_file", return_value=config):
+            with contextlib.redirect_stderr(diagnostics):
+                settings = audit_runner.load_settings()
+        self.assertEqual(settings, {"mode": "during"})
+        self.assertIn("settings.json", diagnostics.getvalue())
+
     def test_failed_child_does_not_report_pass(self):
         self.set_guard("sre_guard", {"findings": []}, exit_code=1)
         code, report = self.run_report()
