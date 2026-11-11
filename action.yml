@@ -30,7 +30,7 @@ inputs:
 
 outputs:
   status:
-    description: "Overall audit status (PASSED or BLOCKED)"
+    description: "Overall audit status (PASSED, BLOCKED, or ERROR)"
     value: ${{ steps.anti-slop-audit.outputs.status }}
   findings-count:
     description: "Total number of findings identified"
@@ -71,45 +71,18 @@ runs:
                 sys.exit("Input file path must stay inside GITHUB_WORKSPACE")
         ' "$GITHUB_WORKSPACE" "$PR_BODY_FILE" "$TEMPLATE_FILE"
 
-        python3 -u "$ACTION_PATH/scripts/audit_runner.py" audit --base "$AUDIT_BASE" --json > audit_result.json || true
-        cat audit_result.json
+        audit_args=(audit --base "$AUDIT_BASE" --json)
+        if [ -n "$PR_TITLE" ]; then audit_args+=(--pr-title "$PR_TITLE"); fi
+        if [ -n "$PR_BODY_FILE" ]; then audit_args+=(--pr-body-file "$PR_BODY_FILE"); fi
+        if [ -n "$TEMPLATE_FILE" ]; then audit_args+=(--template-file "$TEMPLATE_FILE"); fi
+        if [ -n "$CANARY_TOKEN" ]; then audit_args+=(--canary-token "$CANARY_TOKEN"); fi
 
-        # Check PR boundary if title or body provided
-        if [ -n "$PR_TITLE" ] || [ -f "$PR_BODY_FILE" ]; then
-          python3 -u "$ACTION_PATH/scripts/pr_boundary_guard.py" \
-            --base "$AUDIT_BASE" \
-            --pr-title "$PR_TITLE" \
-            --pr-body-file "$PR_BODY_FILE" \
-            --template-file "$TEMPLATE_FILE" \
-            --json > pr_boundary_result.json || true
-          cat pr_boundary_result.json
-        fi
+        set +e
+        python3 -u "$ACTION_PATH/scripts/audit_runner.py" "${audit_args[@]}" > audit_result.json
+        audit_exit=$?
+        set -e
 
-        # Check Honeypots if canary provided
-        if [ -n "$CANARY_TOKEN" ]; then
-          python3 -u "$ACTION_PATH/scripts/honeypot_trap_guard.py" \
-            --pr-title "$PR_TITLE" \
-            --pr-body-file "$PR_BODY_FILE" \
-            --canary-token "$CANARY_TOKEN" \
-            --json > honeypot_result.json || true
-          cat honeypot_result.json
-        fi
-
-        # Check comment budget
-        python3 -u "$ACTION_PATH/scripts/comment_budget_guard.py" \
-          --base "$AUDIT_BASE" \
-          --json > comment_budget_result.json || true
-        cat comment_budget_result.json
-
-        BLOCKERS=$(grep -c '"severity": "blocker"' pr_boundary_result.json honeypot_result.json comment_budget_result.json 2>/dev/null || echo 0)
-        echo "blockers-count=$BLOCKERS" >> $GITHUB_OUTPUT
-        if [ "$BLOCKERS" -gt 0 ]; then
-          echo "status=BLOCKED" >> $GITHUB_OUTPUT
-          if [ "$FAIL_ON_BLOCKER" = "true" ]; then
-            echo "❌ Anti-Slop Guard detected $BLOCKERS blocker finding(s)."
-            exit 2
-          fi
-        else
-          echo "status=PASSED" >> $GITHUB_OUTPUT
-          echo "✅ All Anti-Slop checks passed cleanly."
-        fi
+        result_args=(--report audit_result.json --audit-exit "$audit_exit"
+          --fail-on-blocker "$FAIL_ON_BLOCKER" --github-output "$GITHUB_OUTPUT")
+        if [ -n "$CANARY_TOKEN" ]; then result_args+=(--canary-present); fi
+        python3 -u "$ACTION_PATH/scripts/action_result.py" "${result_args[@]}"
