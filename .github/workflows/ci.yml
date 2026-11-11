@@ -7,6 +7,48 @@ on:
     branches: [ main, master ]
 
 jobs:
+  action-input-security:
+    name: Composite action rejects script injection
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - id: hostile-input
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os
+          title = (
+              'fix: "quoted" $(touch action-unexpected-command); & | `literal`\n'
+              + '$' + '{{ github.event.pull_request.title }}'
+          )
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as output:
+              output.write('title<<ACTION_TITLE_END\n' + title + '\nACTION_TITLE_END\n')
+          PY
+      - uses: ./
+        id: action-under-test
+        continue-on-error: true # The existing aggregation defect is covered by #22.
+        with:
+          base: HEAD
+          pr-title: ${{ steps.hostile-input.outputs.title }}
+          fail-on-blocker: 'false'
+      - name: Assert hostile input stayed literal
+        shell: bash
+        env:
+          EXPECTED_TITLE: ${{ steps.hostile-input.outputs.title }}
+        run: |
+          test ! -e action-unexpected-command
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          result = json.loads(Path('pr_boundary_result.json').read_text(encoding='utf-8'))
+          assert result['pr_metadata']['title'] == os.environ['EXPECTED_TITLE']
+          PY
+
   test-python:
     name: Test (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
