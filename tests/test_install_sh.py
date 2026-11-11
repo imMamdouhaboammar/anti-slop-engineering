@@ -1,5 +1,6 @@
 import os
 import shutil
+import stat
 import subprocess
 import tempfile
 import unittest
@@ -44,6 +45,14 @@ class BashInstallerSafetyTests(unittest.TestCase):
         self.assertEqual(self.install().returncode, 0)
         self.assertEqual(self.install().returncode, 0)
         self.assertEqual((sibling / "SKILL.md").read_text(), "my own skill\n")
+
+    def test_reinstall_does_not_change_local_executable_modes(self):
+        self.assertEqual(self.install().returncode, 0)
+        cli = self.home / ".agents/skills/anti-slop-engineering/bin/cli.js"
+        cli.chmod(0o600)
+        result = self.install()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(stat.S_IMODE(cli.stat().st_mode), 0o600)
 
     def test_symlinked_destination_is_rejected_without_touching_target(self):
         root = self.home / ".agents/skills"

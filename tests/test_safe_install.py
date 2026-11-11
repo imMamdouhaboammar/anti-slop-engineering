@@ -87,6 +87,17 @@ class SafeFileInstallTests(unittest.TestCase):
         self.assertEqual(result["recovered"], str(self.dest))
         self.assertEqual((self.dest / "SKILL.md").read_text(), "original\n")
 
+    def test_recovers_interrupted_update_when_older_backups_exist(self):
+        self.install()
+        (self.source / "SKILL.md").write_text("second release\n", encoding="utf-8")
+        self.install()
+        (self.source / "SKILL.md").write_text("third release\n", encoding="utf-8")
+        previous = self.dest.parent / ".skill.backup-current-swap"
+        os.replace(self.dest, previous)
+        result = self.install()
+        self.assertEqual(result["recovered"], str(self.dest))
+        self.assertEqual((self.dest / "SKILL.md").read_text(), "third release\n")
+
     def test_rejects_symlinked_destination_and_path_traversal(self):
         outside = self.dest.parent / "outside"
         outside.mkdir(parents=True)
