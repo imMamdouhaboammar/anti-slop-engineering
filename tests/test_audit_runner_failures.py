@@ -134,6 +134,14 @@ class AuditRunnerFailureContractTests(unittest.TestCase):
         self.assertEqual(report["status"], "BLOCKED")
         self.assertEqual(report["blockers_count"], 2)
 
+    def test_high_severity_is_not_downgraded_by_guard_fallback(self):
+        self.set_guard("ast_slop_guard", {"findings": [
+            {"severity": "high", "file": "code.py", "message": "unsafe cast"},
+        ]})
+        code, report = self.run_report()
+        self.assertEqual(code, 0)
+        self.assertEqual(report["findings"][0]["severity"], "HIGH")
+
     def test_contrast_guard_finding_exit_one_is_valid(self):
         self.set_guard("contrast_guard", {
             "findings": [{"file": "ui.css", "line": 3, "fg": "#888", "bg": "#fff", "ratio": 3.5}],
