@@ -29,41 +29,35 @@ if [ -z "$SOURCE_DIR" ] || [ ! -f "$SOURCE_DIR/SKILL.md" ]; then
   SOURCE_DIR="$TEMP_DIR/repo"
 fi
 
+report_install() {
+  local result="$1"
+  local label="$2"
+  local dest="$3"
+  python3 -c '
+import json, sys
+r = json.loads(sys.argv[1])
+print("  Installed {installed}, updated {updated}, preserved {preserved}, skipped {skipped}, conflicted {conflicted}: {label} -> {dest}".format(
+    **{key: len(r[key]) for key in ("installed", "updated", "preserved", "skipped", "conflicted")},
+    label=sys.argv[2], dest=sys.argv[3]))
+if r["conflicted"]:
+    print("  Conflicts retained: " + ", ".join(r["conflicted"]))
+if r["backup"]:
+    print("  Recovery backup: " + r["backup"])
+' "$result" "$label" "$dest"
+}
+
 install_to() {
   local dest="$1"
   local label="$2"
-  mkdir -p "$(dirname "$dest")"
-  rm -rf "$dest"
-  mkdir -p "$dest"
-  if command -v rsync >/dev/null 2>&1; then
-    rsync -a --exclude 'target' --exclude 'node_modules' --exclude '.git' "$SOURCE_DIR/" "$dest/"
-  else
-    cp -R "$SOURCE_DIR/"* "$dest/"
-    rm -rf "$dest/services/anti-slop-rust/target" "$dest/node_modules" 2>/dev/null || true
-  fi
-  # Ensure scripts are executable
-  chmod +x "$dest/bin/cli.js" 2>/dev/null || true
-  chmod +x "$dest/scripts/diff_guard.py" 2>/dev/null || true
-  chmod +x "$dest/scripts/sre_guard.py" 2>/dev/null || true
-  chmod +x "$dest/scripts/decision_guard.py" 2>/dev/null || true
-  chmod +x "$dest/scripts/root_fix_guard.py" 2>/dev/null || true
-  chmod +x "$dest/scripts/future_scale_guard.py" 2>/dev/null || true
-  chmod +x "$dest/scripts/paranoid_guard.py" 2>/dev/null || true
-  chmod +x "$dest/scripts/forensic_hunter.py" 2>/dev/null || true
-  chmod +x "$dest/scripts/exec_guard.py" 2>/dev/null || true
-  chmod +x "$dest/scripts/run_cases.py" 2>/dev/null || true
-  chmod +x "$dest/skills/install-anti-slop/scripts/install.mjs" 2>/dev/null || true
-  chmod +x "$dest/install.sh" 2>/dev/null || true
-  echo "  ✅ Installed anti-slop-engineering for ${label} -> ${dest}"
-
+  local result
+  result="$(python3 "$SOURCE_DIR/scripts/safe_install.py" --source "$SOURCE_DIR" --dest "$dest")"
+  report_install "$result" "$label" "$dest"
   # Install each bundled module as a discoverable top-level skill.
   for module in decision-guard root-fix-gate future-scale-gate paranoid-principal-architect install-anti-slop; do
     if [ -d "$SOURCE_DIR/skills/$module" ]; then
       local module_dest="$(dirname "$dest")/$module"
-      rm -rf "$module_dest"
-      mkdir -p "$module_dest"
-      cp -R "$SOURCE_DIR/skills/$module/"* "$module_dest/"
-      echo "  ✅ Installed $module for ${label} -> ${module_dest}"
+      result="$(python3 "$SOURCE_DIR/scripts/safe_install.py" --source "$SOURCE_DIR/skills/$module" --dest "$module_dest")"
+      report_install "$result" "$module" "$module_dest"
     fi
   done
 }
@@ -94,7 +88,7 @@ INSTALLED_COUNT=$((INSTALLED_COUNT + 1))
 
 # 5. Local project installation if --local or --project is requested
 if [ "$1" = "--local" ] || [ "$1" = "--project" ]; then
-  install_to "./.agents/skills/${TARGET_NAME}" "Local Project (.agents/skills)"
+  install_to "$PWD/.agents/skills/${TARGET_NAME}" "Local Project (.agents/skills)"
   INSTALLED_COUNT=$((INSTALLED_COUNT + 1))
 fi
 

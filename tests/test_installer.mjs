@@ -9,8 +9,10 @@ import { test } from 'node:test'
 import {
   AGENTS,
   CORE_SKILL,
+  installSkills,
   listAvailableSkills,
   resolveTargets,
+  updateAll,
   writeBlock,
 } from '../scripts/installer.mjs'
 
@@ -68,5 +70,117 @@ test('Installer: writeBlock safely injects and replaces pointer block', () => {
     assert.equal(matchCount, 1)
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true })
+  }
+})
+
+test('Installer: overwriting a managed skill preserves modified files and user additions', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'anti-slop-preserve-'))
+  const target = { path: root, agents: [{ id: 'codex', entry: 'AGENTS.md' }] }
+  try {
+    installSkills({ skills: [CORE_SKILL], targets: [target], overwrite: true })
+    const dest = path.join(root, CORE_SKILL)
+    const modified = path.join(dest, 'SKILL.md')
+    fs.writeFileSync(modified, '# user customization\n')
+    fs.writeFileSync(path.join(dest, 'user-notes.md'), 'keep me\n')
+
+    installSkills({ skills: [CORE_SKILL], targets: [target], overwrite: true })
+
+    assert.equal(fs.readFileSync(modified, 'utf8'), '# user customization\n')
+    assert.equal(fs.readFileSync(path.join(dest, 'user-notes.md'), 'utf8'), 'keep me\n')
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('Installer: refuses skill IDs containing path traversal', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'anti-slop-traversal-'))
+  const target = { path: path.join(root, 'skills'), agents: [{ id: 'codex', entry: 'AGENTS.md' }] }
+  try {
+    assert.throws(
+      () => installSkills({ skills: ['../scripts'], targets: [target], overwrite: true }),
+      /Invalid skill|Unknown skill/,
+    )
+    assert.equal(fs.existsSync(path.join(root, 'scripts')), false)
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('Installer: never follows symlinked agent instruction files', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'anti-slop-pointer-'))
+  const config = path.join(root, 'AGENTS.md')
+  const victim = path.join(root, 'outside.md')
+  try {
+    fs.writeFileSync(victim, 'owner data\n')
+    fs.symlinkSync(victim, config)
+    assert.throws(() => writeBlock(config, [
+      '<!-- anti-slop-engineering:start -->',
+      'payload',
+      '<!-- anti-slop-engineering:end -->',
+    ]), /symbolic link/i)
+    assert.equal(fs.readFileSync(victim, 'utf8'), 'owner data\n')
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('Installer: rejects dangling agent instruction symlinks', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'anti-slop-dangling-'))
+  const entry = path.join(root, 'AGENTS.md')
+  try {
+    fs.symlinkSync(path.join(root, 'not-created.md'), entry)
+    assert.throws(() => writeBlock(entry, ['pointer']), /symbolic link/i)
+    assert.equal(fs.lstatSync(entry).isSymbolicLink(), true)
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('Installer: refuses an instruction ancestor swapped to a link after initial validation', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'anti-slop-pointer-race-'))
+  const parent = path.join(root, 'agent')
+  const moved = path.join(root, 'agent-original')
+  const outside = path.join(root, 'outside')
+  const entry = path.join(parent, 'AGENTS.md')
+  fs.mkdirSync(parent)
+  fs.mkdirSync(outside)
+  fs.writeFileSync(entry, 'existing instructions\n')
+  fs.writeFileSync(path.join(outside, 'AGENTS.md'), 'outside instructions\n')
+  const originalReadFile = fs.readFileSync
+  try {
+    let switched = false
+    fs.readFileSync = function readWithAncestorSwap(file, ...args) {
+      if (file === entry && !switched) {
+        switched = true
+        fs.renameSync(parent, moved)
+        fs.symlinkSync(outside, parent, 'dir')
+        return originalReadFile.call(fs, path.join(moved, 'AGENTS.md'), ...args)
+      }
+      return originalReadFile.call(fs, file, ...args)
+    }
+    assert.throws(() => writeBlock(entry, ['pointer']), /symbolic link|changed|unsafe/i)
+    assert.equal(originalReadFile.call(fs, path.join(outside, 'AGENTS.md'), 'utf8'), 'outside instructions\n')
+  } finally {
+    fs.readFileSync = originalReadFile
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('Installer: updateAll reports preserved customization conflicts', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'anti-slop-update-'))
+  const original = process.cwd()
+  try {
+    process.chdir(root)
+    const target = resolveTargets('project', ['codex'])[0]
+    installSkills({ skills: [CORE_SKILL], targets: [target], overwrite: true })
+    fs.writeFileSync(path.join(target.path, CORE_SKILL, 'SKILL.md'), '# private edits\n')
+
+    const report = updateAll({ locations: ['project'] })
+    assert.equal(report.results.length, 1)
+    assert.deepEqual(report.results[0].changes.conflicted, ['SKILL.md'])
+    assert.equal(fs.readFileSync(path.join(target.path, CORE_SKILL, 'SKILL.md'), 'utf8'), '# private edits\n')
+  } finally {
+    process.chdir(original)
+    fs.rmSync(root, { recursive: true, force: true })
   }
 })
