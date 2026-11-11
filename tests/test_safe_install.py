@@ -176,6 +176,15 @@ class SafeFileInstallTests(unittest.TestCase):
             safe_install.write_instruction(link / "AGENTS.md", b"injected\n", safe_install.digest(b"owner data\n"))
         self.assertEqual((outside / "AGENTS.md").read_text(), "owner data\n")
 
+    def test_new_instruction_file_is_private_and_existing_mode_is_preserved(self):
+        entry = self.dest.parent / "AGENTS.md"
+        entry.parent.mkdir(parents=True)
+        safe_install.write_instruction(entry, b"private instructions\n", "absent")
+        self.assertEqual(stat.S_IMODE(entry.stat().st_mode) & 0o077, 0)
+        entry.chmod(0o644)
+        safe_install.write_instruction(entry, b"revised\n", safe_install.digest(b"private instructions\n"))
+        self.assertEqual(stat.S_IMODE(entry.stat().st_mode), 0o644)
+
     def test_preserves_source_executable_permissions(self):
         executable = self.source / "bin" / "cli.js"
         executable.parent.mkdir()
