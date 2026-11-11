@@ -2,6 +2,7 @@
 """Preserve installed skill files while applying verified package updates."""
 
 import argparse
+from contextlib import ExitStack
 import hashlib
 import json
 import os
@@ -64,10 +65,10 @@ def collect_source(source, destination, version=None):
 
 def load_manifest(destination):
     path = destination / MANIFEST
-    if not path.exists():
-        return {}
     if path.is_symlink():
         raise ValueError(f"Managed inventory cannot be a symbolic link: {path}")
+    if not path.exists():
+        return {}
     data = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(data, dict) or data.get("format") != 1 or not isinstance(data.get("files"), dict):
         raise ValueError(f"Invalid managed inventory: {path}")
@@ -157,7 +158,58 @@ def record_swap(destination, backup):
             temporary.unlink()
 
 
-def stage_install(destination, writes, managed):
+def snapshot_tree(root):
+    """Fingerprint the active tree, including unmanaged files, before replacement."""
+    if not root.exists():
+        return None
+    snapshot = {}
+    for item in (root, *root.rglob("*")):
+        relative = item.relative_to(root).as_posix()
+        metadata = item.lstat()
+        if stat.S_ISLNK(metadata.st_mode):
+            snapshot[relative] = ("link", os.readlink(item))
+        elif stat.S_ISDIR(metadata.st_mode):
+            snapshot[relative] = ("directory", stat.S_IMODE(metadata.st_mode))
+        elif stat.S_ISREG(metadata.st_mode):
+            snapshot[relative] = ("file", stat.S_IMODE(metadata.st_mode), digest(item.read_bytes()))
+        else:
+            snapshot[relative] = ("unsupported", metadata.st_mode)
+    return snapshot
+
+
+def write_staged_file(stage, relative, content, mode):
+    """Write beneath a private staging directory without following nested links."""
+    parts = Path(relative).parts
+    if not parts or Path(relative).is_absolute() or any(part in (".", "..") for part in parts):
+        raise ValueError(f"Invalid staged file path: {relative}")
+    with ExitStack() as stack:
+        directory_fd = os.open(stage, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        stack.callback(os.close, directory_fd)
+        for component in parts[:-1]:
+            try:
+                os.mkdir(component, dir_fd=directory_fd)
+            except FileExistsError:
+                pass
+            if stat.S_ISLNK(os.stat(component, dir_fd=directory_fd, follow_symlinks=False).st_mode):
+                raise ValueError(f"Symbolic link in staged file path: {relative}")
+            next_fd = os.open(component, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=directory_fd)
+            stack.callback(os.close, next_fd)
+            directory_fd = next_fd
+        name = parts[-1]
+        try:
+            metadata = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+            if not stat.S_ISREG(metadata.st_mode):
+                raise ValueError(f"Symbolic link or unsupported staged file: {relative}")
+        except FileNotFoundError:
+            pass
+        file_fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, mode, dir_fd=directory_fd)
+        with os.fdopen(file_fd, "wb") as output:
+            output.write(content)
+            output.flush()
+            os.fchmod(output.fileno(), mode)
+
+
+def stage_install(destination, writes, managed, original_snapshot):
     destination.parent.mkdir(parents=True, exist_ok=True)
     journal = destination.parent / f".{destination.name}.swap.json"
     if journal.is_symlink():
@@ -168,24 +220,25 @@ def stage_install(destination, writes, managed):
         if destination.exists():
             shutil.copytree(destination, stage, dirs_exist_ok=True, symlinks=True)
         for relative, (content, mode) in writes.items():
-            target = stage / relative
-            target.parent.mkdir(parents=True, exist_ok=True)
-            if target.is_symlink():
-                raise ValueError(f"Symbolic link in staged file path: {target}")
-            target.write_bytes(content)
-            target.chmod(mode)
-        (stage / MANIFEST).write_text(
-            json.dumps({"format": 1, "files": managed}, sort_keys=True, indent=2) + "\n",
-            encoding="utf-8",
+            write_staged_file(stage, relative, content, mode)
+        write_staged_file(
+            stage, MANIFEST,
+            (json.dumps({"format": 1, "files": managed}, sort_keys=True, indent=2) + "\n").encode(),
+            0o644,
         )
         for relative, (content, _) in writes.items():
             if digest((stage / relative).read_bytes()) != digest(content):
                 raise OSError(f"Staged installation failed verification: {relative}")
+        if snapshot_tree(destination) != original_snapshot:
+            raise OSError(f"Installed files changed during installation: {destination}")
         if destination.exists():
             backup = Path(tempfile.mkdtemp(prefix=f".{destination.name}.backup-", dir=destination.parent))
             backup.rmdir()
             record_swap(destination, backup)
             os.replace(destination, backup)
+            if snapshot_tree(backup) != original_snapshot:
+                os.replace(backup, destination)
+                raise OSError(f"Installed files changed during installation: {destination}")
         try:
             os.replace(stage, destination)
         except OSError:
@@ -210,11 +263,12 @@ def install_tree(source, destination, version=None):
     validate_destination(source, destination)
     recovered = recover_interrupted_swap(destination)
     previous = load_manifest(destination)
+    original_snapshot = snapshot_tree(destination)
     source_files = collect_source(source, destination, version)
     results, writes, managed = plan_files(source_files, destination, previous)
     backup = None
     if writes or managed != previous or not destination.exists():
-        backup = stage_install(destination, writes, managed)
+        backup = stage_install(destination, writes, managed, original_snapshot)
     return {**results, "destination": str(destination), "backup": backup, "recovered": recovered}
 
 
