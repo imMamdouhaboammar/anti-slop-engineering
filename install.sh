@@ -92,14 +92,57 @@ if [ "$1" = "--local" ] || [ "$1" = "--project" ]; then
   INSTALLED_COUNT=$((INSTALLED_COUNT + 1))
 fi
 
-# 6. Global CLI symlinks in ~/.local/bin
-if [ -d "$HOME/.local/bin" ]; then
-  mkdir -p "$HOME/.local/bin"
-  for bin_name in anti-slop-engineering diff-guard sre-guard rust-guard toil-guard; do
-    ln -sf "$HOME/.gemini/config/skills/${TARGET_NAME}/bin/cli.js" "$HOME/.local/bin/$bin_name" 2>/dev/null || true
+# 6. Resolve an installed, executable CLI before creating user-owned links.
+select_cli_target() {
+  local candidate
+  for candidate in \
+    "$HOME/.gemini/config/skills/${TARGET_NAME}/bin/cli.js" \
+    "$HOME/.codex/skills/${TARGET_NAME}/bin/cli.js" \
+    "$HOME/.agents/skills/${TARGET_NAME}/bin/cli.js" \
+    "$HOME/.claude/skills/${TARGET_NAME}/bin/cli.js" \
+    "$PWD/.agents/skills/${TARGET_NAME}/bin/cli.js"; do
+    if [ -f "$candidate" ] && [ -x "$candidate" ] && "$candidate" --help >/dev/null 2>&1; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
   done
-  echo "  ✅ Linked CLI binaries in ~/.local/bin"
-fi
+  return 1
+}
+
+link_installed_cli() {
+  local bin_dir="$HOME/.local/bin"
+  if [ -L "$HOME/.local" ] || [ -L "$bin_dir" ]; then
+    echo "Installer error: symbolic link in CLI directory path; leaving existing links untouched" >&2
+    return 2
+  fi
+  local target
+  if ! target="$(select_cli_target)"; then
+    echo "No executable CLI target found; installed skills are available without global CLI links" >&2
+    return 0
+  fi
+  mkdir -p "$bin_dir"
+  local bin_name link
+  for bin_name in anti-slop-engineering diff-guard sre-guard rust-guard toil-guard; do
+    link="$bin_dir/$bin_name"
+    if [ -L "$link" ] || [ -e "$link" ]; then
+      if [ -L "$link" ] && [ "$(readlink "$link")" = "$target" ]; then
+        echo "  Existing verified CLI link: $link"
+      else
+        echo "  CLI link conflict preserved: $link"
+      fi
+      continue
+    fi
+    ln -s "$target" "$link"
+    if [ ! -L "$link" ] || [ ! -x "$link" ]; then
+      rm "$link"
+      echo "Installer error: created CLI link cannot execute: $link" >&2
+      return 2
+    fi
+    echo "  Linked CLI: $link -> $target"
+  done
+}
+
+link_installed_cli
 
 echo ""
 echo "🎉 Installation complete! Installed into ${INSTALLED_COUNT} agent environment(s)."
