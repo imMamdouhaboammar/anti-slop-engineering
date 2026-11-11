@@ -8,6 +8,8 @@ from pathlib import Path
 
 
 REPO = Path(__file__).resolve().parents[1]
+NODE_DIRECTORY = str(Path(shutil.which("node")).parent) if shutil.which("node") else "/usr/bin"
+SAFE_PATH = f"{NODE_DIRECTORY}:/usr/bin:/bin"
 
 
 class BashInstallerSafetyTests(unittest.TestCase):
@@ -20,7 +22,7 @@ class BashInstallerSafetyTests(unittest.TestCase):
         return subprocess.run(
             ["bash", str(REPO / "install.sh")],
             cwd=self.home,
-            env={**os.environ, "HOME": str(self.home), "PATH": "/usr/bin:/bin"},
+            env={**os.environ, "HOME": str(self.home), "PATH": SAFE_PATH},
             text=True,
             capture_output=True,
         )
@@ -72,14 +74,16 @@ class BashInstallerSafetyTests(unittest.TestCase):
         shutil.copy2(REPO / "install.sh", source / "install.sh")
         shutil.copy2(REPO / "scripts/safe_install.py", source / "scripts/safe_install.py")
         (source / "SKILL.md").write_text("fixture\n", encoding="utf-8")
-        env = {**os.environ, "HOME": str(self.home / "home"), "PATH": "/usr/bin:/bin"}
+        env = {**os.environ, "HOME": str(self.home / "home"), "PATH": SAFE_PATH}
         for _ in range(2):
             result = subprocess.run(["bash", "install.sh", "--project"], cwd=source,
                                     env=env, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("No executable CLI target", result.stderr)
         local = source / ".agents/skills/anti-slop-engineering"
         self.assertEqual((local / "SKILL.md").read_text(), "fixture\n")
         self.assertFalse((local / ".agents").exists())
+        self.assertFalse((self.home / "home/.local/bin/anti-slop-engineering").exists())
 
     def test_bundled_module_conflicts_are_printed_as_readable_paths(self):
         source = self.home / "fixture"
@@ -113,7 +117,9 @@ class BashInstallerSafetyTests(unittest.TestCase):
             link = self.home / ".local/bin" / name
             self.assertTrue(link.is_symlink(), f"Missing {link}")
             self.assertEqual(link.resolve(), cli)
-            self.assertEqual(subprocess.run([str(link), "--help"], capture_output=True).returncode, 0)
+            self.assertTrue(os.access(link, os.X_OK))
+        primary = self.home / ".local/bin/anti-slop-engineering"
+        self.assertEqual(subprocess.run([str(primary), "--help"], capture_output=True).returncode, 0)
 
     def test_codex_install_links_to_existing_codex_cli(self):
         (self.home / ".codex").mkdir()
@@ -162,7 +168,7 @@ class BashInstallerSafetyTests(unittest.TestCase):
         (source / "bin/cli.js").write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
         (source / "bin/cli.js").chmod(0o755)
         result = subprocess.run(["bash", "install.sh"], cwd=source,
-                                env={**os.environ, "HOME": str(self.home), "PATH": "/usr/bin:/bin"},
+                                env={**os.environ, "HOME": str(self.home), "PATH": SAFE_PATH},
                                 capture_output=True, text=True)
         self.assertIn("No executable CLI target", result.stderr)
         self.assertFalse((self.home / ".local/bin/anti-slop-engineering").exists())
