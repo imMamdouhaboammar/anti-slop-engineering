@@ -45,19 +45,6 @@ if r["conflicted"]:
 if r["backup"]:
     print("  Recovery backup: " + r["backup"])
 ' "$result" "$label" "$dest"
-  # Ensure scripts are executable
-  chmod +x "$dest/bin/cli.js" 2>/dev/null || true
-  chmod +x "$dest/scripts/diff_guard.py" 2>/dev/null || true
-  chmod +x "$dest/scripts/sre_guard.py" 2>/dev/null || true
-  chmod +x "$dest/scripts/decision_guard.py" 2>/dev/null || true
-  chmod +x "$dest/scripts/root_fix_guard.py" 2>/dev/null || true
-  chmod +x "$dest/scripts/future_scale_guard.py" 2>/dev/null || true
-  chmod +x "$dest/scripts/paranoid_guard.py" 2>/dev/null || true
-  chmod +x "$dest/scripts/forensic_hunter.py" 2>/dev/null || true
-  chmod +x "$dest/scripts/exec_guard.py" 2>/dev/null || true
-  chmod +x "$dest/scripts/run_cases.py" 2>/dev/null || true
-  chmod +x "$dest/skills/install-anti-slop/scripts/install.mjs" 2>/dev/null || true
-  chmod +x "$dest/install.sh" 2>/dev/null || true
   # Install each bundled module as a discoverable top-level skill.
   for module in decision-guard root-fix-gate future-scale-gate paranoid-principal-architect install-anti-slop; do
     if [ -d "$SOURCE_DIR/skills/$module" ]; then
