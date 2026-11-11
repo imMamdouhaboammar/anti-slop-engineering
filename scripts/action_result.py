@@ -87,9 +87,11 @@ def main():
         status, findings, blockers = "ERROR", 0, 0
 
     if status == "ERROR" and isinstance(report, dict):
-        for name, outcome in report.get("guards", {}).items():
-            if isinstance(outcome, dict) and outcome.get("status") == "ERROR":
-                print(f"{name}: {outcome.get('error') or 'guard execution failed'}", file=sys.stderr)
+        guards = report.get("guards")
+        if isinstance(guards, dict):
+            for name, outcome in guards.items():
+                if isinstance(outcome, dict) and outcome.get("status") == "ERROR":
+                    print(f"{name}: {outcome.get('error') or 'guard execution failed'}", file=sys.stderr)
 
     with args.github_output.open("a", encoding="utf-8") as output:
         output.write(f"status={status}\nfindings-count={findings}\nblockers-count={blockers}\n")
