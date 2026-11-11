@@ -314,7 +314,7 @@ def write_instruction(entry, content, expected_hash):
             parent = entry.parent
 
         open_args = {"dir_fd": directory_fd} if directory_fd is not None else {}
-        current_mode = 0o644
+        current_mode = 0o600
         try:
             current_fd = os.open(entry.name if parent is None else entry, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0), **open_args)
         except FileNotFoundError:
@@ -332,7 +332,7 @@ def write_instruction(entry, content, expected_hash):
         target = temporary if parent is None else parent / temporary
         created = False
         try:
-            temporary_fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), current_mode, **open_args)
+            temporary_fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600, **open_args)
             created = True
             with os.fdopen(temporary_fd, "wb") as output:
                 output.write(content)
