@@ -2,7 +2,7 @@
 """Preserve installed skill files while applying verified package updates."""
 
 import argparse
-from contextlib import ExitStack
+from contextlib import ExitStack, suppress
 import errno
 import hashlib
 import json
@@ -201,10 +201,8 @@ def write_staged_file(stage, relative, content, mode):
         directory_fd = os.open(stage, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
         stack.callback(os.close, directory_fd)
         for component in parts[:-1]:
-            try:
+            with suppress(FileExistsError):
                 os.mkdir(component, dir_fd=directory_fd)
-            except FileExistsError:
-                pass
             if stat.S_ISLNK(os.stat(component, dir_fd=directory_fd, follow_symlinks=False).st_mode):
                 raise ValueError(f"Symbolic link in staged file path: {relative}")
             next_fd = os.open(component, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=directory_fd)
@@ -213,10 +211,10 @@ def write_staged_file(stage, relative, content, mode):
         name = parts[-1]
         try:
             metadata = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
-            if not stat.S_ISREG(metadata.st_mode):
-                raise ValueError(f"Symbolic link or unsupported staged file: {relative}")
         except FileNotFoundError:
-            pass
+            metadata = None
+        if metadata is not None and not stat.S_ISREG(metadata.st_mode):
+            raise ValueError(f"Symbolic link or unsupported staged file: {relative}")
         file_fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, mode, dir_fd=directory_fd)
         with os.fdopen(file_fd, "wb") as output:
             output.write(content)
@@ -349,10 +347,8 @@ def write_instruction(entry, content, expected_hash):
                 os.replace(parent / temporary, entry)
         finally:
             if created:
-                try:
+                with suppress(FileNotFoundError):
                     os.unlink(target, **open_args)
-                except FileNotFoundError:
-                    pass
 
 
 def main():
