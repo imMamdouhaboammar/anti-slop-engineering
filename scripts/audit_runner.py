@@ -13,6 +13,7 @@ Usage:
     python3 scripts/audit_runner.py fix --finding 1,3
 """
 
+import argparse
 import datetime
 import json
 import os
@@ -105,21 +106,35 @@ def get_next_audit_file() -> Path:
     return AUDIT_DIR / f"audit-{next_idx:03d}-{today}.md"
 
 
-def guard_commands(base: str) -> List[Tuple[str, Optional[List[str]]]]:
+def guard_commands(
+    base: str, pr_title: str = "", pr_body_file: str = "",
+    template_file: str = "", canary_token: str = "",
+) -> List[Tuple[str, Optional[List[str]]]]:
     scripts_dir = Path(__file__).resolve().parent
     ledger = Path.cwd() / ".anti-slop" / "invariant-ledger.json"
+    pr_args = ["--base", base]
+    if pr_title:
+        pr_args.extend(["--pr-title", pr_title])
+    if pr_body_file:
+        pr_args.extend(["--pr-body-file", pr_body_file])
+    if template_file:
+        pr_args.extend(["--template-file", template_file])
+    honeypot_args = ["--pr-title", pr_title, "--canary-token", canary_token] if canary_token else None
+    if honeypot_args and pr_body_file:
+        honeypot_args.extend(["--pr-body-file", pr_body_file])
     commands = [
         ("diff_guard", ["--base", base]),
         ("sre_guard", ["--base", base]),
         ("ast_slop_guard", ["--base", base]),
         ("contrast_guard", ["--scan", "."]),
         ("comment_budget_guard", ["--base", base]),
-        ("pr_boundary_guard", ["--base", base]),
+        ("pr_boundary_guard", pr_args),
         ("invariant_steward_guard", ["drift", "--base", base, "--ledger", str(ledger)] if ledger.exists() else None),
         ("attention_guard", ["--base", base]),
         ("system_drift_guard", ["--scan", "."]),
         ("chroma_drift_guard", ["--scan", "."]),
         ("styleseed_guard", ["--scan", "."] + (["--tokens", ".anti-slop/tokens.json"] if Path(".anti-slop/tokens.json").exists() else [])),
+        ("honeypot_trap_guard", honeypot_args),
     ]
     return [
         (name, [sys.executable, str(scripts_dir / f"{name}.py"), *args, "--json"] if args is not None else None)
@@ -160,7 +175,7 @@ def normalize_finding(name: str, finding: Dict[str, Any], report: Dict[str, Any]
         remediation = report["remediation"].get("guidance")
     return {
         "guard": name,
-        "rule": str(finding.get("rule") or finding.get("rule_id") or finding.get("id")
+        "rule": str(finding.get("rule") or finding.get("rule_id") or finding.get("trap_id") or finding.get("id")
                     or finding.get("category") or finding.get("principle")
                     or finding.get("class") or "AUDIT-FINDING"),
         "severity": level,
@@ -231,6 +246,8 @@ def evaluate_guard(name: str, command: Optional[List[str]]) -> Tuple[Dict[str, A
     if report.get("error"):
         result["error"] = f"Guard reported error: {report['error']}"
         return result, []
+    if name == "pr_boundary_guard" and isinstance(report.get("pr_metadata"), dict):
+        result["pr_metadata"] = report["pr_metadata"]
 
     findings = [normalize_finding(name, item, report) for item in report["findings"]]
     result["findings_count"] = len(findings)
@@ -258,10 +275,13 @@ def evaluate_guard(name: str, command: Optional[List[str]]) -> Tuple[Dict[str, A
     return result, findings
 
 
-def collect_audit_findings(base: str = "HEAD") -> Tuple[List[Dict[str, Any]], Dict[str, Dict[str, Any]]]:
+def collect_audit_findings(
+    base: str = "HEAD", pr_title: str = "", pr_body_file: str = "",
+    template_file: str = "", canary_token: str = "",
+) -> Tuple[List[Dict[str, Any]], Dict[str, Dict[str, Any]]]:
     findings: List[Dict[str, Any]] = []
     guards: Dict[str, Dict[str, Any]] = {}
-    for name, command in guard_commands(base):
+    for name, command in guard_commands(base, pr_title, pr_body_file, template_file, canary_token):
         outcome, child_findings = evaluate_guard(name, command)
         guards[name] = outcome
         findings.extend(child_findings)
@@ -354,8 +374,11 @@ def generate_audit_markdown(
     return content
 
 
-def run_audit(base: str = "HEAD", json_output: bool = False) -> int:
-    findings, guards = collect_audit_findings(base)
+def run_audit(
+    base: str = "HEAD", json_output: bool = False, pr_title: str = "",
+    pr_body_file: str = "", template_file: str = "", canary_token: str = "",
+) -> int:
+    findings, guards = collect_audit_findings(base, pr_title, pr_body_file, template_file, canary_token)
     blockers = sum(1 for finding in findings if finding["severity"] == "BLOCKER")
     status = "ERROR" if any(result["status"] == "ERROR" for result in guards.values()) else (
         "BLOCKED" if blockers else "PASS"
@@ -405,13 +428,16 @@ def main() -> int:
     if command == "mode":
         return handle_mode(args[1:])
     elif command in ("audit", "run"):
-        json_mode = "--json" in args
-        base = "HEAD"
-        if "--base" in args:
-            idx = args.index("--base")
-            if idx + 1 < len(args):
-                base = args[idx + 1]
-        return run_audit(base, json_mode)
+        parser = argparse.ArgumentParser(description="Run the unified Anti-Slop audit")
+        parser.add_argument("--base", default="HEAD")
+        parser.add_argument("--json", action="store_true")
+        parser.add_argument("--pr-title", default="")
+        parser.add_argument("--pr-body-file", default="")
+        parser.add_argument("--template-file", default="")
+        parser.add_argument("--canary-token", default="")
+        options = parser.parse_args(args[1:])
+        return run_audit(options.base, options.json, options.pr_title,
+                         options.pr_body_file, options.template_file, options.canary_token)
     else:
         print(f"Error: Unknown audit_runner command '{command}'", file=sys.stderr)
         return 2
