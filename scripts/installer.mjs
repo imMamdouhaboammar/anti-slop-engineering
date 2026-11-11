@@ -5,6 +5,8 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
+import { spawnSync } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -77,20 +79,30 @@ export function detectAgents(location) {
   return AGENTS.flatMap((a) => fs.existsSync(path.dirname(skillPath(a, location))) ? [a.id] : [])
 }
 
-function copyDir(src, dest) {
-  fs.rmSync(dest, { recursive: true, force: true })
-  fs.mkdirSync(dest, { recursive: true })
-  for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
-    if (entry.name === 'node_modules' || entry.name === '.git') continue
-    const s = path.join(src, entry.name)
-    const d = path.join(dest, entry.name)
-    if (entry.isDirectory()) copyDir(s, d)
-    else fs.copyFileSync(s, d)
+function safeCopy(src, dest, version) {
+  const helper = path.join(rootDir, 'scripts', 'safe_install.py')
+  const candidates = process.platform === 'win32' ? [['py', '-3'], ['python', '']] : [['python3', '']]
+  for (const [executable, flag] of candidates) {
+    const args = [...(flag ? [flag] : []), helper, '--source', src, '--dest', dest]
+    if (version) args.push('--version', version)
+    const result = spawnSync(executable, args, { encoding: 'utf8' })
+    if (result.error?.code === 'ENOENT') continue
+    if (result.error || result.status !== 0) {
+      throw new Error(result.stderr?.trim() || result.error?.message || `Safe installer exited ${result.status}`)
+    }
+    return JSON.parse(result.stdout)
   }
+  throw new Error('Python 3 is required for safe file installation')
 }
 
 export function installSkills({ skills, targets, overwrite = false }) {
   const source = skillSourceDir()
+  const available = new Set(listAvailableSkills())
+  for (const skill of skills) {
+    if (!/^[a-z0-9][a-z0-9-]*$/.test(skill) || !available.has(skill)) {
+      throw new Error(`Invalid skill ID or unknown skill: ${skill}`)
+    }
+  }
   const written = []
   for (const t of targets) {
     for (const skill of skills) {
@@ -105,20 +117,15 @@ export function installSkills({ skills, targets, overwrite = false }) {
       } else if (source) {
         src = path.join(source, skill)
       }
-      if (!src || !fs.existsSync(src)) continue
+      if (!src || !fs.existsSync(src)) throw new Error(`Missing skill source: ${skill}`)
 
       const dest = path.join(t.path, skill)
-      if (fs.existsSync(dest) && !overwrite) continue
-
-      if (src === rootDir) {
-        fs.mkdirSync(dest, { recursive: true })
-        fs.copyFileSync(path.join(rootDir, 'SKILL.md'), path.join(dest, 'SKILL.md'))
-        fs.writeFileSync(path.join(dest, 'VERSION'), VERSION)
-      } else {
-        copyDir(src, dest)
-        fs.writeFileSync(path.join(dest, 'VERSION'), VERSION)
+      if (fs.existsSync(dest) && !overwrite) {
+        written.push({ skill, agents: t.agents.map((a) => a.id), path: dest, status: 'skipped' })
+        continue
       }
-      written.push({ skill, agents: t.agents.map((a) => a.id), path: dest })
+      const outcome = safeCopy(src, dest, VERSION)
+      written.push({ skill, agents: t.agents.map((a) => a.id), path: dest, ...outcome })
     }
   }
   return written
@@ -175,6 +182,16 @@ function scanMarkers(lines) {
 }
 
 export function writeBlock(entry, block) {
+  for (let current = path.resolve(entry); ; current = path.dirname(current)) {
+    try {
+      if (fs.lstatSync(current).isSymbolicLink()) {
+        throw new Error(`Refusing symbolic link in agent instruction path: ${current}`)
+      }
+    } catch (err) {
+      if (err.code !== 'ENOENT') throw err
+    }
+    if (current === path.dirname(current)) break
+  }
   let existing = ''
   try {
     existing = fs.readFileSync(entry, 'utf8')
@@ -204,7 +221,13 @@ export function writeBlock(entry, block) {
     .replace(/^\r?\n+/, '')
     .trimEnd()
 
-  fs.writeFileSync(entry, body + eol)
+  const temporary = `${entry}.${process.pid}.${randomUUID()}.tmp`
+  try {
+    fs.writeFileSync(temporary, body + eol, { mode: fs.existsSync(entry) ? fs.statSync(entry).mode : 0o644 })
+    fs.renameSync(temporary, entry)
+  } finally {
+    if (fs.existsSync(temporary)) fs.unlinkSync(temporary)
+  }
 }
 
 export function updatePointers({ targets, skills }) {
@@ -241,8 +264,14 @@ export function updateAll({ locations = ['project', 'global'] } = {}) {
       if (!fs.existsSync(path.join(target.path, CORE_SKILL))) continue
       const skills = allAvailable.filter((s) => fs.existsSync(path.join(target.path, s)))
       if (skills.length === 0) continue
-      installSkills({ skills, targets: [target], overwrite: true })
-      results.push({ location, path: target.path, agents: target.agents.map((a) => a.id), skills, version: VERSION })
+      const entries = installSkills({ skills, targets: [target], overwrite: true })
+      const changes = Object.fromEntries(
+        ['installed', 'updated', 'preserved', 'skipped', 'conflicted'].map(
+          (status) => [status, entries.flatMap((entry) => entry[status] || [])]
+        )
+      )
+      results.push({ location, path: target.path, agents: target.agents.map((a) => a.id),
+        skills, version: VERSION, changes, entries })
       if (location === 'project') projectTargets.push(target)
     }
   }
@@ -281,9 +310,13 @@ Options:
     if (args.includes('--json')) {
       console.log(JSON.stringify({ updated: results, pointers }, null, 2))
     } else {
-      console.log(`\n🔄 Updated ${results.length} installed target(s) to anti-slop-engineering v${VERSION}.`)
+      console.log(`\n🔄 Checked ${results.length} installed target(s) for anti-slop-engineering v${VERSION}.`)
       for (const r of results) {
-        console.log(`  ✓ ${r.path} (${r.agents.join(', ')})`)
+        console.log(`  ${r.path} (${r.agents.join(', ')}): ${r.changes.updated.length} updated, ${r.changes.installed.length} installed, ${r.changes.skipped.length} unchanged`)
+        for (const entry of r.entries) {
+          if (entry.conflicted?.length) console.log(`  ⚠ Conflicts preserved in ${entry.path}: ${entry.conflicted.join(', ')}`)
+          if (entry.backup) console.log(`  Recovery backup: ${entry.backup}`)
+        }
       }
       if (pointers.length > 0) {
         console.log(`  ✓ Pointers refreshed in: ${pointers.join(', ')}`)
@@ -334,7 +367,12 @@ Options:
   if (jsonMode) {
     console.log(JSON.stringify({ installed, pointers, version: VERSION }, null, 2))
   } else {
-    console.log(`\n✅ Installed ${installed.length} skill entries across ${targets.length} agent target(s).`)
+    const changed = installed.filter((item) => item.installed?.length || item.updated?.length)
+    console.log(`\n✅ Installed or updated ${changed.length} skill entries across ${targets.length} agent target(s).`)
+    for (const item of installed) {
+      if (item.conflicted?.length) console.log(`  ⚠ Conflicts preserved in ${item.path}: ${item.conflicted.join(', ')}`)
+      if (item.backup) console.log(`  Previous installation retained: ${item.backup}`)
+    }
     for (const t of targets) {
       console.log(`  Target: ${t.path} (${t.agents.map((a) => a.label).join(', ')})`)
     }
