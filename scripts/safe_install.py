@@ -3,9 +3,11 @@
 
 import argparse
 from contextlib import ExitStack
+import errno
 import hashlib
 import json
 import os
+import secrets
 import shutil
 import stat
 import sys
@@ -182,6 +184,19 @@ def write_staged_file(stage, relative, content, mode):
     parts = Path(relative).parts
     if not parts or Path(relative).is_absolute() or any(part in (".", "..") for part in parts):
         raise ValueError(f"Invalid staged file path: {relative}")
+    if os.name != "posix":
+        target = stage / relative
+        for ancestor in (target, *target.parents):
+            if ancestor.is_symlink():
+                raise ValueError(f"Symbolic link in staged file path: {relative}")
+            if ancestor == stage:
+                break
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if target.is_symlink():
+            raise ValueError(f"Symbolic link in staged file path: {relative}")
+        target.write_bytes(content)
+        target.chmod(mode)
+        return
     with ExitStack() as stack:
         directory_fd = os.open(stage, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
         stack.callback(os.close, directory_fd)
@@ -272,13 +287,90 @@ def install_tree(source, destination, version=None):
     return {**results, "destination": str(destination), "backup": backup, "recovered": recovered}
 
 
+def write_instruction(entry, content, expected_hash):
+    """Atomically replace an instruction file using a no-follow parent handle."""
+    entry = Path(entry)
+    if not entry.is_absolute() or ".." in entry.parts or entry.name in ("", ".", ".."):
+        raise ValueError(f"Unsafe agent instruction path: {entry}")
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    with ExitStack() as stack:
+        if os.name == "posix":
+            directory_fd = os.open(entry.anchor, flags)
+            stack.callback(os.close, directory_fd)
+            for component in entry.parts[1:-1]:
+                try:
+                    next_fd = os.open(component, flags, dir_fd=directory_fd)
+                except OSError as exc:
+                    if exc.errno in (errno.ELOOP, errno.ENOTDIR):
+                        raise ValueError(f"Unsafe symbolic link in agent instruction path: {entry}") from exc
+                    raise
+                stack.callback(os.close, next_fd)
+                directory_fd = next_fd
+            parent = None
+        else:
+            # Windows Python lacks dir_fd support; reject links at every existing ancestor.
+            for ancestor in (entry, *entry.parents):
+                if ancestor.is_symlink():
+                    raise ValueError(f"Symbolic link in agent instruction path: {ancestor}")
+            directory_fd = None
+            parent = entry.parent
+
+        open_args = {"dir_fd": directory_fd} if directory_fd is not None else {}
+        current_mode = 0o644
+        try:
+            current_fd = os.open(entry.name if parent is None else entry, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0), **open_args)
+        except FileNotFoundError:
+            current_hash = "absent"
+        else:
+            with os.fdopen(current_fd, "rb") as existing:
+                current_mode = stat.S_IMODE(os.fstat(existing.fileno()).st_mode)
+                if not stat.S_ISREG(os.fstat(existing.fileno()).st_mode):
+                    raise ValueError(f"Unsafe agent instruction file: {entry}")
+                current_hash = digest(existing.read())
+        if current_hash != expected_hash:
+            raise ValueError(f"Agent instructions changed during installation: {entry}")
+
+        temporary = f".{entry.name}.{secrets.token_hex(12)}.tmp"
+        target = temporary if parent is None else parent / temporary
+        created = False
+        try:
+            temporary_fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), current_mode, **open_args)
+            created = True
+            with os.fdopen(temporary_fd, "wb") as output:
+                output.write(content)
+                output.flush()
+                if hasattr(os, "fchmod"):
+                    os.fchmod(output.fileno(), current_mode)
+            if not hasattr(os, "fchmod"):
+                os.chmod(target, current_mode)
+            if directory_fd is not None:
+                os.replace(temporary, entry.name, src_dir_fd=directory_fd, dst_dir_fd=directory_fd)
+            else:
+                os.replace(parent / temporary, entry)
+        finally:
+            if created:
+                try:
+                    os.unlink(target, **open_args)
+                except FileNotFoundError:
+                    pass
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--source", required=True)
-    parser.add_argument("--dest", required=True)
+    parser.add_argument("--source")
+    parser.add_argument("--dest")
     parser.add_argument("--version")
+    parser.add_argument("--write-instruction")
+    parser.add_argument("--expected-hash")
     options = parser.parse_args()
     try:
+        if options.write_instruction is not None:
+            if not options.expected_hash:
+                parser.error("--write-instruction requires --expected-hash")
+            write_instruction(options.write_instruction, sys.stdin.buffer.read(), options.expected_hash)
+            return 0
+        if not options.source or not options.dest:
+            parser.error("--source and --dest are required for installation")
         print(json.dumps(install_tree(options.source, options.dest, options.version)))
     except (OSError, ValueError) as exc:
         print(f"Installer error: {exc}", file=sys.stderr)

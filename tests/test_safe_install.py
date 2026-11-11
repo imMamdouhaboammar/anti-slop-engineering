@@ -156,6 +156,26 @@ class SafeFileInstallTests(unittest.TestCase):
             safe_install.install_tree(self.source, self.dest.parent / ".." / "escape")
         self.assertEqual(list(outside.iterdir()), [])
 
+    def test_instruction_writer_requires_unchanged_content(self):
+        entry = self.dest.parent / "AGENTS.md"
+        entry.parent.mkdir(parents=True)
+        entry.write_text("original\n", encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "changed during installation"):
+            safe_install.write_instruction(entry, b"replacement\n", "absent")
+        self.assertEqual(entry.read_text(), "original\n")
+        safe_install.write_instruction(entry, b"replacement\n", safe_install.digest(b"original\n"))
+        self.assertEqual(entry.read_text(), "replacement\n")
+
+    def test_instruction_writer_rejects_parent_symlink_without_external_write(self):
+        outside = self.dest.parent / "outside"
+        outside.mkdir(parents=True)
+        (outside / "AGENTS.md").write_text("owner data\n", encoding="utf-8")
+        link = self.dest.parent / "agent"
+        link.symlink_to(outside, target_is_directory=True)
+        with self.assertRaisesRegex(ValueError, "symbolic link"):
+            safe_install.write_instruction(link / "AGENTS.md", b"injected\n", safe_install.digest(b"owner data\n"))
+        self.assertEqual((outside / "AGENTS.md").read_text(), "owner data\n")
+
     def test_preserves_source_executable_permissions(self):
         executable = self.source / "bin" / "cli.js"
         executable.parent.mkdir()
