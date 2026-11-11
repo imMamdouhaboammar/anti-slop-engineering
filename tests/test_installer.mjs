@@ -124,6 +124,18 @@ test('Installer: never follows symlinked agent instruction files', () => {
   }
 })
 
+test('Installer: rejects dangling agent instruction symlinks', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'anti-slop-dangling-'))
+  const entry = path.join(root, 'AGENTS.md')
+  try {
+    fs.symlinkSync(path.join(root, 'not-created.md'), entry)
+    assert.throws(() => writeBlock(entry, ['pointer']), /symbolic link/i)
+    assert.equal(fs.lstatSync(entry).isSymbolicLink(), true)
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})
+
 test('Installer: updateAll reports preserved customization conflicts', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'anti-slop-update-'))
   const original = process.cwd()
