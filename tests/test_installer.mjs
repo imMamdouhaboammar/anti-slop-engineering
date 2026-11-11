@@ -136,6 +136,36 @@ test('Installer: rejects dangling agent instruction symlinks', () => {
   }
 })
 
+test('Installer: refuses an instruction ancestor swapped to a link after initial validation', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'anti-slop-pointer-race-'))
+  const parent = path.join(root, 'agent')
+  const moved = path.join(root, 'agent-original')
+  const outside = path.join(root, 'outside')
+  const entry = path.join(parent, 'AGENTS.md')
+  fs.mkdirSync(parent)
+  fs.mkdirSync(outside)
+  fs.writeFileSync(entry, 'existing instructions\n')
+  fs.writeFileSync(path.join(outside, 'AGENTS.md'), 'outside instructions\n')
+  const originalReadFile = fs.readFileSync
+  try {
+    let switched = false
+    fs.readFileSync = function readWithAncestorSwap(file, ...args) {
+      if (file === entry && !switched) {
+        switched = true
+        fs.renameSync(parent, moved)
+        fs.symlinkSync(outside, parent, 'dir')
+        return originalReadFile.call(fs, path.join(moved, 'AGENTS.md'), ...args)
+      }
+      return originalReadFile.call(fs, file, ...args)
+    }
+    assert.throws(() => writeBlock(entry, ['pointer']), /symbolic link|changed|unsafe/i)
+    assert.equal(originalReadFile.call(fs, path.join(outside, 'AGENTS.md'), 'utf8'), 'outside instructions\n')
+  } finally {
+    fs.readFileSync = originalReadFile
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})
+
 test('Installer: updateAll reports preserved customization conflicts', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'anti-slop-update-'))
   const original = process.cwd()
