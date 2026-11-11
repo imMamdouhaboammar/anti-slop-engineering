@@ -27,6 +27,7 @@ GLOBAL_SETTINGS_FILE = GLOBAL_CONFIG_DIR / "settings.json"
 LOCAL_CONFIG_DIR = Path.cwd() / ".anti-slop"
 LOCAL_SETTINGS_FILE = LOCAL_CONFIG_DIR / "settings.json"
 AUDIT_DIR = Path.cwd() / "anti-slop"
+GUARD_TIMEOUT_SECONDS = 60
 
 
 def get_settings_file() -> Path:
@@ -76,12 +77,19 @@ def handle_mode(args: List[str]) -> int:
         return 2
 
 
-def run_command(cmd: List[str]) -> Tuple[int, str, str]:
+def run_command(cmd: List[str]) -> Dict[str, Any]:
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
-        return proc.returncode, proc.stdout, proc.stderr
-    except Exception as e:
-        return 1, "", str(e)
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=GUARD_TIMEOUT_SECONDS)
+        return {"exit_code": proc.returncode, "stdout": proc.stdout, "stderr": proc.stderr,
+                "timed_out": False, "error": None}
+    except subprocess.TimeoutExpired as exc:
+        stdout = exc.stdout.decode(errors="replace") if isinstance(exc.stdout, bytes) else (exc.stdout or "")
+        stderr = exc.stderr.decode(errors="replace") if isinstance(exc.stderr, bytes) else (exc.stderr or "")
+        return {"exit_code": None, "stdout": stdout, "stderr": stderr,
+                "timed_out": True, "error": f"Timed out after {GUARD_TIMEOUT_SECONDS} seconds"}
+    except OSError as exc:
+        return {"exit_code": None, "stdout": "", "stderr": "", "timed_out": False,
+                "error": f"Unable to execute child process: {exc}"}
 
 
 def get_next_audit_file() -> Path:
@@ -97,251 +105,173 @@ def get_next_audit_file() -> Path:
     return AUDIT_DIR / f"audit-{next_idx:03d}-{today}.md"
 
 
-def collect_audit_findings(base: str = "HEAD") -> List[Dict[str, Any]]:
-    findings: List[Dict[str, Any]] = []
+def guard_commands(base: str) -> List[Tuple[str, Optional[List[str]]]]:
     scripts_dir = Path(__file__).resolve().parent
-
-    # 1. Run Diff Guard
-    diff_guard = scripts_dir / "diff_guard.py"
-    if diff_guard.exists():
-        code, out, _ = run_command([sys.executable, str(diff_guard), "--base", base, "--json"])
-        if out.strip():
-            try:
-                data = json.loads(out)
-                for f in data.get("findings", []):
-                    findings.append({
-                        "guard": "diff_guard",
-                        "rule": f.get("category", "SEVEN-GATES"),
-                        "severity": "BLOCKER" if f.get("level") == "BLOCK" else "HIGH",
-                        "file": f.get("file", ""),
-                        "line": f.get("line", 0),
-                        "message": f.get("message", ""),
-                        "snippet": f.get("snippet", ""),
-                        "remediation": "Adhere to the Seven Gates in SKILL.md",
-                    })
-            except Exception:
-                pass
-
-    # 2. Run SRE Guard
-    sre_guard = scripts_dir / "sre_guard.py"
-    if sre_guard.exists():
-        code, out, _ = run_command([sys.executable, str(sre_guard), "--base", base, "--json"])
-        if out.strip():
-            try:
-                data = json.loads(out)
-                for f in data.get("findings", []):
-                    findings.append({
-                        "guard": "sre_guard",
-                        "rule": f.get("principle", "SRE-RELIABILITY"),
-                        "severity": "HIGH",
-                        "file": f.get("file", ""),
-                        "line": f.get("line", 0),
-                        "message": f.get("message", ""),
-                        "snippet": f.get("snippet", ""),
-                        "remediation": f.get("remediation", "Apply KISS/DRY/YAGNI refactoring"),
-                    })
-            except Exception:
-                pass
-
-    # 3. Run AST Slop Guard
-    ast_guard = scripts_dir / "ast_slop_guard.py"
-    if ast_guard.exists():
-        code, out, _ = run_command([sys.executable, str(ast_guard), "--base", base, "--json"])
-        if out.strip():
-            try:
-                data = json.loads(out)
-                for f in data.get("violations", []):
-                    findings.append({
-                        "guard": "ast_slop_guard",
-                        "rule": f.get("rule_id", "AST-TYPE-SLOP"),
-                        "severity": "BLOCKER" if f.get("severity") == "error" else "MEDIUM",
-                        "file": f.get("file", ""),
-                        "line": f.get("line", 0),
-                        "message": f.get("message", ""),
-                        "snippet": f.get("line_content", ""),
-                        "remediation": "Replace with type-safe pattern without chained casts or copies",
-                    })
-            except Exception:
-                pass
-
-    # 4. Run Contrast Guard
-    contrast_guard = scripts_dir / "contrast_guard.py"
-    if contrast_guard.exists():
-        code, out, _ = run_command([sys.executable, str(contrast_guard), "--scan", ".", "--json"])
-        if out.strip():
-            try:
-                data = json.loads(out)
-                for f in data.get("findings", []):
-                    findings.append({
-                        "guard": "contrast_guard",
-                        "rule": "WCAG-2.2-CONTRAST",
-                        "severity": "MEDIUM",
-                        "file": f.get("file", ""),
-                        "line": f.get("line", 0),
-                        "message": f"Low contrast color pairing: {f.get('fg')} on {f.get('bg')} ({f.get('ratio')}:1 fails AA)",
-                        "snippet": f.get("snippet", ""),
-                        "remediation": "Ensure color contrast ratio meets at least 4.5:1 for normal text",
-                    })
-            except Exception:
-                pass
-
-    # 5. Run Comment Budget Guard
-    comment_guard = scripts_dir / "comment_budget_guard.py"
-    if comment_guard.exists():
-        code, out, _ = run_command([sys.executable, str(comment_guard), "--base", base, "--json"])
-        if out.strip():
-            try:
-                data = json.loads(out)
-                for f in data.get("findings", []):
-                    findings.append({
-                        "guard": "comment_budget_guard",
-                        "rule": f.get("category", "COMMENT-BUDGET"),
-                        "severity": "BLOCKER" if f.get("severity") == "blocker" else "HIGH",
-                        "file": f.get("file", ""),
-                        "line": f.get("line", 0),
-                        "message": f.get("message", f.get("evidence", "")),
-                        "snippet": f.get("evidence", ""),
-                        "remediation": data.get("remediation", {}).get("guidance", "Reduce comment density and remove syntax narration"),
-                    })
-            except Exception:
-                pass
-
-    # 6. Run PR Boundary Guard
-    pr_guard = scripts_dir / "pr_boundary_guard.py"
-    if pr_guard.exists():
-        code, out, _ = run_command([sys.executable, str(pr_guard), "--base", base, "--json"])
-        if out.strip():
-            try:
-                data = json.loads(out)
-                for f in data.get("findings", []):
-                    findings.append({
-                        "guard": "pr_boundary_guard",
-                        "rule": f.get("rule", "PR-BOUNDARY"),
-                        "severity": "BLOCKER" if f.get("severity") == "blocker" else "HIGH",
-                        "file": "git://topology",
-                        "line": 1,
-                        "message": f.get("message", ""),
-                        "snippet": f.get("evidence", ""),
-                        "remediation": data.get("remediation", {}).get("guidance", "Fix git topology or branch conventions"),
-                    })
-            except Exception:
-                pass
-
-    # 7. Run Invariant Steward Drift Guard
-    steward_guard = scripts_dir / "invariant_steward_guard.py"
-    ledger_file = Path.cwd() / ".anti-slop" / "invariant-ledger.json"
-    if steward_guard.exists() and ledger_file.exists():
-        code, out, _ = run_command([sys.executable, str(steward_guard), "drift", "--base", base, "--ledger", str(ledger_file), "--json"])
-        if out.strip():
-            try:
-                data = json.loads(out)
-                for f in data.get("findings", []):
-                    findings.append({
-                        "guard": "invariant_steward_guard",
-                        "rule": f.get("code", "INVARIANT-DRIFT"),
-                        "severity": "BLOCKER" if f.get("severity") == "block" else "HIGH",
-                        "file": "ledger://invariants",
-                        "line": 1,
-                        "message": f.get("message", ""),
-                        "snippet": f.get("rule", ""),
-                        "remediation": f.get("remediation", "Restore invariant or open Reassessment Trigger"),
-                    })
-            except Exception:
-                pass
-
-    # 8. Run Cognitive Bandwidth & Attention Economy Guard
-    attention_guard = scripts_dir / "attention_guard.py"
-    if attention_guard.exists():
-        code, out, _ = run_command([sys.executable, str(attention_guard), "--base", base, "--json"])
-        if out.strip():
-            try:
-                data = json.loads(out)
-                for f in data.get("findings", []):
-                    findings.append({
-                        "guard": "attention_guard",
-                        "rule": f.get("rule", "COGNITIVE-ATTENTION"),
-                        "severity": "BLOCKER" if f.get("severity") == "blocker" else "HIGH",
-                        "file": "doc://markdown",
-                        "line": 1,
-                        "message": f.get("message", ""),
-                        "snippet": f.get("evidence", ""),
-                        "remediation": data.get("remediation", {}).get("guidance", "Enforce scannability, deliverable purity, and terminal blocking placement"),
-                    })
-            except Exception:
-                pass
-
-    # 9. Run Design System Drift Guard
-    system_drift = scripts_dir / "system_drift_guard.py"
-    if system_drift.exists():
-        code, out, _ = run_command([sys.executable, str(system_drift), "--scan", ".", "--json"])
-        if out.strip():
-            try:
-                data = json.loads(out)
-                for f in data.get("findings", []):
-                    findings.append({
-                        "guard": "system_drift_guard",
-                        "rule": f.get("class", "DESIGN-SYSTEM-DRIFT"),
-                        "severity": "BLOCKER" if f.get("severity") == "BLOCKING" else "MEDIUM",
-                        "file": f.get("file", ""),
-                        "line": f.get("line", 1),
-                        "message": f.get("evidence", ""),
-                        "snippet": f.get("evidence", ""),
-                        "remediation": f.get("recommendation", "Bound variant budgets and restore focus rings"),
-                    })
-            except Exception:
-                pass
-
-    # 10. Run Chromatic Saturation Drift Guard
-    chroma_drift = scripts_dir / "chroma_drift_guard.py"
-    if chroma_drift.exists():
-        code, out, _ = run_command([sys.executable, str(chroma_drift), "--scan", ".", "--json"])
-        if out.strip():
-            try:
-                data = json.loads(out)
-                for f in data.get("findings", []):
-                    findings.append({
-                        "guard": "chroma_drift_guard",
-                        "rule": f.get("class", "CHROMA-DRIFT"),
-                        "severity": "BLOCKER" if f.get("severity") == "BLOCKING" else "MEDIUM",
-                        "file": f.get("file", ""),
-                        "line": f.get("line", 1),
-                        "message": f.get("evidence", ""),
-                        "snippet": f.get("evidence", ""),
-                        "remediation": f.get("recommendation", "Align chroma and lightness with committed OKLCH contract"),
-                    })
-            except Exception:
-                pass
-
-    # 11. Run StyleSeed Guard
-    styleseed_guard = scripts_dir / "styleseed_guard.py"
-    if styleseed_guard.exists():
-        tokens_arg = ["--tokens", ".anti-slop/tokens.json"] if (Path(".anti-slop/tokens.json").exists()) else []
-        code, out, _ = run_command([sys.executable, str(styleseed_guard), "--scan", ".", "--json"] + tokens_arg)
-        if out.strip():
-            try:
-                data = json.loads(out)
-                for f in data.get("findings", []):
-                    findings.append({
-                        "guard": "styleseed_guard",
-                        "rule": f.get("class", "STYLESEED-SLOP"),
-                        "severity": "BLOCKER" if f.get("severity") == "BLOCKING" else "MEDIUM",
-                        "file": f.get("file", ""),
-                        "line": f.get("line", 1),
-                        "message": f.get("evidence", ""),
-                        "snippet": f.get("evidence", ""),
-                        "remediation": f.get("recommendation", "Adhere to StyleSeed 4-tier token DAG and 6-role spatial scale"),
-                    })
-            except Exception:
-                pass
-
-    # Assign sequential IDs
-    for idx, f in enumerate(findings, start=1):
-        f["id"] = f"FINDING-{idx:03d}"
-
-    return findings
+    ledger = Path.cwd() / ".anti-slop" / "invariant-ledger.json"
+    commands = [
+        ("diff_guard", ["--base", base]),
+        ("sre_guard", ["--base", base]),
+        ("ast_slop_guard", ["--base", base]),
+        ("contrast_guard", ["--scan", "."]),
+        ("comment_budget_guard", ["--base", base]),
+        ("pr_boundary_guard", ["--base", base]),
+        ("invariant_steward_guard", ["drift", "--base", base, "--ledger", str(ledger)] if ledger.exists() else None),
+        ("attention_guard", ["--base", base]),
+        ("system_drift_guard", ["--scan", "."]),
+        ("chroma_drift_guard", ["--scan", "."]),
+        ("styleseed_guard", ["--scan", "."] + (["--tokens", ".anti-slop/tokens.json"] if Path(".anti-slop/tokens.json").exists() else [])),
+    ]
+    return [
+        (name, [sys.executable, str(scripts_dir / f"{name}.py"), *args, "--json"] if args is not None else None)
+        for name, args in commands
+    ]
 
 
-def generate_audit_markdown(findings: List[Dict[str, Any]], audit_file: Path) -> str:
+def normalize_finding(name: str, finding: Dict[str, Any], report: Dict[str, Any]) -> Dict[str, Any]:
+    severity = str(finding.get("severity", finding.get("level", ""))).lower()
+    fallback = "MEDIUM" if name in {
+        "ast_slop_guard", "contrast_guard", "system_drift_guard",
+        "chroma_drift_guard", "styleseed_guard",
+    } else "HIGH"
+    if severity in {"blocker", "block", "blocking", "error", "critical"}:
+        level = "BLOCKER"
+    elif severity == "low":
+        level = "LOW"
+    elif severity in {"medium", "warning"}:
+        level = "MEDIUM"
+    else:
+        level = fallback
+
+    default_targets = {
+        "pr_boundary_guard": "git://topology",
+        "invariant_steward_guard": "ledger://invariants",
+        "attention_guard": "doc://markdown",
+    }
+    message = finding.get("message") or finding.get("evidence") or ""
+    if name == "contrast_guard":
+        message = (
+            f"Low contrast color pairing: {finding.get('fg')} on {finding.get('bg')} "
+            f"({finding.get('ratio')}:1 fails AA)"
+        )
+    remediation = finding.get("remediation") or finding.get("action") or finding.get("recommendation")
+    if not remediation and isinstance(report.get("remediation"), dict):
+        remediation = report["remediation"].get("guidance")
+    return {
+        "guard": name,
+        "rule": str(finding.get("rule") or finding.get("rule_id") or finding.get("id")
+                    or finding.get("category") or finding.get("principle")
+                    or finding.get("class") or "AUDIT-FINDING"),
+        "severity": level,
+        "file": str(finding.get("file") or default_targets.get(name, "")),
+        "line": finding.get("line", 1 if name in default_targets else 0),
+        "message": str(message),
+        "snippet": str(finding.get("snippet") or finding.get("line_content")
+                       or finding.get("evidence") or finding.get("matched_text") or ""),
+        "remediation": str(remediation or "Review and remediate the reported guard finding"),
+    }
+
+
+def redact_command(command: List[str]) -> List[str]:
+    safe = list(command)
+    for flag in ("--canary-token", "--pr-title"):
+        if flag in safe:
+            index = safe.index(flag)
+            if index + 1 < len(safe):
+                safe[index + 1] = "<redacted>"
+    return safe
+
+
+def evaluate_guard(name: str, command: Optional[List[str]]) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
+    result: Dict[str, Any] = {
+        "status": "SKIPPED" if command is None else "ERROR",
+        "applicable": command is not None,
+        "exit_code": None,
+        "stderr": "",
+        "timed_out": False,
+        "error": None,
+        "command": redact_command(command) if command is not None else None,
+        "findings_count": 0,
+    }
+    if command is None:
+        return result, []
+    if not Path(command[1]).is_file():
+        result["error"] = f"Mandatory guard script missing: {command[1]}"
+        return result, []
+
+    process = run_command(command)
+    result.update({key: process[key] for key in ("exit_code", "stderr", "timed_out", "error")})
+    if result["error"]:
+        return result, []
+    if not process["stdout"].strip():
+        result["error"] = "Missing JSON output from mandatory guard"
+        return result, []
+    try:
+        report = json.loads(process["stdout"])
+    except (ValueError, TypeError) as exc:
+        result["error"] = f"Invalid JSON from guard: {exc}"
+        result["stdout_excerpt"] = process["stdout"][:500]
+        return result, []
+    if not isinstance(report, dict) or not isinstance(report.get("findings"), list):
+        result["error"] = "Invalid JSON report schema: required findings array"
+        return result, []
+    if any(not isinstance(item, dict) for item in report["findings"]):
+        result["error"] = "Invalid JSON report schema: finding must be an object"
+        return result, []
+    known_severities = {
+        "blocker", "block", "blocking", "error", "critical",
+        "high", "medium", "low", "warning", "review",
+    }
+    for item in report["findings"]:
+        raw_severity = item.get("severity", item.get("level"))
+        if raw_severity is not None and str(raw_severity).lower() not in known_severities:
+            result["error"] = f"Invalid JSON report schema: unknown severity {raw_severity!r}"
+            return result, []
+    if report.get("error"):
+        result["error"] = f"Guard reported error: {report['error']}"
+        return result, []
+
+    findings = [normalize_finding(name, item, report) for item in report["findings"]]
+    result["findings_count"] = len(findings)
+    blockers = any(item["severity"] == "BLOCKER" for item in findings)
+    code = process["exit_code"]
+    valid_finding_exit = (
+        (code == 2 and blockers)
+        or (code == 1 and name in {"contrast_guard", "styleseed_guard"} and bool(findings))
+    )
+    if code != 0 and not valid_finding_exit:
+        result["error"] = f"Guard exited with code {code} without a valid finding outcome"
+        result["stdout_excerpt"] = process["stdout"][:500]
+        return result, findings
+
+    reported_status = str(report.get("status", "")).upper()
+    reported_verdict = str(report.get("verdict", "")).upper()
+    if (reported_status in {"FAIL", "BLOCKED"} or reported_verdict in {"FAIL", "REJECT"}) and not blockers:
+        result["error"] = "Guard reported FAIL without matching blocker findings"
+        return result, findings
+    if reported_status in {"ERROR", "INCOMPLETE"} or reported_verdict in {"ERROR", "INCOMPLETE"}:
+        result["error"] = f"Guard reported unsuccessful status: {reported_status or reported_verdict}"
+        return result, findings
+
+    result["status"] = "FINDINGS" if findings else "PASS"
+    return result, findings
+
+
+def collect_audit_findings(base: str = "HEAD") -> Tuple[List[Dict[str, Any]], Dict[str, Dict[str, Any]]]:
+    findings: List[Dict[str, Any]] = []
+    guards: Dict[str, Dict[str, Any]] = {}
+    for name, command in guard_commands(base):
+        outcome, child_findings = evaluate_guard(name, command)
+        guards[name] = outcome
+        findings.extend(child_findings)
+    for index, finding in enumerate(findings, start=1):
+        finding["id"] = f"FINDING-{index:03d}"
+    return findings, guards
+
+
+def generate_audit_markdown(
+    findings: List[Dict[str, Any]], audit_file: Path,
+    status: Optional[str] = None, guards: Optional[Dict[str, Dict[str, Any]]] = None,
+) -> str:
     today = datetime.date.today().isoformat()
     total = len(findings)
     blockers = sum(1 for f in findings if f.get("severity") == "BLOCKER")
@@ -361,7 +291,7 @@ def generate_audit_markdown(findings: List[Dict[str, Any]], audit_file: Path) ->
         f"- **High Severity:** {high}",
         f"- **Medium Severity:** {medium}",
         f"- **Low Severity:** {low}",
-        f"- **Status:** {'FAIL (Blockers Detected)' if blockers > 0 else ('NEEDS_WORK' if total > 0 else 'PASS')}",
+        f"- **Status:** {status or ('BLOCKED' if blockers > 0 else 'PASS')}",
         "",
         "## Findings Index",
         "",
@@ -381,6 +311,12 @@ def generate_audit_markdown(findings: List[Dict[str, Any]], audit_file: Path) ->
         "## Detailed Finding Dossiers",
         "",
     ])
+
+    for name, result in (guards or {}).items():
+        if result["status"] == "ERROR":
+            lines.append(f"- **{name} execution error:** {result['error']}")
+    if guards and any(result["status"] == "ERROR" for result in guards.values()):
+        lines.append("")
 
     for f in findings:
         target = f"{f['file']}:{f['line']}" if f['file'] else "System"
@@ -417,27 +353,44 @@ def generate_audit_markdown(findings: List[Dict[str, Any]], audit_file: Path) ->
 
 
 def run_audit(base: str = "HEAD", json_output: bool = False) -> int:
-    findings = collect_audit_findings(base)
-    audit_file = get_next_audit_file()
-    generate_audit_markdown(findings, audit_file)
+    findings, guards = collect_audit_findings(base)
+    blockers = sum(1 for finding in findings if finding["severity"] == "BLOCKER")
+    status = "ERROR" if any(result["status"] == "ERROR" for result in guards.values()) else (
+        "BLOCKED" if blockers else "PASS"
+    )
+    audit_file = None
+    audit_error = None
+    try:
+        audit_file = get_next_audit_file()
+        generate_audit_markdown(findings, audit_file, status=status, guards=guards)
+    except OSError as exc:
+        status = "ERROR"
+        audit_error = f"Unable to write audit report: {exc}"
+
+    report = {
+        "audit_file": str(audit_file) if audit_file is not None else None,
+        "total_findings": len(findings),
+        "blockers_count": blockers,
+        "findings": findings,
+        "guards": guards,
+        "status": status,
+    }
+    if audit_error:
+        report["error"] = audit_error
 
     if json_output:
-        print(json.dumps({
-            "audit_file": str(audit_file),
-            "total_findings": len(findings),
-            "findings": findings,
-            "status": "FAIL" if any(f.get("severity") == "BLOCKER" for f in findings) else "PASS"
-        }, indent=2))
+        print(json.dumps(report, indent=2))
     else:
-        print(f"\n📋 Multi-Guard Audit Complete.")
-        print(f"   Dossier:  {audit_file}")
+        print("\n📋 Multi-Guard Audit Complete.")
+        print(f"   Dossier:  {audit_file or 'not written'}")
         print(f"   Findings: {len(findings)} total")
-        blockers = sum(1 for f in findings if f.get("severity") == "BLOCKER")
-        if blockers > 0:
-            print(f"   ⚠️ {blockers} BLOCKER findings detected.")
-            return 1
-        print("   ✓ Zero blocker findings.")
-    return 0
+        print(f"   Status: {status} ({blockers} blockers)")
+        for name, result in guards.items():
+            if result["status"] == "ERROR":
+                print(f"   ERROR {name}: {result['error']}", file=sys.stderr)
+        if audit_error:
+            print(f"   ERROR: {audit_error}", file=sys.stderr)
+    return {"PASS": 0, "BLOCKED": 1, "ERROR": 2}[status]
 
 
 def main() -> int:
