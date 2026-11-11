@@ -109,18 +109,19 @@ class CompositeActionInputTests(unittest.TestCase):
                 "CANARY_TOKEN": "",
                 "FAIL_ON_BLOCKER": "false",
             })
-            for overrides in (
-                {"AUDIT_BASE": "--upload-pack=bad"},
-                {"PR_BODY_FILE": "../outside.md"},
-                {"TEMPLATE_FILE": "/etc/passwd"},
-                {"FAIL_ON_BLOCKER": "$(touch invalid-boolean)"},
+            for overrides, expected_exit, expected_error in (
+                ({"AUDIT_BASE": "--upload-pack=bad"}, 2, "Invalid audit base revision"),
+                ({"PR_BODY_FILE": "../outside.md"}, 1, "Input file path must stay inside"),
+                ({"TEMPLATE_FILE": "/etc/passwd"}, 1, "Input file path must stay inside"),
+                ({"FAIL_ON_BLOCKER": "$(touch invalid-boolean)"}, 2, "Invalid fail-on-blocker value"),
             ):
                 with self.subTest(overrides=overrides):
                     result = subprocess.run(
                         ["bash", "-eo", "pipefail", "-c", shell], cwd=workspace,
                         env={**env, **overrides}, text=True, capture_output=True,
                     )
-                    self.assertNotEqual(result.returncode, 0)
+                    self.assertEqual(result.returncode, expected_exit, result.stderr)
+                    self.assertIn(expected_error, result.stderr)
                     self.assertFalse((workspace / "invalid-boolean").exists())
 
 
