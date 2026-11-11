@@ -21,13 +21,16 @@ def report_for(findings=(), status="PASS", error_guard=None):
     checks = {
         name: {"status": "SKIPPED" if name in {"invariant_steward_guard", "honeypot_trap_guard"} else "PASS",
                "applicable": name not in {"invariant_steward_guard", "honeypot_trap_guard"},
-               "exit_code": 0}
+               "exit_code": None if name in {"invariant_steward_guard", "honeypot_trap_guard"} else 0,
+               "findings_count": 0}
         for name in GUARD_NAMES
     }
     if error_guard:
         checks[error_guard].update(status="ERROR", applicable=True, error="broken scanner")
     for finding in findings:
-        checks[finding["guard"]].update(status="FINDINGS", applicable=True)
+        check = checks[finding["guard"]]
+        check.update(status="FINDINGS", applicable=True, exit_code=0)
+        check["findings_count"] += 1
     return {
         "status": status,
         "total_findings": len(findings),
@@ -54,8 +57,11 @@ class CompositeActionAggregationTests(unittest.TestCase):
             )
             (scripts / "audit_runner.py").write_text(
                 "import os, sys\n"
-                "def guard_commands(base='HEAD', **kwargs):\n"
-                "    return [(name, ['python']) for name in os.environ['EXPECTED_GUARDS'].split(',')]\n"
+                "def guard_commands(base='HEAD', canary_token='', **kwargs):\n"
+                "    optional = {'invariant_steward_guard'}\n"
+                "    if not canary_token: optional.add('honeypot_trap_guard')\n"
+                "    return [(name, None if name in optional else ['python']) "
+                "for name in os.environ['EXPECTED_GUARDS'].split(',')]\n"
                 "if __name__ == '__main__':\n"
                 "    print(open(os.environ['AUDIT_FIXTURE'], encoding='utf-8').read())\n"
                 "    sys.exit(int(os.environ['AUDIT_EXIT']))\n",
@@ -155,6 +161,21 @@ class CompositeActionAggregationTests(unittest.TestCase):
 
     def test_audit_exit_must_match_json_status(self):
         proc, output, _ = self.run_action(report_for(), audit_exit=1, fail_on_blocker="false")
+        self.assertNotEqual(proc.returncode, 0)
+        self.assert_outputs(output, "ERROR", 0, 0)
+
+    def test_guard_cannot_claim_pass_without_execution(self):
+        report = report_for()
+        report["guards"]["sre_guard"]["exit_code"] = None
+        proc, output, _ = self.run_action(report)
+        self.assertNotEqual(proc.returncode, 0)
+        self.assert_outputs(output, "ERROR", 0, 0)
+
+    def test_guard_finding_count_must_match_normalized_findings(self):
+        finding = {"guard": "diff_guard", "severity": "BLOCKER", "message": "unsafe"}
+        report = report_for([finding], "BLOCKED")
+        report["guards"]["diff_guard"]["findings_count"] = 0
+        proc, output, _ = self.run_action(report, audit_exit=1)
         self.assertNotEqual(proc.returncode, 0)
         self.assert_outputs(output, "ERROR", 0, 0)
 

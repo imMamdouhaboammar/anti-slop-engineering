@@ -41,7 +41,7 @@ class AuditRunnerFailureContractTests(unittest.TestCase):
             encoding="utf-8",
         )
 
-    def run_report(self, json_mode=True, timeout=None):
+    def run_report(self, json_mode=True, timeout=None, **audit_inputs):
         output = io.StringIO()
         original_cwd = Path.cwd()
         try:
@@ -52,7 +52,7 @@ class AuditRunnerFailureContractTests(unittest.TestCase):
                 if timeout is not None:
                     stack.enter_context(patch.object(audit_runner, "GUARD_TIMEOUT_SECONDS", timeout, create=True))
                 with contextlib.redirect_stdout(output):
-                    exit_code = audit_runner.run_audit(base="HEAD", json_output=json_mode)
+                    exit_code = audit_runner.run_audit(base="HEAD", json_output=json_mode, **audit_inputs)
         finally:
             os.chdir(original_cwd)
         return exit_code, json.loads(output.getvalue()) if json_mode else output.getvalue()
@@ -184,6 +184,31 @@ class AuditRunnerFailureContractTests(unittest.TestCase):
         self.assertEqual(report["status"], "ERROR")
         self.assertEqual(report["blockers_count"], 1)
         self.assertEqual(report["total_findings"], 1)
+
+    def test_pr_metadata_reaches_guard_as_literal_arguments(self):
+        title = 'fix: "quoted" $(touch unintended)\n${{ github.event.pull_request.title }}'
+        (self.scripts / "pr_boundary_guard.py").write_text(
+            "import json,sys\n"
+            "print(json.dumps({'findings': [], 'pr_metadata': "
+            "{'title': sys.argv[sys.argv.index('--pr-title')+1]}}))\n",
+            encoding="utf-8",
+        )
+        code, report = self.run_report(pr_title=title)
+        self.assertEqual(code, 0)
+        self.assertEqual(report["guards"]["pr_boundary_guard"]["pr_metadata"]["title"], title)
+        self.assertFalse((self.root / "unintended").exists())
+
+    def test_optional_canary_guard_is_scanned_once(self):
+        self.set_guard("honeypot_trap_guard", {"findings": [
+            {"severity": "blocker", "trap_id": "CANARY", "message": "active canary echoed"},
+        ]})
+        code, report = self.run_report(canary_token="fixture-token")
+        self.assertNotEqual(code, 0)
+        self.assertEqual(report["status"], "BLOCKED")
+        self.assertEqual(report["total_findings"], 1)
+        self.assertEqual(report["guards"]["honeypot_trap_guard"]["findings_count"], 1)
+        self.assertEqual(report["guards"]["comment_budget_guard"]["findings_count"], 0)
+        self.assertEqual(report["findings"][0]["rule"], "CANARY")
 
 
 if __name__ == "__main__":
