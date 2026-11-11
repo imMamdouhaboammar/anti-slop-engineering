@@ -9,7 +9,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](LICENSE)
 [![Bun](https://img.shields.io/badge/Runtime-Bun%20%3E%3D1.0-FBF0DF?style=flat-square&logo=bun&logoColor=black)](https://bun.sh)
 [![Python](https://img.shields.io/badge/Python-3.9%20–%203.13-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
-[![Skills.sh](https://img.shields.io/badge/Skills.sh-Compatible-000000?style=flat-square&logo=vercel&logoColor=white)](https://skills.sh)
+[![skills.sh](https://skills.sh/b/imMamdouhaboammar/anti-slop-engineering)](https://skills.sh/imMamdouhaboammar/anti-slop-engineering)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-Certified%20Skill-D97706?style=flat-square&logo=anthropic&logoColor=white)](https://claude.ai)
 
 [Install](#install) · [What it catches](#what-it-catches) · [Engines](#engines) · [Decision Guard](#decision-guard) · [Root-Fix Gate](#root-fix-gate) · [Future-Scale Gate](#future-scale-gate) · [Paranoid Architect](#the-paranoid-principal-architect) · [Forensic Bug Hunter](#forensic-bug-hunter-scanner) · [Execution Guard](#in-flight-execution-guard) · [AST Slop Gate](#type-level--ast-slop-gate) · [Install Anti-Slop](#install-anti-slop-oxlint--skill) · [Agent skill](#agent-skill) · [Anti-pattern catalog](#anti-pattern-catalog-217-patterns)
