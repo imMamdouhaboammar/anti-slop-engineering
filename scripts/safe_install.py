@@ -85,9 +85,26 @@ def recover_interrupted_swap(destination):
     backups = list(destination.parent.glob(f".{destination.name}.backup-*"))
     if not backups:
         return None
-    if len(backups) != 1 or backups[0].is_symlink() or not backups[0].is_dir():
+    journal = destination.parent / f".{destination.name}.swap.json"
+    if journal.is_symlink():
+        raise ValueError(f"Symbolic link in recovery journal: {journal}")
+    if journal.exists():
+        state = json.loads(journal.read_text(encoding="utf-8"))
+        name = state.get("backup") if isinstance(state, dict) else None
+        if not isinstance(name, str) or not name.startswith(f".{destination.name}.backup-") or "/" in name or "\\" in name:
+            raise ValueError(f"Invalid installation recovery journal: {journal}")
+        backup = destination.parent / name
+        if backup not in backups:
+            raise ValueError(f"Missing installation recovery backup: {backup}")
+    elif len(backups) == 1:
+        backup = backups[0]
+    else:
         raise ValueError(f"Ambiguous installation recovery: {destination.parent}")
-    os.replace(backups[0], destination)
+    if backup.is_symlink() or not backup.is_dir():
+        raise ValueError(f"Invalid installation recovery backup: {backup}")
+    os.replace(backup, destination)
+    if journal.exists():
+        journal.unlink()
     return str(destination)
 
 
@@ -128,6 +145,9 @@ def plan_files(source_files, destination, previous):
 
 def stage_install(destination, writes, managed):
     destination.parent.mkdir(parents=True, exist_ok=True)
+    journal = destination.parent / f".{destination.name}.swap.json"
+    if journal.is_symlink():
+        raise ValueError(f"Symbolic link in installation journal: {journal}")
     stage = Path(tempfile.mkdtemp(prefix=f".{destination.name}.stage-", dir=destination.parent))
     backup = None
     try:
@@ -150,6 +170,15 @@ def stage_install(destination, writes, managed):
         if destination.exists():
             backup = Path(tempfile.mkdtemp(prefix=f".{destination.name}.backup-", dir=destination.parent))
             backup.rmdir()
+            descriptor, tmp_name = tempfile.mkstemp(prefix=f".{destination.name}.journal-", dir=destination.parent)
+            os.close(descriptor)
+            journal_tmp = Path(tmp_name)
+            try:
+                journal_tmp.write_text(json.dumps({"backup": backup.name}), encoding="utf-8")
+                os.replace(journal_tmp, journal)
+            finally:
+                if journal_tmp.exists():
+                    journal_tmp.unlink()
             os.replace(destination, backup)
         try:
             os.replace(stage, destination)
@@ -157,10 +186,14 @@ def stage_install(destination, writes, managed):
             if backup is not None:
                 os.replace(backup, destination)
             raise
+        if journal.exists():
+            journal.unlink()
         return str(backup) if backup is not None else None
     finally:
         if stage.exists():
             shutil.rmtree(stage)
+        if destination.exists() and journal.exists():
+            journal.unlink()
 
 
 def install_tree(source, destination, version=None):

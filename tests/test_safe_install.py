@@ -1,4 +1,5 @@
 import os
+import json
 import stat
 import sys
 import tempfile
@@ -93,9 +94,12 @@ class SafeFileInstallTests(unittest.TestCase):
         self.install()
         (self.source / "SKILL.md").write_text("third release\n", encoding="utf-8")
         previous = self.dest.parent / ".skill.backup-current-swap"
+        journal = self.dest.parent / ".skill.swap.json"
+        journal.write_text(json.dumps({"backup": previous.name}), encoding="utf-8")
         os.replace(self.dest, previous)
         result = self.install()
         self.assertEqual(result["recovered"], str(self.dest))
+        self.assertFalse(journal.exists())
         self.assertEqual((self.dest / "SKILL.md").read_text(), "third release\n")
 
     def test_rejects_symlinked_destination_and_path_traversal(self):
