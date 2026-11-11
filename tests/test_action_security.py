@@ -37,18 +37,26 @@ class CompositeActionInputTests(unittest.TestCase):
             fake_action = workspace / "action"
             scripts = fake_action / "scripts"
             scripts.mkdir(parents=True)
-            report = scripts / "pr_boundary_guard.py"
-            report.write_text(
-                "import json,sys\n"
-                "args=sys.argv\n"
-                "print(json.dumps({'findings': [], 'pr_metadata': "
-                "{'title': args[args.index('--pr-title')+1]}}))\n",
+            (scripts / "audit_runner.py").write_text(
+                "import json, os, sys\n"
+                "def guard_commands(base='HEAD', canary_token='', **kwargs):\n"
+                "    optional = {'invariant_steward_guard'}\n"
+                "    if not canary_token: optional.add('honeypot_trap_guard')\n"
+                "    return [(name, None if name in optional else ['python']) "
+                "for name in os.environ['EXPECTED_GUARDS'].split(',')]\n"
+                "if __name__ == '__main__':\n"
+                "    title = sys.argv[sys.argv.index('--pr-title') + 1]\n"
+                "    checks = {name: {'status': 'SKIPPED' if cmd is None else 'PASS', "
+                "'applicable': cmd is not None, 'exit_code': None if cmd is None else 0, "
+                "'findings_count': 0} for name, cmd in guard_commands()}\n"
+                "    checks['pr_boundary_guard']['pr_metadata'] = {'title': title}\n"
+                "    print(json.dumps({'status': 'PASS', 'total_findings': 0, "
+                "'blockers_count': 0, 'findings': [], 'guards': checks}))\n",
                 encoding="utf-8",
             )
-            for script in ("audit_runner.py", "honeypot_trap_guard.py", "comment_budget_guard.py"):
-                (scripts / script).write_text(
-                    'print("{\\\"findings\\\": []}")\n', encoding="utf-8"
-                )
+            (scripts / "action_result.py").write_bytes(
+                (ACTION.parent / "scripts" / "action_result.py").read_bytes()
+            )
             subprocess.run(["git", "init", "-q"], cwd=workspace, check=True)
             subprocess.run(
                 ["git", "-c", "user.name=Test", "-c", "user.email=test@example.com",
@@ -70,6 +78,12 @@ class CompositeActionInputTests(unittest.TestCase):
                 "GITHUB_OUTPUT": str(workspace / "outputs"),
                 "GITHUB_ACTION_PATH": str(fake_action),
                 "ACTION_PATH": str(fake_action),
+                "EXPECTED_GUARDS": ",".join((
+                    "diff_guard", "sre_guard", "ast_slop_guard", "contrast_guard",
+                    "comment_budget_guard", "pr_boundary_guard", "invariant_steward_guard",
+                    "attention_guard", "system_drift_guard", "chroma_drift_guard",
+                    "styleseed_guard", "honeypot_trap_guard",
+                )),
             })
             for name, key in re.findall(r"(?m)^\s+([A-Z][A-Z_]+):\s*\$\{\{\s*inputs\.([\w-]+)\s*}}", source):
                 env[name] = expressions[key]
@@ -82,10 +96,8 @@ class CompositeActionInputTests(unittest.TestCase):
             )
             self.assertFalse(marker.exists(), result.stderr)
             self.assertEqual(result.returncode, 0, result.stderr)
-            pr_text = (workspace / "pr_boundary_result.json").read_text()
-            self.assertTrue(pr_text.strip(), result.stdout + result.stderr)
-            pr_result = json.loads(pr_text)
-            self.assertEqual(pr_result["pr_metadata"]["title"], title)
+            report = json.loads((workspace / "audit_result.json").read_text())
+            self.assertEqual(report["guards"]["pr_boundary_guard"]["pr_metadata"]["title"], title)
 
     def test_rejects_invalid_base_and_escaped_input_paths(self):
         _, shell = action_step()
