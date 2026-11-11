@@ -81,6 +81,30 @@ class BashInstallerSafetyTests(unittest.TestCase):
         self.assertEqual((local / "SKILL.md").read_text(), "fixture\n")
         self.assertFalse((local / ".agents").exists())
 
+    def test_bundled_module_conflicts_are_printed_as_readable_paths(self):
+        source = self.home / "fixture"
+        (source / "scripts").mkdir(parents=True)
+        module = source / "skills/decision-guard"
+        module.mkdir(parents=True)
+        shutil.copy2(REPO / "install.sh", source / "install.sh")
+        shutil.copy2(REPO / "scripts/safe_install.py", source / "scripts/safe_install.py")
+        (source / "SKILL.md").write_text("core\n", encoding="utf-8")
+        (module / "SKILL.md").write_text("module v1\n", encoding="utf-8")
+        env = {**os.environ, "HOME": str(self.home / "home"), "PATH": "/usr/bin:/bin"}
+
+        def install_fixture():
+            return subprocess.run(["bash", "install.sh"], cwd=source, env=env,
+                                  capture_output=True, text=True)
+
+        self.assertEqual(install_fixture().returncode, 0)
+        installed = Path(env["HOME"]) / ".agents/skills/decision-guard/SKILL.md"
+        installed.write_text("user edit\n", encoding="utf-8")
+        (module / "SKILL.md").write_text("module v2\n", encoding="utf-8")
+        result = install_fixture()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Conflicts retained: SKILL.md", result.stdout)
+        self.assertEqual(installed.read_text(), "user edit\n")
+
 
 if __name__ == "__main__":
     unittest.main()
