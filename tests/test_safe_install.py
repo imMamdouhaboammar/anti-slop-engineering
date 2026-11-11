@@ -70,7 +70,7 @@ class SafeFileInstallTests(unittest.TestCase):
         def fail_once(source, target):
             nonlocal calls
             calls += 1
-            if calls == 2:
+            if calls == 3:
                 raise OSError("interrupted swap")
             return original_replace(source, target)
 
@@ -79,6 +79,50 @@ class SafeFileInstallTests(unittest.TestCase):
                 self.install()
         self.assertEqual((self.dest / "SKILL.md").read_text(), "original\n")
         self.assertEqual(self.install()["updated"], ["SKILL.md"])
+
+    def test_rejects_dangling_managed_inventory_symlink(self):
+        self.install()
+        outside = self.dest.parent / "external-inventory.json"
+        (self.dest / safe_install.MANIFEST).unlink()
+        (self.dest / safe_install.MANIFEST).symlink_to(outside)
+        (self.source / "SKILL.md").write_text("new release\n", encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "inventory.*symbolic link"):
+            self.install()
+        self.assertFalse(outside.exists())
+
+    def test_rejects_staged_symlink_ancestor_without_external_write(self):
+        self.install()
+        nested = self.source / "nested"
+        nested.mkdir()
+        (nested / "new.md").write_text("managed data", encoding="utf-8")
+        outside = self.dest.parent / "external"
+        outside.mkdir()
+        original_copytree = safe_install.shutil.copytree
+
+        def inject_symlink(src, dst, **kwargs):
+            result = original_copytree(src, dst, **kwargs)
+            (Path(dst) / "nested").symlink_to(outside, target_is_directory=True)
+            return result
+
+        with patch.object(safe_install.shutil, "copytree", side_effect=inject_symlink):
+            with self.assertRaisesRegex(ValueError, "Symbolic link"):
+                self.install()
+        self.assertFalse((outside / "new.md").exists())
+
+    def test_detects_user_edit_during_staging_and_preserves_it(self):
+        self.install()
+        (self.source / "SKILL.md").write_text("new release\n", encoding="utf-8")
+        original_copytree = safe_install.shutil.copytree
+
+        def edit_during_stage(src, dst, **kwargs):
+            result = original_copytree(src, dst, **kwargs)
+            (self.dest / "SKILL.md").write_text("edited during update\n", encoding="utf-8")
+            return result
+
+        with patch.object(safe_install.shutil, "copytree", side_effect=edit_during_stage):
+            with self.assertRaisesRegex(OSError, "changed during installation"):
+                self.install()
+        self.assertEqual((self.dest / "SKILL.md").read_text(), "edited during update\n")
 
     def test_recovers_previous_install_after_interrupted_rename(self):
         self.install()
