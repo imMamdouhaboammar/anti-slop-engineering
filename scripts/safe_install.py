@@ -136,11 +136,25 @@ def plan_files(source_files, destination, previous):
                 results["conflicted"].append(relative)
     if destination.exists():
         for item in destination.rglob("*"):
-            if item.is_file() or item.is_symlink():
-                relative = item.relative_to(destination).as_posix()
-                if relative != MANIFEST and relative not in source_files:
-                    results["preserved"].append(relative)
+            if not item.is_file() and not item.is_symlink():
+                continue
+            relative = item.relative_to(destination).as_posix()
+            if relative != MANIFEST and relative not in source_files:
+                results["preserved"].append(relative)
     return results, writes, managed
+
+
+def record_swap(destination, backup):
+    journal = destination.parent / f".{destination.name}.swap.json"
+    descriptor, name = tempfile.mkstemp(prefix=f".{destination.name}.journal-", dir=destination.parent)
+    os.close(descriptor)
+    temporary = Path(name)
+    try:
+        temporary.write_text(json.dumps({"backup": backup.name}), encoding="utf-8")
+        os.replace(temporary, journal)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
 
 
 def stage_install(destination, writes, managed):
@@ -170,15 +184,7 @@ def stage_install(destination, writes, managed):
         if destination.exists():
             backup = Path(tempfile.mkdtemp(prefix=f".{destination.name}.backup-", dir=destination.parent))
             backup.rmdir()
-            descriptor, tmp_name = tempfile.mkstemp(prefix=f".{destination.name}.journal-", dir=destination.parent)
-            os.close(descriptor)
-            journal_tmp = Path(tmp_name)
-            try:
-                journal_tmp.write_text(json.dumps({"backup": backup.name}), encoding="utf-8")
-                os.replace(journal_tmp, journal)
-            finally:
-                if journal_tmp.exists():
-                    journal_tmp.unlink()
+            record_swap(destination, backup)
             os.replace(destination, backup)
         try:
             os.replace(stage, destination)
