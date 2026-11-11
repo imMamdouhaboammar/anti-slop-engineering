@@ -6,7 +6,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
 import { spawnSync } from 'node:child_process'
-import { randomUUID } from 'node:crypto'
+import { createHash } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -193,10 +193,12 @@ export function writeBlock(entry, block) {
     if (current === path.dirname(current)) break
   }
   let existing = ''
+  let exists = true
   try {
     existing = fs.readFileSync(entry, 'utf8')
   } catch (err) {
     if (err && err.code !== 'ENOENT') throw err
+    exists = false
   }
   const crlf = (existing.match(/\r\n/g) || []).length
   const eol = crlf > (existing.match(/\n/g) || []).length - crlf ? '\r\n' : '\n'
@@ -221,13 +223,19 @@ export function writeBlock(entry, block) {
     .replace(/^\r?\n+/, '')
     .trimEnd()
 
-  const temporary = `${entry}.${process.pid}.${randomUUID()}.tmp`
-  try {
-    fs.writeFileSync(temporary, body + eol, { mode: fs.existsSync(entry) ? fs.statSync(entry).mode : 0o644 })
-    fs.renameSync(temporary, entry)
-  } finally {
-    if (fs.existsSync(temporary)) fs.unlinkSync(temporary)
+  const helper = path.join(rootDir, 'scripts', 'safe_install.py')
+  const expected = exists ? createHash('sha256').update(existing).digest('hex') : 'absent'
+  const candidates = process.platform === 'win32' ? [['py', '-3'], ['python', '']] : [['python3', '']]
+  for (const [executable, flag] of candidates) {
+    const args = [...(flag ? [flag] : []), helper, '--write-instruction', path.resolve(entry), '--expected-hash', expected]
+    const result = spawnSync(executable, args, { encoding: 'utf8', input: body + eol })
+    if (result.error?.code === 'ENOENT') continue
+    if (result.error || result.status !== 0) {
+      throw new Error(result.stderr?.trim() || result.error?.message || `Instruction writer exited ${result.status}`)
+    }
+    return
   }
+  throw new Error('Python 3 is required for safe agent instruction updates')
 }
 
 export function updatePointers({ targets, skills }) {
