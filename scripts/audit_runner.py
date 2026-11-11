@@ -45,8 +45,8 @@ def load_settings() -> Dict[str, Any]:
             data = json.load(f)
             if isinstance(data, dict):
                 return data
-    except Exception:
-        pass
+    except (OSError, ValueError) as exc:
+        print(f"Invalid settings file {file_path}: {exc}; using default mode", file=sys.stderr)
     return {"mode": "during"}
 
 
