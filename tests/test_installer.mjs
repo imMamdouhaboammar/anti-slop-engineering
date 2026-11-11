@@ -9,6 +9,7 @@ import { test } from 'node:test'
 import {
   AGENTS,
   CORE_SKILL,
+  installSkills,
   listAvailableSkills,
   resolveTargets,
   writeBlock,
@@ -68,5 +69,24 @@ test('Installer: writeBlock safely injects and replaces pointer block', () => {
     assert.equal(matchCount, 1)
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true })
+  }
+})
+
+test('Installer: overwriting a managed skill preserves modified files and user additions', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'anti-slop-preserve-'))
+  const target = { path: root, agents: [{ id: 'codex', entry: 'AGENTS.md' }] }
+  try {
+    installSkills({ skills: [CORE_SKILL], targets: [target], overwrite: true })
+    const dest = path.join(root, CORE_SKILL)
+    const modified = path.join(dest, 'SKILL.md')
+    fs.writeFileSync(modified, '# user customization\n')
+    fs.writeFileSync(path.join(dest, 'user-notes.md'), 'keep me\n')
+
+    installSkills({ skills: [CORE_SKILL], targets: [target], overwrite: true })
+
+    assert.equal(fs.readFileSync(modified, 'utf8'), '# user customization\n')
+    assert.equal(fs.readFileSync(path.join(dest, 'user-notes.md'), 'utf8'), 'keep me\n')
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
   }
 })
