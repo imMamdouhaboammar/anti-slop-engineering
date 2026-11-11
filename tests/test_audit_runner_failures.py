@@ -1,6 +1,7 @@
 import contextlib
 import io
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -42,13 +43,18 @@ class AuditRunnerFailureContractTests(unittest.TestCase):
 
     def run_report(self, json_mode=True, timeout=None):
         output = io.StringIO()
-        with contextlib.ExitStack() as stack:
-            stack.enter_context(patch.object(audit_runner, "__file__", str(self.scripts / "audit_runner.py")))
-            stack.enter_context(patch.object(audit_runner, "AUDIT_DIR", self.root / "reports"))
-            if timeout is not None:
-                stack.enter_context(patch.object(audit_runner, "GUARD_TIMEOUT_SECONDS", timeout, create=True))
-            with contextlib.redirect_stdout(output):
-                exit_code = audit_runner.run_audit(base="HEAD", json_output=json_mode)
+        original_cwd = Path.cwd()
+        try:
+            os.chdir(self.root)
+            with contextlib.ExitStack() as stack:
+                stack.enter_context(patch.object(audit_runner, "__file__", str(self.scripts / "audit_runner.py")))
+                stack.enter_context(patch.object(audit_runner, "AUDIT_DIR", self.root / "reports"))
+                if timeout is not None:
+                    stack.enter_context(patch.object(audit_runner, "GUARD_TIMEOUT_SECONDS", timeout, create=True))
+                with contextlib.redirect_stdout(output):
+                    exit_code = audit_runner.run_audit(base="HEAD", json_output=json_mode)
+        finally:
+            os.chdir(original_cwd)
         return exit_code, json.loads(output.getvalue()) if json_mode else output.getvalue()
 
     def test_clean_execution_reports_all_mandatory_checks(self):
@@ -117,6 +123,49 @@ class AuditRunnerFailureContractTests(unittest.TestCase):
         self.assertNotEqual(code, 0)
         self.assertEqual(report["status"], "BLOCKED")
         self.assertEqual(report["blockers_count"], 2)
+
+    def test_contrast_guard_finding_exit_one_is_valid(self):
+        self.set_guard("contrast_guard", {
+            "findings": [{"file": "ui.css", "line": 3, "fg": "#888", "bg": "#fff", "ratio": 3.5}],
+        }, exit_code=1)
+        code, report = self.run_report()
+        self.assertEqual(code, 0)
+        self.assertEqual(report["total_findings"], 1)
+        self.assertEqual(report["guards"]["contrast_guard"]["status"], "FINDINGS")
+
+    def test_invalid_finding_schema_fails_closed(self):
+        self.set_guard("attention_guard", {"findings": [None]})
+        code, report = self.run_report()
+        self.assertNotEqual(code, 0)
+        self.assertEqual(report["status"], "ERROR")
+        self.assertIn("schema", report["guards"]["attention_guard"]["error"])
+
+    def test_unknown_severity_cannot_be_downgraded(self):
+        self.set_guard("sre_guard", {"findings": [
+            {"severity": "blockr", "file": "code.py", "message": "unsafe"},
+        ]})
+        code, report = self.run_report()
+        self.assertNotEqual(code, 0)
+        self.assertEqual(report["status"], "ERROR")
+
+    def test_missing_executable_is_not_a_clean_scan(self):
+        with patch.object(audit_runner.sys, "executable", "/missing/python"):
+            code, report = self.run_report()
+        self.assertNotEqual(code, 0)
+        self.assertEqual(report["status"], "ERROR")
+        self.assertIn("Unable to execute", report["guards"]["diff_guard"]["error"])
+
+    def test_execution_error_preserves_other_valid_findings(self):
+        self.set_guard("sre_guard", {"findings": []}, exit_code=1)
+        self.set_guard("diff_guard", {
+            "findings": [{"severity": "blocker", "file": "src/hi.py", "line": 2,
+                          "message": "unsafe"}],
+        })
+        code, report = self.run_report()
+        self.assertNotEqual(code, 0)
+        self.assertEqual(report["status"], "ERROR")
+        self.assertEqual(report["blockers_count"], 1)
+        self.assertEqual(report["total_findings"], 1)
 
 
 if __name__ == "__main__":
