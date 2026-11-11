@@ -12,6 +12,7 @@ import {
   installSkills,
   listAvailableSkills,
   resolveTargets,
+  updateAll,
   writeBlock,
 } from '../scripts/installer.mjs'
 
@@ -119,6 +120,25 @@ test('Installer: never follows symlinked agent instruction files', () => {
     ]), /symbolic link/i)
     assert.equal(fs.readFileSync(victim, 'utf8'), 'owner data\n')
   } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('Installer: updateAll reports preserved customization conflicts', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'anti-slop-update-'))
+  const original = process.cwd()
+  try {
+    process.chdir(root)
+    const target = resolveTargets('project', ['codex'])[0]
+    installSkills({ skills: [CORE_SKILL], targets: [target], overwrite: true })
+    fs.writeFileSync(path.join(target.path, CORE_SKILL, 'SKILL.md'), '# private edits\n')
+
+    const report = updateAll({ locations: ['project'] })
+    assert.equal(report.results.length, 1)
+    assert.deepEqual(report.results[0].changes.conflicted, ['SKILL.md'])
+    assert.equal(fs.readFileSync(path.join(target.path, CORE_SKILL, 'SKILL.md'), 'utf8'), '# private edits\n')
+  } finally {
+    process.chdir(original)
     fs.rmSync(root, { recursive: true, force: true })
   }
 })
