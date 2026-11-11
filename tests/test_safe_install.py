@@ -105,6 +105,14 @@ class SafeFileInstallTests(unittest.TestCase):
         self.install()
         self.assertTrue((self.dest / "bin" / "cli.js").stat().st_mode & stat.S_IXUSR)
 
+    def test_project_local_install_excludes_its_own_destination(self):
+        local = self.source / ".agents" / "skills" / "anti-slop-engineering"
+        first = safe_install.install_tree(self.source, local)
+        second = safe_install.install_tree(self.source, local)
+        self.assertEqual(first["installed"], ["SKILL.md"])
+        self.assertEqual(second["skipped"], ["SKILL.md"])
+        self.assertFalse((local / ".agents").exists())
+
 
 if __name__ == "__main__":
     unittest.main()
