@@ -179,6 +179,13 @@ class CompositeActionAggregationTests(unittest.TestCase):
         self.assertNotEqual(proc.returncode, 0)
         self.assert_outputs(output, "ERROR", 0, 0)
 
+    def test_malformed_guard_collection_still_emits_error_outputs(self):
+        report = report_for()
+        report["guards"] = ["not-a-guard-map"]
+        proc, output, _ = self.run_action(report)
+        self.assertNotEqual(proc.returncode, 0)
+        self.assert_outputs(output, "ERROR", 0, 0)
+
 
 if __name__ == "__main__":
     unittest.main()
