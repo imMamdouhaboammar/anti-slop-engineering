@@ -9,8 +9,7 @@ numbered audit report in `anti-slop/audit-NNN.md`.
 
 Usage:
     python3 scripts/audit_runner.py mode [during|after|ask]
-    python3 scripts/audit_runner.py audit [--base HEAD] [--json]
-    python3 scripts/audit_runner.py fix --finding 1,3
+    python3 scripts/audit_runner.py audit [--base HEAD] [--json] [--mode during|after|ask]
 """
 
 import argparse
@@ -31,7 +30,7 @@ AUDIT_DIR = Path.cwd() / "anti-slop"
 GUARD_TIMEOUT_SECONDS = 60
 
 
-def get_settings_file() -> Path:
+def get_settings_file(max_depth: int = 5) -> Path:
     if LOCAL_SETTINGS_FILE.exists():
         return LOCAL_SETTINGS_FILE
     return GLOBAL_SETTINGS_FILE
@@ -290,9 +289,61 @@ def collect_audit_findings(
     return findings, guards
 
 
+def _render_remediation_workflow(findings: List[Dict[str, Any]], mode: str) -> List[str]:
+    lines = [
+        "---",
+        "",
+        "## Remediation & Review Workflow",
+        "",
+    ]
+    normalized_mode = mode.lower() if mode else "during"
+    if normalized_mode == "during":
+        lines.append(
+            "In **DURING Mode** (in-flight development), resolve findings iteratively "
+            "in your working tree before committing or submitting a pull request."
+        )
+    elif normalized_mode == "after":
+        lines.append(
+            "In **AFTER Mode** (post-implementation review), review all reported findings "
+            "and apply manual, reviewable remediation before approving or merging changes."
+        )
+    else:
+        lines.append(
+            f"In **{normalized_mode.upper()} Mode** (interactive triage), review each finding "
+            "interactively and confirm manual remediation before proceeding."
+        )
+    lines.append("")
+
+    if findings:
+        lines.append("### Manual Remediation Checklist")
+        lines.append("")
+        lines.append("Review the detailed finding dossiers above and address each item:")
+        lines.append("")
+        for f in findings:
+            target = f"{f['file']}:{f['line']}" if f.get("file") else "System"
+            remediation = f.get("remediation", "Review and remediate finding")
+            lines.append(f"- [ ] `{f['id']}` [{f['severity']}]: {remediation} (`{target}`)")
+        lines.append("")
+        lines.append("After applying manual fixes, re-run the multi-guard audit to verify resolution:")
+        lines.append("")
+        lines.append("```bash")
+        lines.append("# Re-run multi-guard audit to verify fixes:")
+        lines.append("python3 scripts/audit_runner.py audit --base HEAD")
+        lines.append("```")
+    else:
+        lines.append("All guards passed with 0 findings. No remediation required.")
+        lines.append("")
+        lines.append("```bash")
+        lines.append("# Verify audit status before committing:")
+        lines.append("python3 scripts/audit_runner.py audit --base HEAD")
+        lines.append("```")
+    return lines
+
+
 def generate_audit_markdown(
     findings: List[Dict[str, Any]], audit_file: Path,
     status: Optional[str] = None, guards: Optional[Dict[str, Dict[str, Any]]] = None,
+    mode: Optional[str] = None,
 ) -> str:
     today = datetime.date.today().isoformat()
     total = len(findings)
@@ -356,17 +407,8 @@ def generate_audit_markdown(
             "",
         ])
 
-    lines.extend([
-        "---",
-        "",
-        "## Approval & Remediation Workflow",
-        "",
-        "In **AFTER Mode**, select finding IDs to approve remediation:",
-        "```bash",
-        "# Fix approved findings:",
-        f"bunx anti-slop-engineering fix --findings={','.join(f['id'] for f in findings[:3]) if findings else 'ALL'}",
-        "```",
-    ])
+    effective_mode = mode if mode is not None else load_settings().get("mode", "during")
+    lines.extend(_render_remediation_workflow(findings, effective_mode))
 
     content = "\n".join(lines) + "\n"
     with open(audit_file, "w", encoding="utf-8") as out_f:
@@ -377,6 +419,7 @@ def generate_audit_markdown(
 def run_audit(
     base: str = "HEAD", json_output: bool = False, pr_title: str = "",
     pr_body_file: str = "", template_file: str = "", canary_token: str = "",
+    mode: Optional[str] = None,
 ) -> int:
     findings, guards = collect_audit_findings(base, pr_title, pr_body_file, template_file, canary_token)
     blockers = sum(1 for finding in findings if finding["severity"] == "BLOCKER")
@@ -385,9 +428,10 @@ def run_audit(
     )
     audit_file = None
     audit_error = None
+    effective_mode = mode if mode is not None else load_settings().get("mode", "during")
     try:
         audit_file = get_next_audit_file()
-        generate_audit_markdown(findings, audit_file, status=status, guards=guards)
+        generate_audit_markdown(findings, audit_file, status=status, guards=guards, mode=effective_mode)
     except OSError as exc:
         status = "ERROR"
         audit_error = f"Unable to write audit report: {exc}"
@@ -435,9 +479,19 @@ def main() -> int:
         parser.add_argument("--pr-body-file", default="")
         parser.add_argument("--template-file", default="")
         parser.add_argument("--canary-token", default="")
+        parser.add_argument("--mode", default=None, choices=["during", "after", "ask"],
+                            help="Override audit execution mode (during, after, ask)")
         options = parser.parse_args(args[1:])
         return run_audit(options.base, options.json, options.pr_title,
-                         options.pr_body_file, options.template_file, options.canary_token)
+                         options.pr_body_file, options.template_file, options.canary_token,
+                         mode=options.mode)
+    elif command == "fix":
+        print(
+            "Error: 'fix' command is not supported. Anti-slop engineering requires "
+            "reviewable, manual remediation of findings according to the audit report.",
+            file=sys.stderr,
+        )
+        return 2
     else:
         print(f"Error: Unknown audit_runner command '{command}'", file=sys.stderr)
         return 2
