@@ -1,0 +1,87 @@
+{
+  "$schema": "https://skills.sh/schemas/skills.sh.schema.json",
+  "notGrouped": "bottom",
+  "groupings": [
+    {
+      "title": "Core & Decisions",
+      "description": "Foundational anti-slop doctrine, architectural decision gates, and root-cause invariants.",
+      "skills": [
+        "anti-slop-engineering",
+        "decision-guard",
+        "root-fix-gate",
+        "future-scale-gate",
+        "grumpy-senior-staff-engineer",
+        "repo-memory-and-invariant-steward",
+        "backprop-guard",
+        "reduction-guard"
+      ]
+    },
+    {
+      "title": "Code & Contracts",
+      "description": "Type-level discipline, API ergonomics, comment hygiene, and PR boundary guards.",
+      "skills": [
+        "api-ergonomics-and-contract-governor",
+        "type-level-and-ast-slop-gate",
+        "comment-budget-guard",
+        "pr-boundary-guard",
+        "demock-guard",
+        "install-anti-slop"
+      ]
+    },
+    {
+      "title": "Systems & Architecture",
+      "description": "Zero-trust resilience, zero-downtime migrations, rollout choreography, privacy, and observability.",
+      "skills": [
+        "paranoid-principal-architect",
+        "safe-evolution-and-rollout-choreographer",
+        "zero-downtime-migration-gate",
+        "privacy-and-data-lineage-gate",
+        "observability-and-slo-architect",
+        "observability-and-slo-gate"
+      ]
+    },
+    {
+      "title": "Performance & Diagnostics",
+      "description": "Hardware-level mechanical sympathy, latency profiling, and scientific fault isolation.",
+      "skills": [
+        "mechanical-sympathy-and-perf-gate",
+        "mechanical-sympathy-profiler",
+        "scientific-fault-isolation"
+      ]
+    },
+    {
+      "title": "Testing & Verification",
+      "description": "Property-based simulation, zero-mock verification oracles, anti-mandela auditing, and trap detection.",
+      "skills": [
+        "deterministic-simulation-and-property-testing",
+        "verification-oracle-architect",
+        "mandela-guard",
+        "honeypot-trap-guard"
+      ]
+    },
+    {
+      "title": "UI, Motion & Craft",
+      "description": "Design engineering, HIG physics, WCAG 2.2 accessibility, design system drift guards, and motion budgets.",
+      "skills": [
+        "ui-and-copy-discipline",
+        "apple-craft-and-interaction-physics",
+        "apple-craft-and-frame-budget",
+        "design-system-drift-guard",
+        "chromatic-drift-guard",
+        "styleseed-guard",
+        "motion-runtime-guard",
+        "asset-provenance-guard"
+      ]
+    },
+    {
+      "title": "Discourse & Handoffs",
+      "description": "High-signal engineering prose, cognitive bandwidth economics, Re0 state notes, and house-tell prevention.",
+      "skills": [
+        "tagore-guard",
+        "re0-handoff-guard",
+        "cognitive-load-and-attention-governor",
+        "house-tell-guard"
+      ]
+    }
+  ]
+}
