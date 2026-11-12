@@ -168,10 +168,15 @@ class BashInstallerSafetyTests(unittest.TestCase):
 
     def test_install_without_executable_cli_skips_links_safely(self):
         """When no executable CLI target is found, skills install cleanly and links are skipped."""
+        source = self.home / "no-cli-source"
+        (source / "scripts").mkdir(parents=True)
+        shutil.copy2(REPO / "install.sh", source / "install.sh")
+        shutil.copy2(REPO / "scripts/safe_install.py", source / "scripts/safe_install.py")
+        (source / "SKILL.md").write_text("no-cli\n", encoding="utf-8")
         result = subprocess.run(
-            ["bash", str(REPO / "install.sh")],
-            cwd=self.home,
-            env={**os.environ, "HOME": str(self.home), "PATH": "/usr/bin:/bin"},
+            ["bash", "install.sh"],
+            cwd=source,
+            env={**os.environ, "HOME": str(self.home), "PATH": SAFE_PATH},
             capture_output=True,
             text=True,
         )
