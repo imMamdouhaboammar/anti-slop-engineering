@@ -8,15 +8,26 @@ from pathlib import Path
 
 
 REPO = Path(__file__).resolve().parents[1]
-NODE_DIRECTORY = str(Path(shutil.which("node")).parent) if shutil.which("node") else "/usr/bin"
-SAFE_PATH = f"{NODE_DIRECTORY}:/usr/bin:/bin"
+_REAL_NODE = shutil.which("node")
+HAS_NODE = _REAL_NODE is not None
+
+# Create a clean, isolated directory containing only a symlink to node (if present)
+# to avoid leaking host agent binaries (codex, claude, gemini) located in ~/.local/bin
+# into SAFE_PATH during installer tests.
+_ISOLATED_DIR = tempfile.TemporaryDirectory()
+_ISOLATED_BIN = Path(_ISOLATED_DIR.name).resolve() / "bin"
+_ISOLATED_BIN.mkdir(parents=True, exist_ok=True)
+if HAS_NODE:
+    (_ISOLATED_BIN / "node").symlink_to(_REAL_NODE)
+
+SAFE_PATH = f"{_ISOLATED_BIN}:/usr/bin:/bin"
 
 
 class BashInstallerSafetyTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
-        self.home = Path(self.temp.name)
+        self.home = Path(self.temp.name).resolve()
 
     def install(self):
         return subprocess.run(
@@ -28,6 +39,7 @@ class BashInstallerSafetyTests(unittest.TestCase):
         )
 
     def test_repeat_install_keeps_user_skill_edits(self):
+        """Verify repeated installation retains user edits to installed skill files."""
         first = self.install()
         self.assertEqual(first.returncode, 0, first.stderr)
         skill = self.home / ".agents/skills/anti-slop-engineering"
@@ -41,6 +53,7 @@ class BashInstallerSafetyTests(unittest.TestCase):
         self.assertEqual((skill / "my-notes.md").read_text(), "personal reference\n")
 
     def test_other_user_skills_remain_untouched(self):
+        """Verify sibling skills in the destination directory are never modified or removed."""
         sibling = self.home / ".agents/skills/my-other-skill"
         sibling.mkdir(parents=True)
         (sibling / "SKILL.md").write_text("my own skill\n", encoding="utf-8")
@@ -49,6 +62,7 @@ class BashInstallerSafetyTests(unittest.TestCase):
         self.assertEqual((sibling / "SKILL.md").read_text(), "my own skill\n")
 
     def test_reinstall_does_not_change_local_executable_modes(self):
+        """Verify reinstalling does not override existing file permission modes."""
         self.assertEqual(self.install().returncode, 0)
         cli = self.home / ".agents/skills/anti-slop-engineering/bin/cli.js"
         cli.chmod(0o600)
@@ -57,6 +71,7 @@ class BashInstallerSafetyTests(unittest.TestCase):
         self.assertEqual(stat.S_IMODE(cli.stat().st_mode), 0o600)
 
     def test_symlinked_destination_is_rejected_without_touching_target(self):
+        """Verify symlinked destination directories are safely rejected."""
         root = self.home / ".agents/skills"
         root.mkdir(parents=True)
         outside = self.home / "outside"
@@ -69,6 +84,7 @@ class BashInstallerSafetyTests(unittest.TestCase):
         self.assertEqual((outside / "SKILL.md").read_text(), "leave me\n")
 
     def test_project_local_install_does_not_copy_itself_recursively(self):
+        """Verify --project install does not create nested recursive skill copies."""
         source = self.home / "source"
         (source / "scripts").mkdir(parents=True)
         shutil.copy2(REPO / "install.sh", source / "install.sh")
@@ -86,6 +102,7 @@ class BashInstallerSafetyTests(unittest.TestCase):
         self.assertFalse((self.home / "home/.local/bin/anti-slop-engineering").exists())
 
     def test_bundled_module_conflicts_are_printed_as_readable_paths(self):
+        """Verify bundled sub-module conflicts report clean readable destination paths."""
         source = self.home / "fixture"
         (source / "scripts").mkdir(parents=True)
         module = source / "skills/decision-guard"
@@ -109,7 +126,9 @@ class BashInstallerSafetyTests(unittest.TestCase):
         self.assertIn("Conflicts retained: SKILL.md", result.stdout)
         self.assertEqual(installed.read_text(), "user edit\n")
 
+    @unittest.skipUnless(HAS_NODE, "Node.js runtime required to execute bin/cli.js")
     def test_universal_only_install_creates_executable_cli_links(self):
+        """End-to-end smoke test verifying universal install creates executable CLI symlinks."""
         result = self.install()
         self.assertEqual(result.returncode, 0, result.stderr)
         cli = self.home / ".agents/skills/anti-slop-engineering/bin/cli.js"
@@ -121,14 +140,57 @@ class BashInstallerSafetyTests(unittest.TestCase):
         primary = self.home / ".local/bin/anti-slop-engineering"
         self.assertEqual(subprocess.run([str(primary), "--help"], capture_output=True).returncode, 0)
 
+    def test_runtime_independent_cli_link_creation(self):
+        """Verify CLI link creation and target resolution without requiring Node.js."""
+        source = self.home / "standalone-source"
+        (source / "scripts").mkdir(parents=True)
+        (source / "bin").mkdir()
+        shutil.copy2(REPO / "install.sh", source / "install.sh")
+        shutil.copy2(REPO / "scripts/safe_install.py", source / "scripts/safe_install.py")
+        (source / "SKILL.md").write_text("standalone\n", encoding="utf-8")
+        cli_fixture = source / "bin/cli.js"
+        cli_fixture.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        cli_fixture.chmod(0o755)
+        result = subprocess.run(
+            ["bash", "install.sh"],
+            cwd=source,
+            env={**os.environ, "HOME": str(self.home), "PATH": "/usr/bin:/bin"},
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        expected_cli = self.home / ".agents/skills/anti-slop-engineering/bin/cli.js"
+        for name in ("anti-slop-engineering", "diff-guard", "sre-guard", "rust-guard", "toil-guard"):
+            link = self.home / ".local/bin" / name
+            self.assertTrue(link.is_symlink(), f"Missing {link}")
+            self.assertEqual(link.resolve(), expected_cli)
+            self.assertTrue(os.access(link, os.X_OK))
+
+    def test_install_without_executable_cli_skips_links_safely(self):
+        """When no executable CLI target is found, skills install cleanly and links are skipped."""
+        result = subprocess.run(
+            ["bash", str(REPO / "install.sh")],
+            cwd=self.home,
+            env={**os.environ, "HOME": str(self.home), "PATH": "/usr/bin:/bin"},
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("No executable CLI target", result.stderr)
+        self.assertFalse((self.home / ".local/bin/anti-slop-engineering").exists())
+
+    @unittest.skipUnless(HAS_NODE, "Node.js runtime required to execute bin/cli.js")
     def test_codex_install_links_to_existing_codex_cli(self):
+        """Verify installation prioritizes Codex CLI when Codex agent environment exists."""
         (self.home / ".codex").mkdir()
         result = self.install()
         self.assertEqual(result.returncode, 0, result.stderr)
         link = self.home / ".local/bin/anti-slop-engineering"
         self.assertEqual(link.resolve(), self.home / ".codex/skills/anti-slop-engineering/bin/cli.js")
 
+    @unittest.skipUnless(HAS_NODE, "Node.js runtime required to execute bin/cli.js")
     def test_multi_agent_install_uses_verified_gemini_cli(self):
+        """Verify Gemini CLI target is prioritized over Codex in multi-agent installations."""
         (self.home / ".gemini").mkdir()
         (self.home / ".codex").mkdir()
         result = self.install()
@@ -136,7 +198,9 @@ class BashInstallerSafetyTests(unittest.TestCase):
         link = self.home / ".local/bin/anti-slop-engineering"
         self.assertEqual(link.resolve(), self.home / ".gemini/config/skills/anti-slop-engineering/bin/cli.js")
 
+    @unittest.skipUnless(HAS_NODE, "Node.js runtime required to execute bin/cli.js")
     def test_existing_user_owned_links_are_preserved(self):
+        """Verify user-owned CLI links and files are preserved with conflict warnings."""
         bin_dir = self.home / ".local/bin"
         bin_dir.mkdir(parents=True)
         external = self.home / "custom-tool"
@@ -150,7 +214,9 @@ class BashInstallerSafetyTests(unittest.TestCase):
         self.assertIn("conflict", result.stdout.lower())
         self.assertTrue((bin_dir / "sre-guard").is_symlink())
 
+    @unittest.skipUnless(HAS_NODE, "Node.js runtime required to execute bin/cli.js")
     def test_repeated_install_preserves_existing_valid_links(self):
+        """Verify idempotency of CLI link creation across multiple installation runs."""
         self.assertEqual(self.install().returncode, 0)
         link = self.home / ".local/bin/anti-slop-engineering"
         first = link.lstat().st_ino
@@ -159,6 +225,7 @@ class BashInstallerSafetyTests(unittest.TestCase):
         self.assertEqual(link.lstat().st_ino, first)
 
     def test_non_executable_cli_never_becomes_a_link_target(self):
+        """Verify non-executable or failing CLI candidate is rejected and produces no links."""
         source = self.home / "incomplete-source"
         (source / "scripts").mkdir(parents=True)
         (source / "bin").mkdir()
@@ -174,6 +241,7 @@ class BashInstallerSafetyTests(unittest.TestCase):
         self.assertFalse((self.home / ".local/bin/anti-slop-engineering").exists())
 
     def test_symlinked_cli_directory_is_never_written_through(self):
+        """Verify symlinked ~/.local directory paths abort before writing any links."""
         outside = self.home / "other-bin"
         outside.mkdir()
         (self.home / ".local").symlink_to(outside, target_is_directory=True)
