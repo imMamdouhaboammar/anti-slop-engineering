@@ -138,16 +138,21 @@ func collectExplicitTargetFiles(targets []string) (map[string]string, error) {
 	return fileMap, nil
 }
 
+func runGitCommand(args ...string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	return exec.CommandContext(ctx, "git", args...).CombinedOutput()
+}
+
 func collectGitDiffFiles(base string) (map[string]string, error) {
 	if strings.TrimSpace(base) == "" || strings.HasPrefix(base, "-") {
 		return nil, fmt.Errorf("invalid git base reference %q", base)
 	}
-	revOut, revErr := exec.Command("git", "rev-parse", "--verify", base+"^{commit}").CombinedOutput()
-	if revErr != nil {
+	if revOut, revErr := runGitCommand("rev-parse", "--verify", base+"^{commit}"); revErr != nil {
 		return nil, fmt.Errorf("invalid git base %q: %w: %s", base, revErr, strings.TrimSpace(string(revOut)))
 	}
 
-	out, err := exec.Command("git", "-c", "diff.noprefix=false", "-c", "diff.mnemonicPrefix=false", "diff", "--no-ext-diff", base, "--").CombinedOutput()
+	out, err := runGitCommand("-c", "diff.noprefix=false", "-c", "diff.mnemonicPrefix=false", "diff", "--no-ext-diff", base, "--")
 	if err != nil {
 		return nil, fmt.Errorf("git diff %q failed: %w: %s", base, err, strings.TrimSpace(string(out)))
 	}
@@ -159,7 +164,7 @@ func collectGitDiffFiles(base string) (map[string]string, error) {
 
 func collectUntrackedAndModifiedStatusFiles() (map[string]string, error) {
 	fileMap := make(map[string]string)
-	statusOut, statusErr := exec.Command("git", "status", "--porcelain").CombinedOutput()
+	statusOut, statusErr := runGitCommand("status", "--porcelain", "--untracked-files=all")
 	if statusErr != nil {
 		return nil, fmt.Errorf("git status failed: %w: %s", statusErr, strings.TrimSpace(string(statusOut)))
 	}

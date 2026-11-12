@@ -191,3 +191,30 @@ func TestParseGitDiffRejectsMalformedNonEmptyOutput(t *testing.T) {
 		t.Fatal("expected error for malformed diff without diff header")
 	}
 }
+
+func TestExecuteAuditCollectsUntrackedFileInNestedDir(t *testing.T) {
+	dir := initTempGitRepo(t)
+	t.Chdir(dir)
+
+	nestedDir := filepath.Join(dir, "src")
+	if err := os.MkdirAll(nestedDir, 0750); err != nil {
+		t.Fatal(err)
+	}
+	nestedFile := filepath.Join(nestedDir, "bad.go")
+	if err := os.WriteFile(nestedFile, []byte("package src\n\nfunc Bad() {\n\ttime.Sleep(5 * time.Second)\n}\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := executeAudit([]string{"--format", "json", "--base", "HEAD"}, &stdout, &stderr)
+	if code == 0 {
+		t.Fatalf("expected non-zero exit for untracked nested blocker, got 0 (stdout=%s)", stdout.String())
+	}
+	var report model.AuditReport
+	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
+		t.Fatalf("invalid JSON output: %v\n%s", err, stdout.String())
+	}
+	if report.SLI.TotalFiles != 1 || report.SLI.Status != "BLOCKED" || len(report.Findings) == 0 {
+		t.Fatalf("expected 1 blocked nested file, got: %+v", report)
+	}
+}
