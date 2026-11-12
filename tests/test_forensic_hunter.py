@@ -211,6 +211,128 @@ class ForensicHunterTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 forensic_hunter.parse_git_diff("nonexistent-ref")
 
+    def test_arc01_false_positive_regressions(self) -> None:
+        # Exact bin/cli.js:496 error logger false positive case
+        cli_lines = [
+            (496, "console.error(`Error: update script not found at ${updateOxlintScript}`);"),
+        ]
+        findings = forensic_hunter.scan_lines("bin/cli.js", cli_lines)
+        arc01_findings = [f for f in findings if f.code == "ARC-01"]
+        self.assertEqual(len(arc01_findings), 0, f"False positive ARC-01 on bin/cli.js:496: {arc01_findings}")
+
+        # Non-SQL loggers, error messages, and exceptions
+        logger_lines = [
+            (10, "console.log(`Updated ${count} records successfully`);"),
+            (11, 'logger.info(f"Selected item {item_id} for user {user_id}")'),
+            (12, 'log.Printf("Insert operation completed for user: %s", username)'),
+            (13, 'print(f"Delete operation finished for file: {file_path}")'),
+            (14, 'throw new Error(`Failed to update service config: ${cfg}`);'),
+            (15, 'raise ValueError(f"Cannot select unsupported option {opt}")'),
+        ]
+        findings = forensic_hunter.scan_lines("service.ts", logger_lines)
+        arc01_findings = [f for f in findings if f.code == "ARC-01"]
+        self.assertEqual(len(arc01_findings), 0, f"False positive ARC-01 on loggers: {arc01_findings}")
+
+        # UI copy, HTML, and JSX templates
+        ui_lines = [
+            (20, "<button>Delete ${item.name}</button>"),
+            (21, "<span>Select an option from ${categoryName}</span>"),
+            (22, "<h1>Update user profile for ${user.name}</h1>"),
+            (23, "const tooltip = `Insert new comment for ${author}`;"),
+            (24, "toast.success(`Updated ${itemName} successfully`);"),
+        ]
+        findings = forensic_hunter.scan_lines("Component.tsx", ui_lines)
+        arc01_findings = [f for f in findings if f.code == "ARC-01"]
+        self.assertEqual(len(arc01_findings), 0, f"False positive ARC-01 on UI copy: {arc01_findings}")
+
+        # Documentation and comments containing SQL examples
+        doc_lines = [
+            (30, "// Note: run UPDATE users SET name = 'foo' where id = ${id}"),
+            (31, "/* SELECT * FROM users WHERE id = ${id} */"),
+            (32, '"""Example query: SELECT * FROM table WHERE id = %s"""'),
+            (33, "* @example SELECT * FROM accounts WHERE id = ${id}"),
+        ]
+        findings = forensic_hunter.scan_lines("docs.py", doc_lines)
+        arc01_findings = [f for f in findings if f.code == "ARC-01"]
+        self.assertEqual(len(arc01_findings), 0, f"False positive ARC-01 on docs/comments: {arc01_findings}")
+
+        # Mixed-case command names, file paths, and prose
+        prose_lines = [
+            (40, "const updateOxlintScript = path.join(dir, 'update.sh');"),
+            (41, "const selectMenuCommand = `run-select --target ${target}`;"),
+            (42, "const deleteUserHandler = `delete-user-job:${jobId}`;"),
+            (43, "const updateUrl = `https://api.example.com/v1/update/${userId}`;"),
+            (44, "const msg = `select one of the following: ${items.join(', ')}`;"),
+        ]
+        findings = forensic_hunter.scan_lines("handler.ts", prose_lines)
+        arc01_findings = [f for f in findings if f.code == "ARC-01"]
+        self.assertEqual(len(arc01_findings), 0, f"False positive ARC-01 on mixed-case command names: {arc01_findings}")
+
+    def test_arc01_positive_execution_sinks_critical(self) -> None:
+        # Real query execution sinks with interpolated dynamic SQL
+        sink_cases = [
+            (1, "await db.query(`SELECT * FROM users WHERE id = ${userId}`);", "service.ts"),
+            (2, 'pool.query("SELECT * FROM accounts WHERE email = \'" + email + "\'");', "db.js"),
+            (3, "client.query(`UPDATE users SET name = '${name}' WHERE id = ${id}`);", "user.ts"),
+            (4, "conn.query(`DELETE FROM sessions WHERE token = '${token}'`);", "auth.js"),
+            (5, "db.execute(`INSERT INTO audit_log (action) VALUES ('${action}')`);", "log.ts"),
+            (6, "sql.raw(`SELECT * FROM ${table} WHERE id = ${id}`);", "query.ts"),
+            (7, "prisma.$queryRawUnsafe(`SELECT * FROM users WHERE role = '${role}'`);", "prisma.ts"),
+            (8, 'cursor.execute(f"SELECT * FROM users WHERE id = {user_id}")', "repo.py"),
+            (9, 'cursor.execute("SELECT * FROM users WHERE name = \'%s\'" % name)', "repo.py"),
+            (10, 'session.execute(f"UPDATE accounts SET balance = {amount} WHERE id = {acc_id}")', "repo.py"),
+            (11, 'db.Query(fmt.Sprintf("SELECT * FROM users WHERE email = \'%s\'", email))', "db.go"),
+            (12, 'sqlx::query(&format!("SELECT * FROM users WHERE id = {}", user_id));', "db.rs"),
+        ]
+        for line_no, raw_line, filename in sink_cases:
+            findings = forensic_hunter.scan_lines(filename, [(line_no, raw_line)])
+            arc01_findings = [f for f in findings if f.code == "ARC-01"]
+            self.assertEqual(len(arc01_findings), 1, f"Expected 1 ARC-01 finding for: {raw_line}")
+            self.assertEqual(arc01_findings[0].severity, "CRITICAL", f"Expected CRITICAL for sink: {raw_line}")
+
+    def test_arc01_multi_line_query_and_sink_critical(self) -> None:
+        # Multi-line: variable assigned dynamic SQL, then passed to execution sink
+        py_lines = [
+            'sql = f"SELECT * FROM users WHERE id = {user_id}"',
+            'cursor.execute(sql)',
+        ]
+        findings = forensic_hunter.scan_lines("repo.py", list(enumerate(py_lines, start=1)), full_file_lines=py_lines)
+        arc01_findings = [f for f in findings if f.code == "ARC-01"]
+        self.assertEqual(len(arc01_findings), 1)
+        self.assertEqual(arc01_findings[0].severity, "CRITICAL")
+        self.assertEqual(arc01_findings[0].line, 1)
+
+        ts_lines = [
+            'const query = `SELECT * FROM accounts WHERE id = ${accountId}`;',
+            'const result = await db.query(query);',
+        ]
+        findings_ts = forensic_hunter.scan_lines("repo.ts", list(enumerate(ts_lines, start=1)), full_file_lines=ts_lines)
+        arc01_ts = [f for f in findings_ts if f.code == "ARC-01"]
+        self.assertEqual(len(arc01_ts), 1)
+        self.assertEqual(arc01_ts[0].severity, "CRITICAL")
+        self.assertEqual(arc01_ts[0].line, 1)
+
+    def test_arc01_unverified_query_building_high_candidate(self) -> None:
+        # Credible SQL query construction without verified execution sink -> HIGH candidate for review
+        lines = [
+            (1, 'query = "SELECT * FROM users WHERE id = " + user_id'),
+        ]
+        findings = forensic_hunter.scan_lines("query.py", lines)
+        arc01_findings = [f for f in findings if f.code == "ARC-01"]
+        self.assertEqual(len(arc01_findings), 1)
+        self.assertEqual(arc01_findings[0].severity, "HIGH")
+        self.assertIn("unverified", arc01_findings[0].title.lower())
+
+    def test_cli_scan_bin_cli_js_not_flagged(self) -> None:
+        out = io.StringIO()
+        with redirect_stdout(out):
+            code = forensic_hunter.main(["--files", "bin/cli.js", "--fail-on-critical", "--json"])
+        self.assertEqual(code, 0)
+        data = json.loads(out.getvalue())
+        self.assertEqual(data["counts"]["CRITICAL"], 0)
+        arc01_findings = [f for f in data["findings"] if f["code"] == "ARC-01"]
+        self.assertEqual(len(arc01_findings), 0, f"Unexpected ARC-01 findings on bin/cli.js: {arc01_findings}")
+
 
 if __name__ == "__main__":
     unittest.main()

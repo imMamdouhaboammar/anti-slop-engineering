@@ -398,18 +398,6 @@ RULES: List[TrapRule] = [
     ),
     # --- ARCHITECTURE & DATA ---
     TrapRule(
-        code="ARC-01",
-        stack="arch",
-        severity="CRITICAL",
-        pattern=sre_compile.compile(
-            r"(?i)(?:SELECT|UPDATE|DELETE|INSERT)\s+.*(?:\+\s*\w+|\$\{[^}]+\}|%s|\.format\()"
-        ),
-        title="Dynamic string interpolation inside SQL statement",
-        impact="Direct SQL Injection vulnerability and query plan cache pollution.",
-        remedy="Use parameterized queries (bind parameters or prepared statements) exclusively.",
-        file_extensions=(".py", ".ts", ".js", ".go", ".rs"),
-    ),
-    TrapRule(
         code="ARC-02",
         stack="arch",
         severity="HIGH",
@@ -514,6 +502,144 @@ def check_k8s_missing_limits(filepath: str, lines: Sequence[str]) -> List[Findin
     return findings
 
 
+SQL_TARGET_EXTENSIONS: Tuple[str, ...] = (".py", ".ts", ".js", ".mjs", ".cjs", ".go", ".rs")
+
+SQL_EXECUTION_SINK_PATTERN = sre_compile.compile(
+    r"(?i)\b(?:db|pool|client|conn|connection|tx|session|cursor|cur|engine|sqlite)\s*\.\s*(?:query|Query|QueryRow|execute|Execute|exec|Exec|raw|run|all|get|exec_driver|raw_query)\s*\(|\bprisma\s*\.\s*\$(?:queryRawUnsafe|executeRawUnsafe)\s*\(|\b(?:knex|sql)\s*\.\s*raw\s*\(|\bsqlx\s*::\s*(?:query|query_as)\s*\(|\b(?:sequelize|dataSource|manager)\s*\.\s*query\s*\("
+)
+
+SQL_SINK_ARG_PATTERN = sre_compile.compile(
+    r"(?i)\b(?:db|pool|client|conn|connection|tx|session|cursor|cur|engine|sqlite|prisma|knex|sql|sqlx|sequelize|dataSource|manager)\s*(?:\.|\:\:)\s*(?:query|Query|QueryRow|execute|Execute|exec|Exec|raw|run|all|get|\$queryRawUnsafe|\$executeRawUnsafe)\s*\(\s*&?([a-zA-Z0-9_]+)"
+)
+
+NON_SQL_LOGGER_PATTERN = sre_compile.compile(
+    r"(?i)\b(?:console\.(?:log|error|warn|info|debug|trace)|(?:logger|logging|log)\.(?:debug|info|warn|warning|error|critical|fatal|exception)|(?:fmt\.(?:Print|Println|Printf|Fprintf|Fprintln|Fprint)|log\.(?:Print|Println|Printf|Fatal|Fatalf))|print|println!|eprintln!|panic!|throw\s+new\s+\w*Error|raise\s+\w*(?:Error|Exception))\s*\("
+)
+
+UI_COPY_PATTERN = sre_compile.compile(
+    r"(?i)<(?:button|span|h[1-6]|div|p|label|a|title|text)[^>]*>|toast\.(?:success|error|info|warn)\("
+)
+
+ASSIGNMENT_PATTERN = sre_compile.compile(
+    r"(?:(?:const|let|var)\s+)?([a-zA-Z0-9_]+)\s*(?::=|=|\+=)"
+)
+
+SQL_SELECT_PATTERN = sre_compile.compile(
+    r"(?i)\bSELECT\s+(?:DISTINCT\s+)?(?:[\w*,\s.`\"'\(\)]+|\$\{[^}]+\}|\{[^}]+\})\s+\bFROM\s+(?:(?!the\b|a\b|an\b|this\b|that\b|these\b|those\b|my\b|your\b|our\b)[a-zA-Z0-9_.\"']+|\$\{[^}]+\}|\{[^}]+\})(?:\s+(?:AS\s+)?[a-zA-Z0-9_]+)?(?:\s+\b(?:WHERE|JOIN|LEFT|RIGHT|INNER|OUTER|CROSS|ORDER\s+BY|GROUP\s+BY|LIMIT|HAVING|ON)\b|;|$|[\"'`\)])"
+)
+
+SQL_UPDATE_PATTERN = sre_compile.compile(
+    r"(?i)\bUPDATE\s+(?:(?!the\b|a\b|an\b|this\b|that\b|these\b|those\b|my\b|your\b|our\b)[a-zA-Z0-9_.\"']+|\$\{[^}]+\}|\{[^}]+\})\s+\bSET\s+(?:[a-zA-Z0-9_.\"']+|\$\{[^}]+\}|\{[^}]+\})\s*="
+)
+
+SQL_INSERT_PATTERN = sre_compile.compile(
+    r"(?i)\bINSERT\s+(?:(?:OR\s+(?:REPLACE|IGNORE)\s+)?INTO)\s+(?:(?!the\b|a\b|an\b|this\b|that\b|these\b|those\b|my\b|your\b|our\b)[a-zA-Z0-9_.\"']+|\$\{[^}]+\}|\{[^}]+\})(?:\s*\([^)]*\))?\s*(?:VALUES|SELECT)\b"
+)
+
+SQL_DELETE_PATTERN = sre_compile.compile(
+    r"(?i)\bDELETE\s+FROM\s+(?:(?!the\b|a\b|an\b|this\b|that\b|these\b|those\b|my\b|your\b|our\b)[a-zA-Z0-9_.\"']+|\$\{[^}]+\}|\{[^}]+\})(?:\s+\bWHERE\b|;|$|[\"'`\)])"
+)
+
+DYNAMIC_INTERPOLATION_PATTERN = sre_compile.compile(
+    r"\$\{[^}]+\}|(?<!\{)\{[a-zA-Z0-9_]+[^}]*\}|\+\s*[a-zA-Z0-9_]+|[a-zA-Z0-9_]+\s*\+\s*[\"'`]|%s|%\([a-zA-Z0-9_]+\)s|\.format\s*\(|fmt\.Sprintf\s*\(|format!\s*\("
+)
+
+
+def _is_comment_or_doc(stripped: str, filepath: str) -> bool:
+    if stripped.startswith(("//", "/*", "*", "*/", "#", '"""', "'''")):
+        return True
+    for comment_marker in ("//", "#"):
+        if comment_marker in stripped:
+            comment_idx = stripped.find(comment_marker)
+            code_part = stripped[:comment_idx]
+            if not _has_credible_sql_grammar(code_part):
+                return True
+    return False
+
+
+def _has_credible_sql_grammar(line: str) -> bool:
+    return bool(
+        SQL_SELECT_PATTERN.search(line)
+        or SQL_UPDATE_PATTERN.search(line)
+        or SQL_INSERT_PATTERN.search(line)
+        or SQL_DELETE_PATTERN.search(line)
+    )
+
+
+def _is_variable_executed(var_name: str, context_lines: Sequence[str]) -> bool:
+    for line in context_lines:
+        m = SQL_SINK_ARG_PATTERN.search(line)
+        if m and m.group(1) == var_name:
+            return True
+    return False
+
+
+def _make_arc01_finding(filepath: str, line_no: int, snippet: str, is_executed: bool) -> Finding:
+    severity = "CRITICAL" if is_executed else "HIGH"
+    title = (
+        "Dynamic string interpolation inside executed SQL statement"
+        if is_executed
+        else "Dynamic string interpolation in SQL query (unverified execution sink)"
+    )
+    impact = (
+        "Direct SQL Injection vulnerability and query plan cache pollution."
+        if is_executed
+        else "Unparameterized dynamic SQL construction poses SQL injection risk if passed to a database execution boundary."
+    )
+    return Finding(
+        code="ARC-01",
+        stack="arch",
+        severity=severity,
+        file=filepath,
+        line=line_no,
+        snippet=snippet[:140],
+        title=title,
+        impact=impact,
+        remedy="Use parameterized queries (bind parameters or prepared statements) exclusively.",
+    )
+
+
+def check_sql_injection(
+    filepath: str,
+    indexed_lines: Sequence[Tuple[int, str]],
+    full_file_lines: Optional[Sequence[str]] = None,
+) -> List[Finding]:
+    path_obj = pathlib.Path(filepath)
+    if path_obj.suffix.lower() not in SQL_TARGET_EXTENSIONS:
+        return []
+
+    context_lines = list(full_file_lines) if full_file_lines is not None else [line for _, line in indexed_lines]
+    findings: List[Finding] = []
+
+    for line_no, raw_line in indexed_lines:
+        stripped = raw_line.strip()
+        if not stripped or _is_comment_or_doc(stripped, filepath):
+            continue
+
+        if UI_COPY_PATTERN.search(raw_line):
+            continue
+
+        is_direct_sink = bool(SQL_EXECUTION_SINK_PATTERN.search(raw_line))
+        if NON_SQL_LOGGER_PATTERN.search(raw_line) and not is_direct_sink:
+            continue
+
+        if not _has_credible_sql_grammar(raw_line):
+            continue
+
+        if not DYNAMIC_INTERPOLATION_PATTERN.search(raw_line):
+            continue
+
+        is_executed = is_direct_sink
+        if not is_executed:
+            m_assign = ASSIGNMENT_PATTERN.search(raw_line)
+            if m_assign and _is_variable_executed(m_assign.group(1), context_lines):
+                is_executed = True
+
+        findings.append(_make_arc01_finding(filepath, line_no, stripped, is_executed))
+
+    return findings
+
+
 def scan_lines(
     filepath: str,
     indexed_lines: Iterable[Tuple[int, str]],
@@ -528,7 +654,9 @@ def scan_lines(
         and (allowed_stacks is None or r.stack in allowed_stacks)
     ]
 
-    for line_no, raw_line in indexed_lines:
+    indexed_list = list(indexed_lines)
+
+    for line_no, raw_line in indexed_list:
         stripped = raw_line.strip()
         if not stripped or (stripped.startswith("#") and not filepath.endswith((".py", ".sh", ".yaml", ".yml"))):
             continue
@@ -547,6 +675,9 @@ def scan_lines(
                         remedy=rule.remedy,
                     )
                 )
+
+    if allowed_stacks is None or "arch" in allowed_stacks:
+        findings.extend(check_sql_injection(filepath, indexed_list, full_file_lines))
 
     if full_file_lines is not None:
         if allowed_stacks is None or "shell" in allowed_stacks:
