@@ -178,15 +178,24 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: services/toil-guard-go/go.mod
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
       - name: Rust Clippy linting
         working-directory: services/anti-slop-rust
         run: cargo clippy --all-targets --all-features -- -D warnings
       - name: Rust unit tests
         working-directory: services/anti-slop-rust
         run: cargo test --all-targets --locked
-      - name: Go unit tests
+      - name: Go unit and race tests
         working-directory: services/toil-guard-go
-        run: go test ./...
+        run: go test -race ./...
+      - name: Native vs Python fallback differential contract tests
+        env:
+          REQUIRE_NATIVE_PARITY: "1"
+        run: |
+          cargo build --manifest-path services/anti-slop-rust/Cargo.toml --locked
+          python3 -m unittest tests/test_engine_parity.py -v
       - name: Native CLI failure contracts
         run: |
           if cargo run --manifest-path services/anti-slop-rust/Cargo.toml --locked -- ladder-audit does-not-exist.rs; then exit 1; fi

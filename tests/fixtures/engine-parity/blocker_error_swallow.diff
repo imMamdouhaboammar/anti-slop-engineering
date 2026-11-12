@@ -1,0 +1,10 @@
+diff --git a/src/worker.py b/src/worker.py
+index 1111111..2222222 100644
+--- a/src/worker.py
++++ b/src/worker.py
+@@ -1,3 +1,6 @@
+ def process_job(job):
+-    return job.run()
++    try:
++        return job.run()
++    except Exception: pass
