@@ -3,8 +3,10 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/exec"
@@ -56,82 +58,49 @@ func printUsage() {
 }
 
 func runAudit(args []string) {
-	fs := flag.NewFlagSet("audit", flag.ExitOnError)
+	if code := executeAudit(args, os.Stdout, os.Stderr); code != 0 {
+		os.Exit(code)
+	}
+}
+
+func executeAudit(args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("audit", flag.ContinueOnError)
+	fs.SetOutput(stderr)
 	format := fs.String("format", "text", "Output format: text or json")
 	base := fs.String("base", "HEAD", "Git base reference to diff if no files specified")
-	_ = fs.Parse(args)
+	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return 0
+		}
+		return 2
+	}
 
 	fileMap, err := collectAuditFiles(fs.Args(), *base)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "Audit failed:", err)
-		os.Exit(1)
+		fmt.Fprintln(stderr, "Audit failed:", err)
+		return 1
 	}
 	allFindings, sli := sre.AuditFiles(fileMap)
 	report := model.NewAuditReport(allFindings, sli)
 
-	printAuditReport(report, *format)
+	if err := writeAuditReport(stdout, report, *format); err != nil {
+		fmt.Fprintln(stderr, "Audit failed:", err)
+		return 1
+	}
 
 	if sli.Status == "BLOCKED" {
-		os.Exit(1)
+		return 1
 	}
+	return 0
 }
 
 func collectAuditFiles(targets []string, base string) (map[string]string, error) {
-	fileMap := make(map[string]string)
-	if len(targets) > 0 {
-		for _, target := range targets {
-			err := filepath.Walk(target, func(path string, info os.FileInfo, walkErr error) error {
-				if walkErr != nil {
-					return walkErr
-				}
-				if info.IsDir() {
-					if path != target && (info.Name() == ".git" || info.Name() == "node_modules" || info.Name() == "target") {
-						return filepath.SkipDir
-					}
-					return nil
-				}
-				if !isAuditable(path) {
-					return nil
-				}
-				content, err := os.ReadFile(path)
-				if err != nil {
-					return err
-				}
-				fileMap[path] = string(content)
-				return nil
-			})
-			if err != nil {
-				return nil, fmt.Errorf("walking %q: %w", target, err)
-			}
-		}
-	} else {
-		cmd := exec.Command("git", "diff", base, "--")
-		out, err := cmd.CombinedOutput()
-		if err != nil {
-			return nil, fmt.Errorf("git diff %q failed: %w: %s", base, err, strings.TrimSpace(string(out)))
-		}
-		if len(out) > 0 {
-			fileMap = parseGitDiff(string(out))
-		} else {
-			statusOut, statusErr := exec.Command("git", "status", "--porcelain").CombinedOutput()
-			if statusErr != nil {
-				return nil, fmt.Errorf("git status failed: %w: %s", statusErr, strings.TrimSpace(string(statusOut)))
-			}
-			for _, line := range strings.Split(string(statusOut), "\n") {
-				if len(line) < 4 {
-					continue
-				}
-				path := strings.TrimSpace(line[3:])
-				if !isAuditable(path) {
-					continue
-				}
-				content, err := os.ReadFile(path)
-				if err != nil {
-					return nil, fmt.Errorf("reading %q: %w", path, err)
-				}
-				fileMap[path] = string(content)
-			}
-		}
+	if len(targets) == 0 {
+		return collectGitDiffFiles(base)
+	}
+	fileMap, err := collectExplicitTargetFiles(targets)
+	if err != nil {
+		return nil, err
 	}
 	if len(fileMap) == 0 {
 		return nil, fmt.Errorf("no auditable files found")
@@ -139,28 +108,114 @@ func collectAuditFiles(targets []string, base string) (map[string]string, error)
 	return fileMap, nil
 }
 
-func printAuditReport(report model.AuditReport, format string) {
-	if format == "json" {
-		data, _ := json.MarshalIndent(report, "", "  ")
-		fmt.Println(string(data))
-		return
+func collectExplicitTargetFiles(targets []string) (map[string]string, error) {
+	fileMap := make(map[string]string)
+	for _, target := range targets {
+		err := filepath.Walk(target, func(path string, info os.FileInfo, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
+			}
+			if info.IsDir() {
+				if path != target && (info.Name() == ".git" || info.Name() == "node_modules" || info.Name() == "target") {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			if !isAuditable(path) {
+				return nil
+			}
+			content, err := os.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			fileMap[path] = string(content)
+			return nil
+		})
+		if err != nil {
+			return nil, fmt.Errorf("walking %q: %w", target, err)
+		}
+	}
+	return fileMap, nil
+}
+
+func runGitCommand(args ...string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	return exec.CommandContext(ctx, "git", args...).CombinedOutput()
+}
+
+func collectGitDiffFiles(base string) (map[string]string, error) {
+	if strings.TrimSpace(base) == "" || strings.HasPrefix(base, "-") {
+		return nil, fmt.Errorf("invalid git base reference %q", base)
+	}
+	if revOut, revErr := runGitCommand("rev-parse", "--verify", base+"^{commit}"); revErr != nil {
+		return nil, fmt.Errorf("invalid git base %q: %w: %s", base, revErr, strings.TrimSpace(string(revOut)))
 	}
 
+	out, err := runGitCommand("-c", "diff.noprefix=false", "-c", "diff.mnemonicPrefix=false", "diff", "--no-ext-diff", base, "--")
+	if err != nil {
+		return nil, fmt.Errorf("git diff %q failed: %w: %s", base, err, strings.TrimSpace(string(out)))
+	}
+	if len(out) > 0 {
+		return parseGitDiff(string(out))
+	}
+	return collectUntrackedAndModifiedStatusFiles()
+}
+
+func collectUntrackedAndModifiedStatusFiles() (map[string]string, error) {
+	fileMap := make(map[string]string)
+	statusOut, statusErr := runGitCommand("status", "--porcelain", "--untracked-files=all")
+	if statusErr != nil {
+		return nil, fmt.Errorf("git status failed: %w: %s", statusErr, strings.TrimSpace(string(statusOut)))
+	}
+	for _, line := range strings.Split(string(statusOut), "\n") {
+		if len(line) < 4 || line[0] == 'D' || line[1] == 'D' {
+			continue
+		}
+		path := strings.TrimSpace(line[3:])
+		if !isAuditable(path) {
+			continue
+		}
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return nil, fmt.Errorf("reading %q: %w", path, err)
+		}
+		fileMap[path] = string(content)
+	}
+	return fileMap, nil
+}
+
+func writeAuditReport(w io.Writer, report model.AuditReport, format string) error {
+	if format == "json" {
+		data, err := json.MarshalIndent(report, "", "  ")
+		if err != nil {
+			return fmt.Errorf("marshaling report: %w", err)
+		}
+		_, err = fmt.Fprintln(w, string(data))
+		return err
+	}
+	if format != "text" {
+		return fmt.Errorf("unsupported format %q (expected text or json)", format)
+	}
+
+	var buf strings.Builder
 	sli := report.SLI
-	fmt.Printf("== Toil Guard SRE Engine Status: %s ==\n", sli.Status)
-	fmt.Printf("Audited Files: %d | Lines: %d | Error Budget Left: %.1f%%\n",
+	fmt.Fprintf(&buf, "== Toil Guard SRE Engine Status: %s ==\n", sli.Status)
+	fmt.Fprintf(&buf, "Audited Files: %d | Lines: %d | Error Budget Left: %.1f%%\n",
 		sli.TotalFiles, sli.TotalLines, sli.ErrorBudgetLeft)
-	fmt.Printf("Toil Incidents: %d | Complexity Score: %.2f\n",
+	fmt.Fprintf(&buf, "Toil Incidents: %d | Complexity Score: %.2f\n",
 		sli.ToilIncidents, sli.ComplexityScore)
 
 	if len(report.Findings) > 0 {
-		fmt.Println("------------------------------------------------------------")
+		buf.WriteString("------------------------------------------------------------\n")
 		for _, f := range report.Findings {
-			fmt.Printf("[%s] %s:%d: [%s] %s\n", f.Severity, f.File, f.Line, f.Code, f.Message)
-			fmt.Printf("  Suggestion: %s\n", f.Suggestion)
+			fmt.Fprintf(&buf, "[%s] %s:%d: [%s] %s\n", f.Severity, f.File, f.Line, f.Code, f.Message)
+			fmt.Fprintf(&buf, "  Suggestion: %s\n", f.Suggestion)
 		}
-		fmt.Println("------------------------------------------------------------")
+		buf.WriteString("------------------------------------------------------------\n")
 	}
+	_, err := io.WriteString(w, buf.String())
+	return err
 }
 
 func runServe(args []string) {
@@ -240,11 +295,16 @@ func isDocFile(path string) bool {
 		strings.Contains(lower, "/docs/") || strings.HasPrefix(lower, "docs/")
 }
 
-func parseGitDiff(diffOutput string) map[string]string {
+func parseGitDiff(diffOutput string) (map[string]string, error) {
 	fileMap := make(map[string]string)
+	if strings.TrimSpace(diffOutput) == "" {
+		return fileMap, nil
+	}
+
 	lines := strings.Split(diffOutput, "\n")
 	currentFile := ""
 	var currentLines []string
+	sawDiffHeader := false
 
 	flush := func() {
 		if currentFile != "" && len(currentLines) > 0 && isAuditable(currentFile) && !isDocFile(currentFile) {
@@ -254,7 +314,8 @@ func parseGitDiff(diffOutput string) map[string]string {
 	}
 
 	for _, line := range lines {
-		if strings.HasPrefix(line, "diff --git") {
+		if strings.HasPrefix(line, "diff --git ") {
+			sawDiffHeader = true
 			flush()
 			parts := strings.Split(line, " b/")
 			if len(parts) > 1 {
@@ -267,5 +328,9 @@ func parseGitDiff(diffOutput string) map[string]string {
 		}
 	}
 	flush()
-	return fileMap
+
+	if !sawDiffHeader {
+		return nil, fmt.Errorf("malformed git diff output: missing diff header")
+	}
+	return fileMap, nil
 }
