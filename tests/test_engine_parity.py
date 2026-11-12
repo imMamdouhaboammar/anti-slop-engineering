@@ -91,16 +91,12 @@ class EngineParityContractTests(unittest.TestCase):
     def _require_rust(self):
         if self.rust_bin:
             return self.rust_bin
-        if self.require_native:
-            self.fail("REQUIRE_NATIVE_PARITY=1 but anti-slop-rust binary/cargo is unavailable")
-        self.skipTest("Rust toolchain / anti-slop-rust binary unavailable")
+        self.fail("REQUIRE_NATIVE_PARITY=1 but anti-slop-rust binary/cargo is unavailable")
 
     def _require_go(self):
         if self.go_bin:
             return self.go_bin
-        if self.require_native:
-            self.fail("REQUIRE_NATIVE_PARITY=1 but toil-guard binary/go is unavailable")
-        self.skipTest("Go toolchain / toil-guard binary unavailable")
+        self.fail("REQUIRE_NATIVE_PARITY=1 but toil-guard binary/go is unavailable")
 
     def _isolated_git_env(self, home_dir):
         env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
