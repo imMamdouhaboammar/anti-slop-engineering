@@ -52,6 +52,9 @@ type AuditReport struct {
 
 // NewAuditReport creates a canonical AuditReport
 func NewAuditReport(findings []Finding, sli SLIReport) AuditReport {
+	if findings == nil {
+		findings = []Finding{}
+	}
 	return AuditReport{
 		Engine:   "toil-guard-go",
 		Version:  "1.7.0",
