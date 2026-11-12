@@ -133,6 +133,9 @@ jobs:
           bun ./bin/cli.js --help
           bun ./bin/cli.js --base HEAD
 
+      - name: Run Bun Security Regression Suite
+        run: bun run test:security
+
       - name: Verify Universal Installer
         run: |
           bash ./install.sh

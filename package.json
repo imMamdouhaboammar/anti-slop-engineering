@@ -66,6 +66,7 @@
     "audit": "bun bin/cli.js audit",
     "install-agents": "bun bin/cli.js install",
     "test": "python3 -m unittest discover -s tests -v",
+    "test:security": "bun test test/security/redteam-healed.test.ts",
     "test-all": "make test-all",
     "bump": "python3 scripts/bump_version.py",
     "oxlint": "oxlint",
