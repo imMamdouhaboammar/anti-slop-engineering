@@ -1,0 +1,8 @@
+diff --git a/src/my helper.py b/src/my helper.py
+index 1111111..2222222 100644
+--- a/src/my helper.py
++++ b/src/my helper.py
+@@ -1,2 +1,3 @@
+ def greet():
++    return "ok"
+     pass

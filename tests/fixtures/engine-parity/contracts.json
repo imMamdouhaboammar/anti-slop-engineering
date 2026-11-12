@@ -1,0 +1,85 @@
+{
+  "schema_version": 1,
+  "pairs": {
+    "triage": {
+      "native": "anti-slop-rust triage",
+      "fallback": "scripts/diff_guard.py"
+    },
+    "sre": {
+      "native": "toil-guard audit",
+      "fallback": "scripts/sre_guard.py"
+    }
+  },
+  "fixtures": {
+    "clean": {
+      "diff": "clean.diff",
+      "shared": {
+        "rust_exit": 0,
+        "rust_status": "PASSED",
+        "diff_guard_exit": 0,
+        "diff_guard_status": "no-heuristic-findings",
+        "go_exit": 0,
+        "go_status": "PASSED",
+        "sre_guard_exit": 0,
+        "sre_guard_blockers": 0
+      }
+    },
+    "blocker_error_swallow": {
+      "diff": "blocker_error_swallow.diff",
+      "shared": {
+        "rust_exit": 1,
+        "rust_status": "BLOCKED",
+        "rust_code": "STS-H02",
+        "diff_guard_exit": 0,
+        "diff_guard_status": "review-required",
+        "diff_guard_id": "ERROR_SWALLOW_CANDIDATE",
+        "go_exit": 1,
+        "go_status": "BLOCKED",
+        "go_code": "SRE-SCALE-SWALLOW",
+        "sre_guard_exit": 2,
+        "sre_guard_id": "SCALE_TOIL_ERROR_SWALLOW",
+        "sre_guard_blockers_min": 1
+      }
+    },
+    "deletion_only": {
+      "diff": "deletion_only.diff",
+      "shared": {
+        "rust_exit": 0,
+        "rust_status": "PASSED",
+        "diff_guard_exit": 0,
+        "diff_guard_status": "no-heuristic-findings",
+        "go_exit": 0,
+        "go_status": "PASSED",
+        "sre_guard_exit": 0,
+        "sre_guard_blockers": 0
+      }
+    },
+    "renamed_file": {
+      "diff": "renamed_file.diff",
+      "shared": {
+        "rust_exit": 0,
+        "diff_guard_exit": 0,
+        "go_exit": 0,
+        "sre_guard_exit": 0
+      }
+    },
+    "whitespace_path": {
+      "diff": "whitespace_path.diff",
+      "shared": {
+        "rust_exit": 0,
+        "diff_guard_exit": 0,
+        "go_exit": 0,
+        "sre_guard_exit": 0
+      }
+    },
+    "non_ascii_path": {
+      "diff": "non_ascii_path.diff",
+      "shared": {
+        "rust_exit": 0,
+        "diff_guard_exit": 0,
+        "go_exit": 0,
+        "sre_guard_exit": 0
+      }
+    }
+  }
+}

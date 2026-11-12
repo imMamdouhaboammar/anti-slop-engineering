@@ -1,0 +1,11 @@
+diff --git a/src/old_worker.py b/src/new_worker.py
+similarity index 85%
+rename from src/old_worker.py
+rename to src/new_worker.py
+index 1111111..2222222 100644
+--- a/src/old_worker.py
++++ b/src/new_worker.py
+@@ -1,2 +1,3 @@
+ def run_task():
++    # renamed module
+     return 42

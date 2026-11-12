@@ -7,9 +7,11 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/imMamdouhaboammar/anti-slop-engineering/services/toil-guard-go/pkg/model"
+	"github.com/imMamdouhaboammar/anti-slop-engineering/services/toil-guard-go/pkg/sre"
 )
 
 func initTempGitRepo(t *testing.T) string {
@@ -217,4 +219,100 @@ func TestExecuteAuditCollectsUntrackedFileInNestedDir(t *testing.T) {
 	if report.SLI.TotalFiles != 1 || report.SLI.Status != "BLOCKED" || len(report.Findings) == 0 {
 		t.Fatalf("expected 1 blocked nested file, got: %+v", report)
 	}
+}
+
+func TestGoldenParityFixtures(t *testing.T) {
+	fixturesDir := filepath.Join("..", "..", "..", "..", "tests", "fixtures", "engine-parity")
+
+	cleanBytes, err := os.ReadFile(filepath.Join(fixturesDir, "clean.diff"))
+	if err != nil {
+		t.Fatalf("read clean.diff: %v", err)
+	}
+	cleanFiles, err := parseGitDiff(string(cleanBytes))
+	if err != nil || len(cleanFiles) != 0 {
+		t.Fatalf("expected empty map for clean.diff, got files=%v err=%v", cleanFiles, err)
+	}
+
+	blockerBytes, err := os.ReadFile(filepath.Join(fixturesDir, "blocker_error_swallow.diff"))
+	if err != nil {
+		t.Fatalf("read blocker_error_swallow.diff: %v", err)
+	}
+	blockerFiles, err := parseGitDiff(string(blockerBytes))
+	if err != nil {
+		t.Fatalf("parse blocker diff: %v", err)
+	}
+	findings, sli := sre.AuditFiles(blockerFiles)
+	if sli.Status != "BLOCKED" {
+		t.Fatalf("expected BLOCKED status for blocker fixture, got %+v", sli)
+	}
+	foundSwallow := false
+	for _, f := range findings {
+		if f.Code == "SRE-SCALE-SWALLOW" && f.Severity == model.SeverityBlocker {
+			foundSwallow = true
+			break
+		}
+	}
+	if !foundSwallow {
+		t.Fatalf("expected SRE-SCALE-SWALLOW blocker finding, got %+v", findings)
+	}
+
+	for _, name := range []string{"deletion_only.diff", "renamed_file.diff", "whitespace_path.diff", "non_ascii_path.diff"} {
+		raw, readErr := os.ReadFile(filepath.Join(fixturesDir, name))
+		if readErr != nil {
+			t.Fatalf("read %s: %v", name, readErr)
+		}
+		files, parseErr := parseGitDiff(string(raw))
+		if parseErr != nil {
+			t.Fatalf("parse %s failed: %v", name, parseErr)
+		}
+		_, fixtureSLI := sre.AuditFiles(files)
+		if fixtureSLI.Status == "BLOCKED" {
+			t.Fatalf("unexpected BLOCKED status for %s: %+v", name, fixtureSLI)
+		}
+	}
+}
+
+func TestParseGitDiffDeterministicFuzzAndConcurrentAuditRace(t *testing.T) {
+	fragments := []string{
+		"diff --git a/src/my file.go b/src/my file.go\n",
+		"diff --git \"a/src/caf\\303\\251.go\" \"b/src/caf\\303\\251.go\"\n",
+		"+++ b/src/my file.go\n",
+		"+++ /dev/null\n",
+		"@@ -1 +0,0 @@\n",
+		"+func ok() {}\r\n",
+		"+if err != nil {}\n",
+		"+++not a header\n",
+	}
+
+	var seed uint64 = 0x5EEDC0DE2026
+	for i := 0; i < 64; i++ {
+		var sb strings.Builder
+		for step := 0; step < 8; step++ {
+			seed = seed*6364136223846793005 + 1
+			sb.WriteString(fragments[(seed>>32)%uint64(len(fragments))])
+		}
+		files, err := parseGitDiff(sb.String())
+		if err == nil {
+			_, _ = sre.AuditFiles(files)
+		}
+	}
+
+	sample := map[string]string{
+		"a.go": "package a\nfunc A() { if err != nil {} }\n",
+		"b.go": "package b\nfunc B() {}\n",
+	}
+	var wg sync.WaitGroup
+	for g := 0; g < 8; g++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for iter := 0; iter < 10; iter++ {
+				findings, sli := sre.AuditFiles(sample)
+				if sli.Status != "BLOCKED" || len(findings) == 0 {
+					t.Errorf("unexpected concurrent audit result: status=%s findings=%d", sli.Status, len(findings))
+				}
+			}
+		}()
+	}
+	wg.Wait()
 }
