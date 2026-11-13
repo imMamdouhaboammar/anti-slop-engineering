@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"strconv"
 	"sync/atomic"
@@ -47,7 +48,19 @@ func NewServer(port int) *Server {
 }
 
 func (s *Server) Start() error {
-	return s.httpServer.ListenAndServe()
+	listener, err := s.Listen()
+	if err != nil {
+		return err
+	}
+	return s.Serve(listener)
+}
+
+func (s *Server) Listen() (net.Listener, error) {
+	return net.Listen("tcp", s.httpServer.Addr)
+}
+
+func (s *Server) Serve(listener net.Listener) error {
+	return s.httpServer.Serve(listener)
 }
 
 func (s *Server) Shutdown(ctx context.Context) error {

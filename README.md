@@ -170,7 +170,7 @@ bunx anti-slop-engineering rust triage
 # Check a specific diff for SHIT violations:
 bunx anti-slop-engineering rust shit-check --diff patch.diff
 
-# Run as background microservice:
+# Start the optional HTTP service:
 bunx anti-slop-engineering serve-rust --port 9091
 ```
 
@@ -185,9 +185,23 @@ bunx anti-slop-engineering toil audit .
 # Live git diff statistics (not a live error-budget calculation):
 bunx anti-slop-engineering toil stream
 
-# Start Go microservice daemon:
+# Start the optional HTTP service:
 bunx anti-slop-engineering serve-go --port 9092
 ```
+
+### Package Installation and Native Builds
+
+The package ships the CLI, Python guards, skills, and Rust and Go source. Installation only prints a setup hint. Run `anti-slop-engineering setup` to copy bundled skills into an agent's skill directory. Use Node.js 22.23.4 or later, or Bun with Node.js available on PATH for setup. Skill setup and Python-backed commands require Python 3.9 or later.
+
+Run `bunx anti-slop-engineering build` for an installed package, or `bun run build` in a checkout. Native builds require a stable Rust toolchain with Cargo and a host linker, plus Go 1.26.5 or later. Cargo can download locked dependencies on a cold cache. The CLI uses the resulting local binaries for one-shot `rust` and `toil` commands. Without a binary, `rust triage` and `toil audit` use the Python fallback for supported arguments. Other native-only operations print build instructions. Start `serve-rust` or `serve-go` explicitly to use HTTP on `127.0.0.1`.
+
+On an Apple M4 Mac, a local tarball installed offline in about 1 second with compiler commands present or absent on PATH. The offline smoke test checks that package installation invokes neither compiler nor a remote skills installer. A release build with empty build caches and cached Rust dependencies took 22.4 seconds for Rust and 9.1 seconds for Go. The two binaries occupied 12.8 MiB, excluding build caches.
+
+| Distribution choice | Source builds | Optional prebuilt binaries |
+|---|---|---|
+| Platforms | Build for the host with its Rust and Go toolchains | Publish and test an artifact for each supported OS and architecture |
+| Integrity and source | Build from the shipped source and Cargo lockfile | Ship versioned checksums and provenance linking artifacts to source |
+| Upgrades and rollback | Install the desired version and rebuild | Match the binary to the CLI version and retain previous verified artifacts |
 
 ---
 
