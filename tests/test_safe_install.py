@@ -201,6 +201,17 @@ class SafeFileInstallTests(unittest.TestCase):
         self.assertEqual(second["skipped"], ["SKILL.md"])
         self.assertFalse((local / ".agents").exists())
 
+    def test_preview_reports_conflicts_without_modifying_disk(self):
+        self.install()
+        (self.dest / "SKILL.md").write_text("my local content\n", encoding="utf-8")
+        (self.source / "SKILL.md").write_text("next release\n", encoding="utf-8")
+        before = (self.dest / safe_install.MANIFEST).read_bytes()
+        outcome = safe_install.preview_tree(self.source, self.dest)
+        self.assertEqual(outcome["conflicted"], ["SKILL.md"])
+        self.assertEqual((self.dest / "SKILL.md").read_text(), "my local content\n")
+        self.assertEqual((self.dest / safe_install.MANIFEST).read_bytes(), before)
+        self.assertEqual(list(self.dest.parent.glob(".skill.backup-*")), [])
+
 
 if __name__ == "__main__":
     unittest.main()
