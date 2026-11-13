@@ -34,22 +34,39 @@ NAMED_COLORS: Dict[str, Tuple[int, int, int]] = {
     "lightgrey": (211, 211, 211),
     "darkgray": (169, 169, 169),
     "darkgrey": (169, 169, 169),
+    "slate-950": (2, 6, 23),
     "slate-900": (15, 23, 42),
     "slate-800": (30, 41, 59),
     "slate-700": (51, 65, 85),
+    "slate-600": (71, 85, 105),
     "slate-500": (100, 116, 139),
+    "slate-400": (148, 163, 184),
+    "slate-300": (203, 213, 225),
+    "slate-200": (226, 232, 240),
     "slate-100": (241, 245, 249),
     "slate-50": (248, 250, 252),
+    "gray-950": (3, 7, 18),
     "gray-900": (17, 24, 39),
+    "gray-800": (31, 41, 55),
     "gray-700": (55, 65, 81),
+    "gray-600": (75, 85, 99),
     "gray-500": (107, 114, 128),
     "gray-400": (156, 163, 175),
     "gray-300": (209, 213, 219),
+    "gray-200": (229, 231, 235),
     "gray-100": (243, 244, 246),
+    "gray-50": (249, 250, 251),
+    "zinc-950": (9, 9, 11),
     "zinc-900": (24, 24, 27),
     "zinc-800": (39, 39, 42),
+    "zinc-700": (63, 63, 70),
+    "zinc-600": (82, 82, 91),
     "zinc-500": (113, 113, 122),
+    "zinc-400": (161, 161, 170),
+    "zinc-300": (212, 212, 216),
+    "zinc-200": (228, 228, 231),
     "zinc-100": (244, 244, 245),
+    "zinc-50": (250, 250, 250),
 }
 
 # Known reference pairings with expected ratios and verdicts for selftest
@@ -134,6 +151,24 @@ def evaluate_contrast(color1_str: str, color2_str: str) -> Dict[str, object]:
     }
 
 
+def _record_contrast_finding(findings: List[Dict[str, object]], path: str, line_idx: int, line: str, fg_name: str, bg_name: str) -> None:
+    """Helper to evaluate and append low-contrast pairing findings."""
+    try:
+        eval_res = evaluate_contrast(fg_name, bg_name)
+    except ValueError:
+        return
+    if eval_res and eval_res["overall_status"] != "PASS":
+        findings.append({
+            "file": path,
+            "line": line_idx,
+            "fg": fg_name,
+            "bg": bg_name,
+            "ratio": eval_res["ratio"],
+            "status": eval_res["overall_status"],
+            "snippet": line.strip()[:100],
+        })
+
+
 def scan_file_for_contrast(path: str) -> List[Dict[str, object]]:
     """Scan CSS/HTML/JSX/TSX source file for known Tailwind / CSS color pairings and check contrast."""
     findings = []
@@ -150,34 +185,10 @@ def scan_file_for_contrast(path: str) -> List[Dict[str, object]]:
     for line_idx, line in enumerate(lines, start=1):
         m1 = tailwind_pair_pattern.search(line)
         if m1:
-            fg_name = f"{m1.group(1)}-{m1.group(2)}"
-            bg_name = m1.group(3)
-            eval_res = evaluate_contrast(fg_name, bg_name)
-            if eval_res["overall_status"] != "PASS":
-                findings.append({
-                    "file": path,
-                    "line": line_idx,
-                    "fg": fg_name,
-                    "bg": bg_name,
-                    "ratio": eval_res["ratio"],
-                    "status": eval_res["overall_status"],
-                    "snippet": line.strip()[:100],
-                })
+            _record_contrast_finding(findings, path, line_idx, line, f"{m1.group(1)}-{m1.group(2)}", m1.group(3))
         m2 = reverse_pair_pattern.search(line)
         if m2:
-            bg_name = m2.group(1)
-            fg_name = f"{m2.group(2)}-{m2.group(3)}"
-            eval_res = evaluate_contrast(fg_name, bg_name)
-            if eval_res["overall_status"] != "PASS":
-                findings.append({
-                    "file": path,
-                    "line": line_idx,
-                    "fg": fg_name,
-                    "bg": bg_name,
-                    "ratio": eval_res["ratio"],
-                    "status": eval_res["overall_status"],
-                    "snippet": line.strip()[:100],
-                })
+            _record_contrast_finding(findings, path, line_idx, line, f"{m2.group(2)}-{m2.group(3)}", m2.group(1))
 
     return findings
 
@@ -197,6 +208,19 @@ def run_selftest() -> bool:
             print(f"  ✗ {c1} on {c2}: got ratio={res['ratio']} (expected ~{min_ratio}), Normal={res['wcag_aa_normal']}, Large={res['wcag_aa_large']}")
             all_ok = False
     return all_ok
+
+
+_SCAN_EXTS = (".tsx", ".jsx", ".html", ".css", ".vue", ".svelte")
+
+
+def _scan_directory(directory: str) -> List[Dict[str, object]]:
+    """Walk *directory* and return contrast findings for all supported source files."""
+    findings: List[Dict[str, object]] = []
+    for root, _, files in os.walk(directory):
+        for fname in files:
+            if fname.endswith(_SCAN_EXTS):
+                findings.extend(scan_file_for_contrast(os.path.join(root, fname)))
+    return findings
 
 
 def main() -> int:
@@ -222,22 +246,21 @@ def main() -> int:
         if os.path.isfile(target_path):
             all_findings.extend(scan_file_for_contrast(target_path))
         else:
-            for root, _, files in os.walk(target_path):
-                for f in files:
-                    if f.endswith((".tsx", ".jsx", ".html", ".css", ".vue", ".svelte")):
-                        all_findings.extend(scan_file_for_contrast(os.path.join(root, f)))
+            all_findings.extend(_scan_directory(target_path))
 
         if json_mode:
             print(json.dumps({"findings": all_findings, "total": len(all_findings)}, indent=2))
-        else:
-            print(f"🔍 Contrast Scan Results for '{target_path}':")
-            if not all_findings:
-                print("  ✓ Zero low-contrast color pairings detected.")
-            else:
-                for f in all_findings:
-                    print(f"  ✗ {f['file']}:{f['line']} [{f['status']}] ratio={f['ratio']}:1 ({f['fg']} on {f['bg']})")
-                    print(f"      {f['snippet']}")
-        return 0 if not all_findings else 1
+            return 0 if not all_findings else 1
+
+        print(f"🔍 Contrast Scan Results for '{target_path}':")
+        if not all_findings:
+            print("  ✓ Zero low-contrast color pairings detected.")
+            return 0
+
+        for f in all_findings:
+            print(f"  ✗ {f['file']}:{f['line']} [{f['status']}] ratio={f['ratio']}:1 ({f['fg']} on {f['bg']})")
+            print(f"      {f['snippet']}")
+        return 1
 
     # Single or paired color arguments
     tokens = []

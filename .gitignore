@@ -26,7 +26,7 @@ share/python-wheels/
 *.egg
 MANIFEST
 
-# Unit test / coverage
+# Unit test / coverage / linter caches
 htmlcov/
 .tox/
 .nox/
@@ -39,10 +39,13 @@ coverage.xml
 *.py,cover
 .hypothesis/
 .pytest_cache/
+.ruff_cache/
 cover/
 
-# Environments
+# Environments & secrets
 .env
+.env.*
+!.env.example
 .venv
 env/
 venv/
@@ -60,14 +63,34 @@ ehthumbs.db
 Thumbs.db
 .idea/
 .vscode/
+.cursor/
 *.swp
 *.swo
 *~
 
-# Local tooling & editor caches
+# Local agent harnesses, skill configs & editor caches
 .repowise/
 .claude/
+.gemini/
+.agent-kernel/
+.superpowers/
+.xerj/
+.qodo/
+.coderabbit/
+.worktrees/
 /.agents/
+.fable/
+.pstack/
+.poteto/
+.no-mistakes/
+.gtd/
+.deep-digger/
+.security/
+.uim/
+openreview.config.json
+.anti-slop/clean-code.json
+.anti-slop/ponytail.json
+.anti-slop/ponytail-debt.jsonl
 /plans/
 /teardowns/
 skills-lock.json
@@ -90,6 +113,3 @@ services/toil-guard-go/bin/
 
 # Generated audit dossiers
 /anti-slop/
-
-# Fable local logs
-.fable/

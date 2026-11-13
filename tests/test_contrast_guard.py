@@ -28,6 +28,26 @@ class ContrastGuardTests(unittest.TestCase):
         self.assertEqual(parse_color("black"), (0, 0, 0))
         self.assertEqual(parse_color("slate-900"), (15, 23, 42))
 
+    def test_parse_color_new_tailwind_shades(self):
+        self.assertEqual(parse_color("slate-950"), (2, 6, 23))
+        self.assertEqual(parse_color("slate-600"), (71, 85, 105))
+        self.assertEqual(parse_color("slate-400"), (148, 163, 184))
+        self.assertEqual(parse_color("gray-950"), (3, 7, 18))
+        self.assertEqual(parse_color("gray-800"), (31, 41, 55))
+        self.assertEqual(parse_color("gray-50"), (249, 250, 251))
+        self.assertEqual(parse_color("zinc-950"), (9, 9, 11))
+        self.assertEqual(parse_color("zinc-700"), (63, 63, 70))
+        self.assertEqual(parse_color("zinc-50"), (250, 250, 250))
+
+    def test_evaluate_contrast_with_tailwind_neutral_shades(self):
+        res = evaluate_contrast("slate-950", "#FFFFFF")
+        self.assertEqual(res["overall_status"], "PASS")
+        self.assertGreater(res["ratio"], 15.0)
+
+        res_fail = evaluate_contrast("gray-50", "#FFFFFF")
+        self.assertEqual(res_fail["overall_status"], "FAIL")
+        self.assertLess(res_fail["ratio"], 1.5)
+
     def test_parse_color_invalid(self):
         with self.assertRaises(ValueError):
             parse_color("not-a-color")
