@@ -46,6 +46,16 @@ test('Setup: public CLI forwards JSON setup without prompts or extra output', ()
   }
 })
 
+test('Setup: both help entrypoints describe the required core and optional plugins', () => {
+  const general = spawnSync(process.execPath, [cli, '--help'], { encoding: 'utf8' })
+  const installerHelp = spawnSync(process.execPath, [installer, '--help'], { encoding: 'utf8' })
+  assert.equal(general.status, 0, general.stderr)
+  assert.equal(installerHelp.status, 0, installerHelp.stderr)
+  assert.match(general.stdout, /required core/i)
+  assert.match(installerHelp.stdout, /core is required/i)
+  assert.match(installerHelp.stdout, /optional skill/i)
+})
+
 test('Setup: module descriptions come from existing skill definitions', () => {
   const modules = listAvailableModules()
   assert.equal(modules.filter((module) => module.required).length, 1)
