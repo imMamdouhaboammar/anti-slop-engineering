@@ -268,12 +268,17 @@ def stage_install(destination, writes, managed, original_snapshot):
             journal.unlink()
 
 
-def install_tree(source, destination, version=None):
+def prepared_paths(source, destination):
     source = Path(source).resolve(strict=True)
     destination = Path(destination)
     if not source.is_dir():
         raise ValueError(f"Installation source is not a directory: {source}")
     validate_destination(source, destination)
+    return source, destination
+
+
+def install_tree(source, destination, version=None):
+    source, destination = prepared_paths(source, destination)
     recovered = recover_interrupted_swap(destination)
     previous = load_manifest(destination)
     original_snapshot = snapshot_tree(destination)
@@ -351,6 +356,17 @@ def write_instruction(entry, content, expected_hash):
                     os.unlink(target, **open_args)
 
 
+def preview_tree(source, destination, version=None):
+    source, destination = prepared_paths(source, destination)
+    previous = load_manifest(destination)
+    source_files = collect_source(source, destination, version)
+    results, _, _ = plan_files(source_files, destination, previous)
+    return {**results, "destination": str(destination), "backup": None, "recovered": None,
+            "recovery_required": not destination.exists() and any(
+                destination.parent.glob(f".{destination.name}.backup-*")
+            )}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source")
@@ -358,6 +374,7 @@ def main():
     parser.add_argument("--version")
     parser.add_argument("--write-instruction")
     parser.add_argument("--expected-hash")
+    parser.add_argument("--dry-run", action="store_true")
     options = parser.parse_args()
     try:
         if options.write_instruction is not None:
@@ -367,7 +384,8 @@ def main():
             return 0
         if not options.source or not options.dest:
             parser.error("--source and --dest are required for installation")
-        print(json.dumps(install_tree(options.source, options.dest, options.version)))
+        operation = preview_tree if options.dry_run else install_tree
+        print(json.dumps(operation(options.source, options.dest, options.version)))
     except (OSError, ValueError) as exc:
         print(f"Installer error: {exc}", file=sys.stderr)
         return 2
