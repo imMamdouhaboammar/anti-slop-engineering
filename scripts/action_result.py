@@ -6,7 +6,11 @@ import json
 import sys
 from pathlib import Path
 
-from audit_runner import guard_commands
+try:
+    from audit_runner import GUARD_REGISTRY, guard_commands
+except ImportError:
+    GUARD_REGISTRY = {}
+    from audit_runner import guard_commands
 
 
 def evaluate_report(report, audit_exit, canary_present=False):
@@ -26,13 +30,16 @@ def evaluate_report(report, audit_exit, canary_present=False):
         if not isinstance(result, dict):
             raise ValueError(f"Invalid result for {name}")
         status = result.get("status")
-        if command is None:
-            if (status != "SKIPPED" or result.get("applicable") is not False
-                    or result.get("exit_code") is not None):
+        is_inactive = status in {"SKIPPED", "requires-input", "not-applicable"}
+        mandatory = GUARD_REGISTRY.get(name, {}).get("mandatory")
+        if mandatory is None:
+            mandatory = command is not None
+        if command is None or (is_inactive and not mandatory):
+            if not is_inactive or result.get("applicable") is not False or result.get("exit_code") is not None:
                 raise ValueError(f"Optional guard {name} has an invalid skip record")
         elif status not in {"PASS", "FINDINGS", "ERROR"} or result.get("applicable") is not True:
             raise ValueError(f"Mandatory guard {name} is incomplete")
-        if command is not None and status in {"PASS", "FINDINGS"}:
+        if command is not None and not is_inactive and status in {"PASS", "FINDINGS"}:
             if (type(result.get("exit_code")) is not int
                     or result["exit_code"] not in {0, 1, 2}
                     or (status == "PASS" and result["exit_code"] != 0)
@@ -43,7 +50,12 @@ def evaluate_report(report, audit_exit, canary_present=False):
     total = report.get("total_findings")
     blockers = report.get("blockers_count")
     if not isinstance(findings, list) or any(
-        not isinstance(finding, dict) or finding.get("severity") not in {"BLOCKER", "HIGH", "MEDIUM", "LOW"}
+        not isinstance(finding, dict)
+        or finding.get("severity") not in {"BLOCKER", "HIGH", "MEDIUM", "LOW"}
+        or not isinstance(finding.get("guard"), str)
+        or finding.get("guard") not in expected
+        or not isinstance(finding.get("message"), str)
+        or not finding.get("message", "").strip()
         for finding in findings
     ):
         raise ValueError("Audit findings have an invalid schema")
@@ -51,8 +63,6 @@ def evaluate_report(report, audit_exit, canary_present=False):
         raise ValueError("Audit counts must be nonnegative integers")
     if total != len(findings) or blockers != sum(f["severity"] == "BLOCKER" for f in findings):
         raise ValueError("Audit counts disagree with the findings list")
-    if any(finding.get("guard") not in expected for finding in findings):
-        raise ValueError("Audit finding came from an unknown guard")
     for name, result in guards.items():
         count = sum(finding["guard"] == name for finding in findings)
         if type(result.get("findings_count")) is not int or result["findings_count"] != count:
@@ -60,10 +70,10 @@ def evaluate_report(report, audit_exit, canary_present=False):
         if (result["status"] == "PASS" and count) or (result["status"] == "FINDINGS" and not count):
             raise ValueError(f"Guard {name} status disagrees with its findings")
     if (report["status"] == "PASS" and (blockers or any(
-        item["status"] == "ERROR" for item in guards.values()
+        item.get("status") == "ERROR" for item in guards.values()
     ))) or (report["status"] == "BLOCKED" and not blockers):
         raise ValueError("Audit status contradicts its findings or execution results")
-    if report["status"] != "ERROR" and any(item["status"] == "ERROR" for item in guards.values()):
+    if report["status"] != "ERROR" and any(item.get("status") == "ERROR" for item in guards.values()):
         raise ValueError("Audit execution errors cannot be ignored")
 
     return ("PASSED" if report["status"] == "PASS" else report["status"], total, blockers)
@@ -86,12 +96,13 @@ def main():
         print(f"Anti-Slop audit result invalid: {exc}", file=sys.stderr)
         status, findings, blockers = "ERROR", 0, 0
 
-    if status == "ERROR" and isinstance(report, dict):
-        guards = report.get("guards")
-        if isinstance(guards, dict):
-            for name, outcome in guards.items():
-                if isinstance(outcome, dict) and outcome.get("status") == "ERROR":
-                    print(f"{name}: {outcome.get('error') or 'guard execution failed'}", file=sys.stderr)
+    guards = report.get("guards") if (status == "ERROR" and isinstance(report, dict)) else None
+    if isinstance(guards, dict):
+        for name, outcome in guards.items():
+            if not isinstance(outcome, dict) or outcome.get("status") != "ERROR":
+                continue
+            err_msg = outcome.get("error") or "guard execution failed"
+            print(f"{name}: {err_msg}", file=sys.stderr)
 
     with args.github_output.open("a", encoding="utf-8") as output:
         output.write(f"status={status}\nfindings-count={findings}\nblockers-count={blockers}\n")

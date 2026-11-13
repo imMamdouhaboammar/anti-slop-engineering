@@ -210,6 +210,27 @@ class AuditRunnerFailureContractTests(unittest.TestCase):
         self.assertEqual(report["guards"]["comment_budget_guard"]["findings_count"], 0)
         self.assertEqual(report["findings"][0]["rule"], "CANARY")
 
+    def test_malformed_findings_container_fails_closed(self):
+        self.set_guard("ast_slop_guard", {"status": "PASS", "findings": "invalid-non-list"})
+        code, report = self.run_report()
+        self.assertNotEqual(code, 0)
+        self.assertEqual(report["status"], "ERROR")
+        self.assertIn("required findings array", report["guards"]["ast_slop_guard"]["error"])
+
+    def test_malformed_issues_container_fails_closed(self):
+        self.set_guard("ast_slop_guard", {"status": "PASS", "issues": {"not": "a list"}})
+        code, report = self.run_report()
+        self.assertNotEqual(code, 0)
+        self.assertEqual(report["status"], "ERROR")
+        self.assertIn("required findings array", report["guards"]["ast_slop_guard"]["error"])
+
+    def test_findings_status_without_findings_fails_closed(self):
+        self.set_guard("ast_slop_guard", {"status": "FINDINGS", "findings": []})
+        code, report = self.run_report()
+        self.assertNotEqual(code, 0)
+        self.assertEqual(report["status"], "ERROR")
+        self.assertIn("without findings", report["guards"]["ast_slop_guard"]["error"])
+
 
 if __name__ == "__main__":
     unittest.main()
