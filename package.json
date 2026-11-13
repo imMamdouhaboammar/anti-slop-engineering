@@ -22,7 +22,6 @@
   "homepage": "https://github.com/imMamdouhaboammar/anti-slop-engineering#readme",
   "files": [
     "bin",
-    "dist",
     "scripts",
     "cases",
     "schemas",

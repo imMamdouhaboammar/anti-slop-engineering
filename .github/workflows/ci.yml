@@ -136,6 +136,9 @@ jobs:
       - name: Run Bun Security Regression Suite
         run: bun run test:security
 
+      - name: Test explicit skill setup and offline package install
+        run: node --test tests/test_installer.mjs tests/test_installer_setup.mjs tests/test_package_install.mjs
+
       - name: Verify Universal Installer
         run: |
           bash ./install.sh --all
@@ -182,6 +185,12 @@ jobs:
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: latest
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
       - name: Rust Clippy linting
         working-directory: services/anti-slop-rust
         run: cargo clippy --all-targets --all-features -- -D warnings
@@ -203,11 +212,16 @@ jobs:
           if cargo run --manifest-path services/anti-slop-rust/Cargo.toml --locked -- triage --base nonexistent-revision-123; then exit 1; fi
           cd services/toil-guard-go
           if go run ./cmd/toil-guard audit missing-path-go-123; then exit 1; fi
-      - name: npm package includes native sources
-        run: |
-          npm pack --dry-run --json > pack.json
-          node -e 'const f=require("./pack.json")[0].files.map(x=>x.path); for (const p of ["services/anti-slop-rust/Cargo.toml","services/toil-guard-go/go.mod","services/toil-guard-go/cmd/toil-guard/main.go","skills/decision-guard/SKILL.md","scripts/decision_guard.py","skills/root-fix-gate/SKILL.md","scripts/root_fix_guard.py"]) if(!f.includes(p)) process.exitCode=1'
       - name: CLI and alias regression tests
         run: |
           node --check bin/cli.js
           node --test tests/test_cli.mjs
+      - name: Build and verify opt-in native services
+        run: |
+          bun run build
+          node --test tests/test_serve_daemons.mjs
+          ANTI_SLOP_TEST_CLI_RUNTIME="$(command -v bun)" node --test tests/test_serve_daemons.mjs
+      - name: npm package includes native sources and excludes build artifacts
+        run: |
+          npm pack --dry-run --json > pack.json
+          node -e 'const f=require("./pack.json")[0].files.map(x=>x.path); for (const p of ["services/anti-slop-rust/Cargo.toml","services/toil-guard-go/go.mod","services/toil-guard-go/cmd/toil-guard/main.go","skills/decision-guard/SKILL.md","scripts/decision_guard.py","skills/root-fix-gate/SKILL.md","scripts/root_fix_guard.py"]) if(!f.includes(p)) process.exitCode=1; if(f.some(p=>p.startsWith("dist/"))) process.exitCode=1'

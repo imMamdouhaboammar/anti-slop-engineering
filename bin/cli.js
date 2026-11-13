@@ -58,12 +58,16 @@ const nativeSuffix = process.platform === "win32" ? ".exe" : "";
 const rustExecutable = "anti-slop-rust" + nativeSuffix;
 const goExecutable = "toil-guard" + nativeSuffix;
 const disableNative = process.env.ANTI_SLOP_DISABLE_NATIVE === "1" || process.env.ANTI_SLOP_FORCE_FALLBACK === "1";
-const rustBinPath = !disableNative && existsSync(resolve(rootDir, "dist", "bin", rustExecutable))
-  ? resolve(rootDir, "dist", "bin", rustExecutable)
-  : (!disableNative ? resolve(rootDir, "services", "anti-slop-rust", "target", "release", rustExecutable) : "");
-const goBinPath = !disableNative && existsSync(resolve(rootDir, "dist", "bin", goExecutable))
-  ? resolve(rootDir, "dist", "bin", goExecutable)
-  : (!disableNative ? resolve(rootDir, "services", "toil-guard-go", "bin", goExecutable) : "");
+const rustBinPath = findNativeBinary(rustExecutable, "services/anti-slop-rust/target/release");
+const goBinPath = findNativeBinary(goExecutable, "services/toil-guard-go/bin");
+
+function findNativeBinary(executable, buildDir) {
+  if (disableNative) return null;
+  const staged = resolve(rootDir, "dist", "bin", executable);
+  if (existsSync(staged)) return staged;
+  const built = resolve(rootDir, buildDir, executable);
+  return existsSync(built) ? built : null;
+}
 
 const invokedAs = basename(process.argv[1] ?? "").replace(/\.(?:js|cmd|exe)$/i, "");
 const executableAliases = {
@@ -261,22 +265,25 @@ function spawnProcess(execPath, execArgs, label) {
     cwd: process.cwd(),
     stdio: "inherit",
   });
-  child.on("error", (err) => {
-    console.error(`Failed to launch ${label}: ${err.message}`);
+  const forwardSignal = (signal) => {
+    if (child.exitCode === null && child.signalCode === null) child.kill(signal);
+  };
+  process.on("SIGTERM", forwardSignal);
+  process.on("SIGINT", forwardSignal);
+  child.on("error", (error) => {
+    console.error(`Failed to run ${label}: ${error.message}`);
     process.exit(1);
   });
-  child.on("close", (code) => {
-    process.exit(code ?? 1); // Signal termination must never be reported as success.
-  });
+  child.on("close", (code) => process.exit(code ?? 1));
 }
 
 function runBinary(binPath, binArgs, binLabel, fallbackFn) {
-  if (!existsSync(binPath)) {
+  if (!binPath) {
     if (fallbackFn) {
-      console.warn(`[WARN] ${binLabel} binary not found at ${binPath}. Falling back to Python engine...`);
+      console.warn(`[WARN] ${binLabel} binary not found. Falling back to Python engine...`);
       return fallbackFn();
     }
-    console.error(`Error: ${binLabel} binary not found at ${binPath}. Run 'bunx anti-slop-engineering build' or 'make build-services'.`);
+    console.error(`Error: ${binLabel} binary not found. Run 'bunx anti-slop-engineering build' or 'make build-services'.`);
     process.exit(1);
   }
   spawnProcess(binPath, binArgs, binLabel);
@@ -340,11 +347,15 @@ function runGoFallback(request) {
 
 function runBuild() {
   console.log("Compiling Rust microservice...");
-  const cargo = spawn("cargo", ["build", "--release"], {
+  const cargo = spawn("cargo", ["build", "--release", "--locked"], {
     cwd: resolve(rootDir, "services", "anti-slop-rust"),
     stdio: "inherit",
   });
 
+  cargo.on("error", (error) => {
+    console.error(`Failed to start Cargo: ${error.message}`);
+    process.exit(1);
+  });
   cargo.on("close", (cargoCode) => {
     if (cargoCode !== 0) {
       console.error(`Cargo build failed with exit code ${cargoCode}`);
@@ -358,6 +369,10 @@ function runBuild() {
       stdio: "inherit",
     });
 
+    goBuild.on("error", (error) => {
+      console.error(`Failed to start Go: ${error.message}`);
+      process.exit(1);
+    });
     goBuild.on("close", (goCode) => {
       if (goCode !== 0) {
         console.error(`Go build failed with exit code ${goCode}`);

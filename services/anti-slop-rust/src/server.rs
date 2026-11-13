@@ -6,7 +6,7 @@ use axum::{
     Router,
 };
 use serde::{Deserialize, Serialize};
-use std::net::SocketAddr;
+use std::{future::IntoFuture, io, net::SocketAddr, time::Duration};
 
 use crate::model::AuditReport;
 use crate::{LADDER_AUDITOR, SHIT_INTERCEPTOR};
@@ -85,16 +85,57 @@ async fn triage_handler(Json(payload): Json<TriageRequest>) -> impl IntoResponse
 pub fn create_router() -> Router {
     Router::new()
         .route("/health", get(health_handler))
+        .route("/healthz", get(health_handler))
         .route("/v1/shit-check", post(shit_check_handler))
         .route("/v1/ladder-audit", post(ladder_audit_handler))
         .route("/v1/triage", post(triage_handler))
 }
 
 pub async fn run_server(port: u16) -> Result<(), Box<dyn std::error::Error>> {
-    let app = create_router();
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
     let listener = tokio::net::TcpListener::bind(addr).await?;
-    println!("anti-slop-rust daemon listening on http://{addr}");
-    axum::serve(listener, app).await?;
+
+    #[cfg(unix)]
+    let shutdown = {
+        use tokio::signal::unix::{signal, SignalKind};
+
+        let mut interrupt = signal(SignalKind::interrupt())?;
+        let mut terminate = signal(SignalKind::terminate())?;
+        async move {
+            tokio::select! {
+                _ = interrupt.recv() => {},
+                _ = terminate.recv() => {},
+            }
+        }
+    };
+    #[cfg(not(unix))]
+    let shutdown = async {
+        if let Err(error) = tokio::signal::ctrl_c().await {
+            eprintln!("Failed to listen for Ctrl-C: {error}");
+        }
+    };
+
+    println!(
+        "anti-slop-rust daemon listening on http://{}",
+        listener.local_addr()?
+    );
+    let (draining, started) = tokio::sync::oneshot::channel();
+    let server = axum::serve(listener, create_router())
+        .with_graceful_shutdown(async move {
+            shutdown.await;
+            let _ = draining.send(());
+        })
+        .into_future();
+    tokio::pin!(server);
+
+    tokio::select! {
+        result = &mut server => result?,
+        _ = started => {
+            tokio::time::timeout(Duration::from_secs(5), &mut server)
+                .await
+                .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, "daemon shutdown timed out"))??;
+        }
+    }
+    println!("anti-slop-rust daemon shut down");
     Ok(())
 }
