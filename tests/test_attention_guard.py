@@ -150,6 +150,16 @@ class AttentionGuardTests(unittest.TestCase):
         self.assertEqual(max_len, 7)
         self.assertEqual(len(violations), 1)
 
+    def test_cli_help(self):
+        proc = subprocess.run(
+            [sys.executable, str(SCRIPTS_DIR / "attention_guard.py"), "--help"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        self.assertIn("--check-deliverable", proc.stdout)
+        self.assertIn("100% deliverable purity", proc.stdout)
+
     def test_cli_invocation_text_and_json(self):
         cmd = [
             sys.executable,

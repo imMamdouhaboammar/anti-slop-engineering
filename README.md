@@ -8,7 +8,7 @@
 [![npm](https://img.shields.io/npm/v/anti-slop-engineering?style=flat-square&logo=npm&logoColor=white)](https://www.npmjs.com/package/anti-slop-engineering)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](LICENSE)
 [![Bun](https://img.shields.io/badge/Runtime-Bun%20%3E%3D1.0-FBF0DF?style=flat-square&logo=bun&logoColor=black)](https://bun.sh)
-[![Python](https://img.shields.io/badge/Python-3.9%20–%203.13-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/Python-3.9%20–%203.14-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![skills.sh](https://skills.sh/b/imMamdouhaboammar/anti-slop-engineering)](https://skills.sh/imMamdouhaboammar/anti-slop-engineering)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-Certified%20Skill-D97706?style=flat-square&logo=anthropic&logoColor=white)](https://claude.ai)
 
