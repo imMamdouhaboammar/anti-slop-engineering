@@ -42,7 +42,7 @@ export function skillSourceDir() {
   const rootSkills = path.join(rootDir, 'skills')
   if (fs.existsSync(rootSkills)) return rootSkills
   const agentSkills = path.join(rootDir, '.agents', 'skills')
-  if (fs.existsSync(agentSkills)) return agentSkills
+  if (!fs.existsSync(path.join(rootDir, '.git')) && fs.existsSync(agentSkills)) return agentSkills
   return null
 }
 
@@ -145,11 +145,11 @@ function safeCopy(src, dest, version, dryRun = false) {
 
 function sourceForSkill(skill, source) {
   if (skill === CORE_SKILL) {
-    for (const candidate of [
-      path.join(rootDir, '.agents', 'skills', CORE_SKILL),
-      path.join(rootDir, 'skills', CORE_SKILL),
-      rootDir,
-    ]) {
+    const candidates = [path.join(rootDir, 'skills', CORE_SKILL), rootDir]
+    if (!fs.existsSync(path.join(rootDir, '.git'))) {
+      candidates.unshift(path.join(rootDir, '.agents', 'skills', CORE_SKILL))
+    }
+    for (const candidate of candidates) {
       if (fs.existsSync(path.join(candidate, 'SKILL.md'))) return candidate
     }
   } else if (source) {

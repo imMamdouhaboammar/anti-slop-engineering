@@ -46,6 +46,7 @@ cover/
 .env
 .env.*
 !.env.example
+!.env.*.example
 .venv
 env/
 venv/
@@ -72,6 +73,12 @@ Thumbs.db
 .repowise/
 .claude/
 .gemini/
+/.codex/
+/.opencode/
+/.cline/
+/.hermes/
+/.pi/
+/.windsurf/
 .agent-kernel/
 .superpowers/
 .xerj/
@@ -88,9 +95,6 @@ Thumbs.db
 .security/
 .uim/
 openreview.config.json
-.anti-slop/clean-code.json
-.anti-slop/ponytail.json
-.anti-slop/ponytail-debt.jsonl
 /plans/
 /teardowns/
 skills-lock.json
@@ -111,5 +115,12 @@ services/toil-guard-go/bin/
 .aegis/
 .bugkiller/
 
-# Generated audit dossiers
+# Generated reports and local audit state
 /anti-slop/
+/.anti-slop/clean-code.json
+/.anti-slop/ponytail.json
+/.anti-slop/ponytail-debt.jsonl
+/.anti-slop/commit-sheet.json
+/.anti-slop/settings.json
+/.anti-slop/state-note.json
+/.anti-slop/voice-profile.json

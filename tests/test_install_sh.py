@@ -52,6 +52,33 @@ class BashInstallerSafetyTests(unittest.TestCase):
         self.assertEqual((skill / "SKILL.md").read_text(), "# my customization\n")
         self.assertEqual((skill / "my-notes.md").read_text(), "personal reference\n")
 
+    def test_checkout_install_copies_only_tracked_files(self):
+        source = self.home / "checkout"
+        (source / "scripts").mkdir(parents=True)
+        shutil.copy2(REPO / "install.sh", source / "install.sh")
+        shutil.copy2(REPO / "scripts/safe_install.py", source / "scripts/safe_install.py")
+        (source / "SKILL.md").write_text("tracked skill\n", encoding="utf-8")
+        subprocess.run(["git", "init", "-q"], cwd=source, check=True)
+        subprocess.run(["git", "add", "install.sh", "scripts/safe_install.py", "SKILL.md"], cwd=source, check=True)
+        for relative in (".env", "openreview.config.json", ".fable/incidents/index.json", "local-notes.txt"):
+            local = source / relative
+            local.parent.mkdir(parents=True, exist_ok=True)
+            local.write_text("local-only fixture\n", encoding="utf-8")
+
+        (source / "local-link").symlink_to(source / "local-notes.txt")
+
+        result = subprocess.run(
+            ["bash", "install.sh"], cwd=source,
+            env={**os.environ, "HOME": str(self.home / "agent-home"), "PATH": SAFE_PATH},
+            text=True, capture_output=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        installed = self.home / "agent-home/.agents/skills/anti-slop-engineering"
+        self.assertEqual((installed / "SKILL.md").read_text(encoding="utf-8"), "tracked skill\n")
+        for relative in (".env", "openreview.config.json", ".fable", "local-notes.txt", "local-link"):
+            with self.subTest(relative=relative):
+                self.assertFalse((installed / relative).exists())
+
     def test_other_user_skills_remain_untouched(self):
         """Verify sibling skills in the destination directory are never modified or removed."""
         sibling = self.home / ".agents/skills/my-other-skill"
