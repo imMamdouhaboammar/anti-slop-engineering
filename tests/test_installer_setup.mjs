@@ -227,6 +227,27 @@ test('Setup: unknown persisted plugin cannot silently become a selected update',
   }
 })
 
+test('Setup: an existing symlinked module cannot be silently accepted as installed', () => {
+  const project = fs.mkdtempSync(path.join(os.tmpdir(), 'anti-slop-existing-link-'))
+  const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'anti-slop-outside-'))
+  try {
+    fs.mkdirSync(path.join(project, '.codex', 'skills'), { recursive: true })
+    fs.writeFileSync(path.join(outside, 'SKILL.md'), '---\nname: anti-slop-engineering\n---\n')
+    fs.symlinkSync(outside, path.join(project, '.codex/skills/anti-slop-engineering'))
+    const result = spawnSync(process.execPath, [installer, '--agent=codex', '--skills=core'], {
+      cwd: project, encoding: 'utf8', env: { ...process.env, HOME: project, CI: 'true' }, timeout: 12000,
+    })
+    assert.notEqual(result.status, 0)
+    assert.match(result.stderr, /symbolic link/i)
+    assert.equal(fs.existsSync(path.join(project, 'AGENTS.md')), false)
+    assert.equal(fs.readFileSync(path.join(outside, 'SKILL.md'), 'utf8'),
+      '---\nname: anti-slop-engineering\n---\n')
+  } finally {
+    fs.rmSync(project, { recursive: true, force: true })
+    fs.rmSync(outside, { recursive: true, force: true })
+  }
+})
+
 test('Postinstall: package lifecycle cannot launch remote skills add', () => {
   const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'anti-slop-lifecycle-'))
   const fakeBin = path.join(temporary, 'bin')
