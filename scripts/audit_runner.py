@@ -775,6 +775,8 @@ def _validate_report_outcome(
 
     reported_status = str(report.get("status", "")).upper()
     reported_verdict = str(report.get("verdict", "")).upper()
+    if report.get("passed") is False and not findings:
+        return "Guard reported passed=false without findings"
     if (reported_status == "FINDINGS" or reported_verdict == "FINDINGS") and not findings:
         return "Guard reported FINDINGS status without findings"
     if (reported_status in {"FAIL", "BLOCKED"} or reported_verdict in {"FAIL", "REJECT"}) and not blockers:
@@ -1004,6 +1006,33 @@ def _render_guards_coverage_table(guards: Dict[str, Dict[str, Any]]) -> List[str
     return lines
 
 
+def _render_mode_banner(mode: str) -> str:
+    normalized_mode = mode.lower() if mode else "during"
+    if normalized_mode == "during":
+        return (
+            "In **DURING Mode** (in-flight development), resolve findings iteratively "
+            "in your working tree before committing or submitting a pull request."
+        )
+    if normalized_mode == "after":
+        return (
+            "In **AFTER Mode** (post-implementation review), review all reported findings "
+            "and apply manual, reviewable remediation before approving or merging changes."
+        )
+    return (
+        f"In **{normalized_mode.upper()} Mode** (interactive triage), review each finding "
+        "interactively and confirm manual remediation before proceeding."
+    )
+
+
+def _render_req_input_items(req_input: List[Tuple[str, Dict[str, Any]]]) -> List[str]:
+    lines = []
+    for name, g in req_input:
+        flag = g.get("input_flag") or f"--{name.replace('_', '-')}-record"
+        reason = g.get("reason", "Requires assessment record")
+        lines.append(f"- [ ] `{name}`: Provide `{flag} <file>` ({reason})")
+    return lines
+
+
 def _render_remediation_workflow(
     findings: List[Dict[str, Any]],
     mode: str,
@@ -1014,25 +1043,9 @@ def _render_remediation_workflow(
         "",
         "## Remediation & Review Workflow",
         "",
+        _render_mode_banner(mode),
+        "",
     ]
-    normalized_mode = mode.lower() if mode else "during"
-    if normalized_mode == "during":
-        lines.append(
-            "In **DURING Mode** (in-flight development), resolve findings iteratively "
-            "in your working tree before committing or submitting a pull request."
-        )
-    elif normalized_mode == "after":
-        lines.append(
-            "In **AFTER Mode** (post-implementation review), review all reported findings "
-            "and apply manual, reviewable remediation before approving or merging changes."
-        )
-    else:
-        lines.append(
-            f"In **{normalized_mode.upper()} Mode** (interactive triage), review each finding "
-            "interactively and confirm manual remediation before proceeding."
-        )
-    lines.append("")
-
     if findings:
         lines.append("### Manual Remediation Checklist")
         lines.append("")
@@ -1050,11 +1063,32 @@ def _render_remediation_workflow(
         lines.append("python3 scripts/audit_runner.py audit --base HEAD")
         lines.append("```")
     else:
+        errors = [
+            (n, g) for n, g in (guards or {}).items()
+            if g.get("status") == "ERROR"
+        ]
         req_input = [
             (n, g) for n, g in (guards or {}).items()
             if g.get("skip_type") == "requires-input" or g.get("status") == "requires-input"
         ]
-        if req_input:
+        if errors:
+            lines.append("### Guard Execution Errors")
+            lines.append("")
+            lines.append(
+                "One or more guards encountered execution errors during audit. "
+                "Resolve the underlying errors and re-run:"
+            )
+            lines.append("")
+            for name, g in errors:
+                err_msg = g.get("error") or "Execution failed"
+                lines.append(f"- [ ] `{name}`: {err_msg}")
+            lines.append("")
+            if req_input:
+                lines.append("Additionally, the following guards require dedicated assessment records:")
+                lines.append("")
+                lines.extend(_render_req_input_items(req_input))
+                lines.append("")
+        elif req_input:
             lines.append("### Input Assessment Records Required")
             lines.append("")
             lines.append(
@@ -1062,10 +1096,7 @@ def _render_remediation_workflow(
                 "guards require dedicated assessment records for full audit coverage:"
             )
             lines.append("")
-            for name, g in req_input:
-                flag = g.get("input_flag") or f"--{name.replace('_', '-')}-record"
-                reason = g.get("reason", "Requires assessment record")
-                lines.append(f"- [ ] `{name}`: Provide `{flag} <file>` ({reason})")
+            lines.extend(_render_req_input_items(req_input))
             lines.append("")
             lines.append("To run full audit with all assessment records:")
             lines.append("")

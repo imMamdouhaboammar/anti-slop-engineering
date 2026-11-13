@@ -219,8 +219,8 @@ class AuditRunnerTests(unittest.TestCase):
         for cmd in banner_commands:
             base_cmd = cmd.split()[0]
             is_registered_guard = (
-                cmd in registry or cmd in cli_map or cli_map.get(cmd) in registry
-                or base_cmd in registry or base_cmd in cli_map or cli_map.get(base_cmd) in registry
+                cmd in registry or cli_map.get(cmd) in registry
+                or base_cmd in registry or cli_map.get(base_cmd) in registry
             )
             is_documented_exclusion = (cmd in excluded or base_cmd in excluded)
             self.assertTrue(
@@ -232,7 +232,7 @@ class AuditRunnerTests(unittest.TestCase):
         routed = set(re.findall(r'cmd === ["\']([^"\']+)["\']', cli_text))
         for cmd in routed:
             is_mapped = (
-                cmd in registry or cmd in cli_map or cli_map.get(cmd) in registry
+                cmd in registry or cli_map.get(cmd) in registry
                 or cmd in excluded
             )
             self.assertTrue(
@@ -385,3 +385,57 @@ class AuditRunnerTests(unittest.TestCase):
         self.assertEqual(status, "PASSED" if expected_status == "PASS" else expected_status)
         self.assertEqual(total, len(findings))
         self.assertEqual(blockers_cnt, blockers)
+
+    def test_remediation_workflow_handles_guard_errors_without_findings(self):
+        """When 0 findings exist but a guard failed with an execution error, list errors."""
+        guards = {
+            "diff_guard": {"status": "ERROR", "title": "Diff Guard", "error": "Execution timed out"},
+            "decision_guard": {
+                "status": "SKIPPED",
+                "skip_type": "requires-input",
+                "input_flag": "--decision-record",
+                "reason": "Requires dedicated Decision Guard JSON record",
+            },
+        }
+        tmp_file = Path(__file__).resolve().parent / "tmp_audit_guard_error.md"
+        try:
+            content = generate_audit_markdown([], tmp_file, guards=guards, mode="during")
+            self.assertNotIn("All guards passed with 0 findings", content)
+            self.assertNotIn("All evaluated guards passed with 0 findings", content)
+            self.assertIn("### Guard Execution Errors", content)
+            self.assertIn("diff_guard", content)
+            self.assertIn("Execution timed out", content)
+        finally:
+            if tmp_file.exists():
+                tmp_file.unlink()
+
+    def test_validate_report_outcome_rejects_passed_false_without_findings(self):
+        """Outcome validator rejects passed=False reports that exit 0 with 0 findings."""
+        process = {"exit_code": 0}
+        report = {"passed": False, "status": "PASS"}
+        err = audit_runner._validate_report_outcome(process, report, [])
+        self.assertIsNotNone(err)
+        self.assertIn("Guard reported passed=false without findings", err)
+
+    def test_action_result_rejects_inactive_mandatory_guard(self):
+        """Action result validator rejects mandatory guards marked as inactive/skipped."""
+        from action_result import evaluate_report
+        findings, guards = audit_runner.collect_audit_findings(base="HEAD")
+        guards_copy = dict(guards)
+        # Mark diff_guard (mandatory) as inactive
+        guards_copy["diff_guard"] = {
+            "status": "SKIPPED",
+            "applicable": False,
+            "exit_code": None,
+            "findings_count": 0,
+        }
+        report = {
+            "status": "PASS",
+            "total_findings": 0,
+            "blockers_count": 0,
+            "findings": [],
+            "guards": guards_copy,
+        }
+        with self.assertRaises(ValueError) as ctx:
+            evaluate_report(report, audit_exit=0)
+        self.assertIn("Mandatory guard diff_guard is incomplete", str(ctx.exception))

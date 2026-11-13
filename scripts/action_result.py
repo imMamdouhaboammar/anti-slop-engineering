@@ -6,7 +6,11 @@ import json
 import sys
 from pathlib import Path
 
-from audit_runner import guard_commands
+try:
+    from audit_runner import GUARD_REGISTRY, guard_commands
+except ImportError:
+    GUARD_REGISTRY = {}
+    from audit_runner import guard_commands
 
 
 def evaluate_report(report, audit_exit, canary_present=False):
@@ -27,7 +31,10 @@ def evaluate_report(report, audit_exit, canary_present=False):
             raise ValueError(f"Invalid result for {name}")
         status = result.get("status")
         is_inactive = status in {"SKIPPED", "requires-input", "not-applicable"}
-        if command is None or is_inactive:
+        mandatory = GUARD_REGISTRY.get(name, {}).get("mandatory")
+        if mandatory is None:
+            mandatory = command is not None
+        if command is None or (is_inactive and not mandatory):
             if not is_inactive or result.get("applicable") is not False or result.get("exit_code") is not None:
                 raise ValueError(f"Optional guard {name} has an invalid skip record")
         elif status not in {"PASS", "FINDINGS", "ERROR"} or result.get("applicable") is not True:
