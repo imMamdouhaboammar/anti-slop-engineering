@@ -14,7 +14,7 @@ Anti-Slop Engineering is an open-source playbook, agent skill, and lightweight t
    - Run tests using `python3 -m unittest discover -s tests -v`.
    - Never weaken assertions, delete tests, or add skips to bypass failures.
    - All tests in `tests/test_diff_guard.py` and `tests/test_sre_guard.py` must remain green.
-4. **Self-Diff Verification:** Run `python3 scripts/diff_guard.py --base HEAD` and `python3 scripts/sre_guard.py --base HEAD` before concluding any work session.
+4. **Self-Diff Verification:** Run `python3 scripts/diff_guard.py --base HEAD` and `python3 scripts/sre_guard.py --base HEAD` before concluding any work session. For multi-guard verification, run `bunx anti-slop-engineering audit --base HEAD`; for full repository test & lint verification, run `make check-all` (or `bunx anti-slop-engineering check-all`).
 5. **No Hallucinated Pass Badges:** Only report tests and checks that were executed and verified against real terminal outputs.
 6. **The Canonical Grounding & Authority Invariant (Official Boilerplate & Generators First):** Never improvise project scaffolding, directory layouts, configuration files, or dependencies from LLM statistical memory when an official CLI installer (`uv init`, `cargo init`, `bun create`) or package registry exists. Always ground against official upstream tooling.
 7. **The Dependency Determinism Invariant (Strict Latest Stable Pinning):** When adding new libraries, frameworks, or SDKs, strictly query the registry and pin the latest stable release. Never guess obsolete versions based on training cutoff dates.
@@ -107,7 +107,7 @@ Follow Anti-Slop Engineering standards, Google SRE Discipline (KISS, DRY, YAGNI,
 - `tagore-guard`: `skills/tagore-guard/SKILL.md`
 - `verification-oracle-architect`: `skills/verification-oracle-architect/SKILL.md`
 - `zero-downtime-migration-gate`: `skills/zero-downtime-migration-gate/SKILL.md`
-Before concluding tasks, verify against automated guards: `bunx anti-slop-engineering check --base HEAD`.
-Run audit dossier on demand: `bunx anti-slop-engineering audit`.
+Before concluding tasks, verify diff triage: `bunx anti-slop-engineering diff --base HEAD` (or `check --base HEAD`).
+For multi-guard verification, run: `bunx anti-slop-engineering audit --base HEAD`.
 To update anti-slop-engineering across all agents: `bunx anti-slop-engineering update`.
 <!-- anti-slop-engineering:end -->

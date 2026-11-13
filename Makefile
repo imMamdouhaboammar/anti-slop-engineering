@@ -1,4 +1,4 @@
-.PHONY: test test-verbose test-cases guard sre lint ruff ruff-fix oxlint clippy lint-rust install-clippy check help build-rust build-go build-services test-security test-rust test-go test-all check-all
+.PHONY: test test-verbose test-cases diff guard sre lint ruff ruff-fix oxlint clippy lint-rust install-clippy check help build-rust build-go build-services test-security test-rust test-go test-all check-all
 
 PYTHON ?= python3
 BUN ?= bun
@@ -14,6 +14,7 @@ help:
 	@echo "  make build-rust      Compile release binary for Rust engine"
 	@echo "  make build-go        Compile binary for Go SRE engine"
 	@echo "  make build-services  Compile both Rust and Go microservices"
+	@echo "  make diff            Alias for make guard (run diff_guard against HEAD)"
 	@echo "  make guard           Run diff_guard against HEAD"
 	@echo "  make sre             Run sre_guard against HEAD"
 	@echo "  make lint            Validate python syntax and run ruff check"
@@ -23,8 +24,8 @@ help:
 	@echo "  make clippy          Run Clippy linter on Rust engine with strict warnings"
 	@echo "  make lint-rust       Alias for make clippy"
 	@echo "  make install-clippy  Install or verify Clippy component via rustup"
-	@echo "  make check           Run lint + test + guard + sre"
-	@echo "  make check-all       Run check + test-rust + test-go + clippy"
+	@echo "  make check           Run developer quality checks: lint + test-verbose + guard + sre"
+	@echo "  make check-all       Run full repository suite: check + test-rust + test-go + clippy"
 
 test:
 	$(PYTHON) -m unittest discover -s tests
@@ -92,6 +93,8 @@ audit:
 
 guard:
 	$(PYTHON) scripts/diff_guard.py --base HEAD
+
+diff: guard
 
 sre:
 	$(PYTHON) scripts/sre_guard.py --base HEAD

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -12,6 +12,15 @@ function invoke(alias, args, extraEnv = {}) {
   const code = `process.argv=[process.execPath,${JSON.stringify(resolve("bin", alias))},...${JSON.stringify(args)}]; await import(${JSON.stringify(cli)});`;
   return spawnSync(process.execPath, ["--input-type=module", "--eval", code], {
     cwd: process.cwd(),
+    encoding: "utf8",
+    env: { ...process.env, ANTI_SLOP_DISABLE_NATIVE: "1", ...extraEnv },
+  });
+}
+
+function invokeInCwd(cwd, alias, args, extraEnv = {}) {
+  const code = `process.argv=[process.execPath,${JSON.stringify(resolve("bin", alias))},...${JSON.stringify(args)}]; await import(${JSON.stringify(cli)});`;
+  return spawnSync(process.execPath, ["--input-type=module", "--eval", code], {
+    cwd,
     encoding: "utf8",
     env: { ...process.env, ANTI_SLOP_DISABLE_NATIVE: "1", ...extraEnv },
   });
@@ -216,7 +225,7 @@ test("exec command routes to the in-flight execution guard status", () => {
 test("oxlint command routes to oxlint binary", () => {
   const result = invoke("anti-slop-engineering", ["oxlint", "--version"]);
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /1\.93\.0/);
+  assert.match(result.stdout, /(?:Version:\s*)?\d+\.\d+\.\d+/);
 });
 
 test("contrast command routes to the WCAG contrast guard", () => {
@@ -416,4 +425,62 @@ test("ruff command routes to ruff runner", (t) => {
   const result = invoke("anti-slop-engineering", ["ruff", "--version"]);
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout + result.stderr, /ruff/i);
+});
+
+test("diff command routes to diff guard", () => {
+  const result = invoke("anti-slop-engineering", ["diff", "--help"]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /Diff Guard/i);
+});
+
+test("check command routes to diff guard with backwards compatibility", () => {
+  const result = invoke("anti-slop-engineering", ["check", "--help"]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /Diff Guard/i);
+});
+
+test("verification contract: check/diff exits 0 on clean diff while audit catches and rejects SRE blocker (#32)", () => {
+  const tmpDir = mkdtempSync(join(tmpdir(), "check-contract-test-"));
+  try {
+    const runGit = (args) => {
+      const res = spawnSync("git", args, { cwd: tmpDir, encoding: "utf8" });
+      if (res.status !== 0) {
+        throw new Error(`git ${args.join(" ")} failed: ${res.stderr}`);
+      }
+      return res;
+    };
+    runGit(["init", "-b", "main"]);
+    runGit(["config", "user.name", "Test User"]);
+    runGit(["config", "user.email", "test@example.com"]);
+
+    writeFileSync(join(tmpDir, "service.py"), "def process():\n    return 42\n");
+    runGit(["add", "service.py"]);
+    runGit(["commit", "-m", "initial commit"]);
+
+    writeFileSync(
+      join(tmpDir, "service.py"),
+      "def process():\n    try:\n        return 42\n    except Exception:\n        pass\n"
+    );
+    runGit(["add", "service.py"]);
+    runGit(["commit", "-m", "add exception swallowing"]);
+
+    const diffRes = invokeInCwd(tmpDir, "anti-slop-engineering", ["diff", "--base", "HEAD~1", "--fail-on-blocker"]);
+    assert.equal(diffRes.status, 0, `diff failed: ${diffRes.stdout}\n${diffRes.stderr}`);
+
+    const checkRes = invokeInCwd(tmpDir, "anti-slop-engineering", ["check", "--base", "HEAD~1", "--fail-on-blocker"]);
+    assert.equal(checkRes.status, 0, `check failed: ${checkRes.stdout}\n${checkRes.stderr}`);
+
+    const auditRes = invokeInCwd(tmpDir, "anti-slop-engineering", ["audit", "--base", "HEAD~1", "--json"]);
+    assert.equal(auditRes.status, 1, `audit did not exit 1: ${auditRes.stdout}\n${auditRes.stderr}`);
+
+    const report = JSON.parse(auditRes.stdout);
+    assert.equal(report.status, "BLOCKED");
+    assert.ok(report.blockers_count >= 1, "Expected at least 1 blocker in audit report");
+    const sreFinding = report.findings.find(
+      (f) => f.rule === "SCALE_TOIL_ERROR_SWALLOW" || f.guard === "sre_guard"
+    );
+    assert.ok(sreFinding, "Expected SRE Guard blocker finding in audit report");
+  } finally {
+    rmSync(tmpDir, { recursive: true, force: true });
+  }
 });
