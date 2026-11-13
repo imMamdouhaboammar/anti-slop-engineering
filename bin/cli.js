@@ -164,6 +164,11 @@ const executableAliases = {
   "humanize": "tagore",
   "audit-guard": "audit",
   "audit": "audit",
+  "diff": "diff",
+  "diff-guard": "diff",
+  "guard": "diff",
+  "check": "check",
+  "check-all": "check-all",
   "installer": "install",
   "setup": "install",
   "ruff": "ruff",
@@ -225,7 +230,10 @@ Commands:
   asset-provenance, provenance Run Asset Sourcing & License Provenance Ledger Guard (cryptographic SHA-256 & open-license ledger)
   styleseed              Run StyleSeed Cognitive Grammar & Token Canon Guard (primitives, OKLCH, spatial inversion)
   tagore, discourse      Run Tagore Engineering Discourse & Substance Guard (29 tells, 8-dim rubric, voice calibration)
+  diff, diff-guard       Run single Diff Guard (narrow git diff triage against --base, default: HEAD)
+  check                  Run single Diff Guard (backwards-compatible alias of diff for git diff triage)
   audit                  Run unified multi-guard audit and generate numbered markdown dossier (anti-slop/audit-NNN.md)
+  check-all              Run full repository quality suite across guards and polyglot tests (make check-all)
   mode [during|after|ask] Configure anti-slop execution mode (active inline vs post-hoc audit)
   install, setup         Install required core and optional skill plugins (TTY wizard or explicit flags)
   update                 Upgrade installed skills and refresh agent pointer blocks in one shot
@@ -534,6 +542,9 @@ Path B: Submit a PR (Problem + Solution Integrated)
   spawnProcess("make", ["test-all"], "test-all");
 } else if (cmd === "check-all") {
   spawnProcess("make", ["check-all"], "check-all");
+} else if (cmd === "diff" || cmd === "diff-guard" || cmd === "guard") {
+  const forwardArgs = args.slice(1).length > 0 ? args.slice(1) : ["--base", "HEAD"];
+  runPythonScript(diffGuardScript, forwardArgs, "diff_guard");
 } else if (cmd === "check") {
   const forwardArgs = args.slice(1).length > 0 ? args.slice(1) : ["--base", "HEAD"];
   runPythonScript(diffGuardScript, forwardArgs, "diff_guard");

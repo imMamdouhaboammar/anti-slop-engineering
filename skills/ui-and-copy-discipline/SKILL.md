@@ -81,9 +81,9 @@ bunx anti-slop-engineering contrast "#FFFFFF" "#1E293B"
 # Scan workspace stylesheets and components for contrast violations:
 bunx anti-slop-engineering contrast --scan src/
 
-# Run full Seven Gates & anti-slop diff check:
-bunx anti-slop-engineering check --base HEAD
+# Run single Diff Guard triage (narrow diff check):
+bunx anti-slop-engineering diff --base HEAD
 
-# Generate comprehensive numbered audit report:
-bunx anti-slop-engineering audit
+# Run applicable multi-guard audit scan (Diff, SRE, Contrast, etc.):
+bunx anti-slop-engineering audit --base HEAD
 ```

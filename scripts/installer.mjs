@@ -278,8 +278,8 @@ function pointerBlock(skills, skillPaths) {
     '## anti-slop-engineering',
     'Follow Anti-Slop Engineering standards, Google SRE Discipline (KISS, DRY, YAGNI, Fix Issues at Scale), and clean-room gates:',
     ...skills.filter((s) => skillPaths.has(s)).map((s) => `- \`${s}\`: \`${skillPaths.get(s)}\``),
-    'Before concluding tasks, verify against automated guards: `bunx anti-slop-engineering check --base HEAD`.',
-    'Run audit dossier on demand: `bunx anti-slop-engineering audit`.',
+    'Before concluding tasks, verify diff triage: `bunx anti-slop-engineering diff --base HEAD` (or `check --base HEAD`).',
+    'For multi-guard verification, run: `bunx anti-slop-engineering audit --base HEAD`.',
     'To update anti-slop-engineering across all agents: `bunx anti-slop-engineering update`.',
     POINTER_END,
   ]

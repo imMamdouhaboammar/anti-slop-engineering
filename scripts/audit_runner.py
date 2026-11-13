@@ -310,6 +310,9 @@ GUARD_REGISTRY: Dict[str, Dict[str, Any]] = {
 }
 
 CLI_COMMAND_TO_GUARD_MAP: Dict[str, str] = {
+    "diff": "diff_guard",
+    "diff-guard": "diff_guard",
+    "guard": "diff_guard",
     "rust": "diff_guard",
     "sts": "diff_guard",
     "rust-guard": "diff_guard",

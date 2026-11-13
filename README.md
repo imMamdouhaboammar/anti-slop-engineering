@@ -71,6 +71,17 @@ uv tool install git+https://github.com/imMamdouhaboammar/anti-slop-engineering.g
 pipx install git+https://github.com/imMamdouhaboammar/anti-slop-engineering.git
 ```
 
+### Verification Contracts
+
+| Command | Scope & Checks | When to Use |
+| --- | --- | --- |
+| `bunx anti-slop-engineering diff --base HEAD` | **Single Diff Guard**: Inspects git diff only for scope creep, unverified additions, ungrounded comments, and banned tokens. Exits 0 if no blocker patterns are identified. | Quick pre-commit diff triage. |
+| `bunx anti-slop-engineering check --base HEAD` | **Backwards-Compatible Diff Check**: Retains narrow Diff Guard triage scope (alias for `diff`). Does not run SRE Guard, linters, or test suites. | Preserved for existing script compatibility. |
+| `bunx anti-slop-engineering audit --base HEAD` | **Unified Multi-Guard Audit**: Runs all applicable active guards (Diff, SRE, AST, Contrast, Comment Budget, PR Boundary, Invariant Steward, etc.) and compiles a structured dossier in `anti-slop/audit-NNN.md`. Exits with code 1 if any blocker is found. | Comprehensive verification before PR creation or completion. |
+| `bunx anti-slop-engineering check-all` | **Full Repository Quality Suite**: Runs `make check-all` (linting, Python unit tests, Bun security tests, Rust cargo test & clippy, and Go SRE tests). | Full CI-level verification across all polyglot targets. |
+
+> **Note on Makefile vs CLI:** In `Makefile`, `make check` runs developer checks (`lint + test-verbose + guard + sre`), while CLI `anti-slop-engineering check` is the narrow git diff triage. For repository-wide verification, use `make check-all` or `bunx anti-slop-engineering check-all`.
+
 ---
 
 ## What it catches
