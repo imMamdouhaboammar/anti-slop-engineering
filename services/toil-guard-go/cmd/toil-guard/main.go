@@ -224,17 +224,26 @@ func runServe(args []string) {
 	_ = fs.Parse(args)
 
 	srv := server.NewServer(*port)
-	fmt.Printf("Toil Guard SRE daemon running on http://127.0.0.1:%d\n", *port)
-	fmt.Println("Endpoints: /healthz, /metrics, /v1/audit, /v1/sli-budget")
+	listener, err := srv.Listen()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Server failed: %v\n", err)
+		os.Exit(1)
+	}
 
-	serverError := make(chan error, 1)
-	go func() {
-		serverError <- srv.Start()
-	}()
+	defer listener.Close()
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 	defer signal.Stop(sigChan)
+
+	fmt.Printf("Toil Guard SRE daemon running on http://%s\n", listener.Addr())
+	fmt.Println("Endpoints: /healthz, /metrics, /v1/audit, /v1/sli-budget")
+
+	serverError := make(chan error, 1)
+	go func() {
+		serverError <- srv.Serve(listener)
+	}()
+
 	select {
 	case err := <-serverError:
 		if err != nil && err != http.ErrServerClosed {
@@ -250,6 +259,7 @@ func runServe(args []string) {
 			fmt.Fprintf(os.Stderr, "Server shutdown failed: %v\n", err)
 			os.Exit(1)
 		}
+		fmt.Println("Toil Guard daemon shut down")
 	}
 }
 

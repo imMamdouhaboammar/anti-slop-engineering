@@ -91,35 +91,37 @@ pub fn create_router() -> Router {
         .route("/v1/triage", post(triage_handler))
 }
 
-async fn shutdown_signal() {
-    let ctrl_c = async {
-        let _ = tokio::signal::ctrl_c().await;
-    };
+pub async fn run_server(port: u16) -> Result<(), Box<dyn std::error::Error>> {
+    let addr = SocketAddr::from(([127, 0, 0, 1], port));
+    let listener = tokio::net::TcpListener::bind(addr).await?;
 
     #[cfg(unix)]
-    let terminate = async {
-        if let Ok(mut sig) = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
-            sig.recv().await;
+    let shutdown = {
+        use tokio::signal::unix::{signal, SignalKind};
+
+        let mut interrupt = signal(SignalKind::interrupt())?;
+        let mut terminate = signal(SignalKind::terminate())?;
+        async move {
+            tokio::select! {
+                _ = interrupt.recv() => {},
+                _ = terminate.recv() => {},
+            }
+        }
+    };
+    #[cfg(not(unix))]
+    let shutdown = async {
+        if let Err(error) = tokio::signal::ctrl_c().await {
+            eprintln!("Failed to listen for Ctrl-C: {error}");
         }
     };
 
-    #[cfg(not(unix))]
-    let terminate = std::future::pending::<()>();
-
-    tokio::select! {
-        _ = ctrl_c => {},
-        _ = terminate => {},
-    }
-    println!("\nShutting down anti-slop-rust daemon gracefully...");
-}
-
-pub async fn run_server(port: u16) -> Result<(), Box<dyn std::error::Error>> {
-    let app = create_router();
-    let addr = SocketAddr::from(([127, 0, 0, 1], port));
-    let listener = tokio::net::TcpListener::bind(addr).await?;
-    println!("anti-slop-rust daemon listening on http://{addr}");
-    axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
+    println!(
+        "anti-slop-rust daemon listening on http://{}",
+        listener.local_addr()?
+    );
+    axum::serve(listener, create_router())
+        .with_graceful_shutdown(shutdown)
         .await?;
+    println!("anti-slop-rust daemon shut down");
     Ok(())
 }
