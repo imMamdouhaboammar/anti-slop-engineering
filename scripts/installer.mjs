@@ -7,6 +7,7 @@ import path from 'node:path'
 import os from 'node:os'
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
+import readline from 'node:readline'
 import { fileURLToPath } from 'node:url'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -269,15 +270,18 @@ export function writeBlock(entry, block) {
 
 export function updatePointers({ targets, skills }) {
   const entries = new Map()
+  const validSkills = new Set(listAvailableSkills())
   for (const t of targets) {
     for (const a of t.agents) {
       if (!entries.has(a.entry)) entries.set(a.entry, new Map())
       const skillPaths = entries.get(a.entry)
       for (const skill of skills) {
         const file = path.join(t.path, skill, 'SKILL.md')
-        if (!skillPaths.has(skill) && fs.existsSync(file)) {
-          skillPaths.set(skill, path.relative(process.cwd(), file).split(path.sep).join('/'))
-        }
+        if (!validSkills.has(skill) || skillPaths.has(skill) || !fs.existsSync(file)) continue
+        if (!fs.lstatSync(file).isFile()) continue
+        const frontmatter = /^---\r?\n([\s\S]*?)\r?\n---/.exec(fs.readFileSync(file, 'utf8'))?.[1] || ''
+        if (!new RegExp(`^name:\\s*["']?${skill}["']?\\s*$`, 'm').test(frontmatter)) continue
+        skillPaths.set(skill, path.relative(process.cwd(), file).split(path.sep).join('/'))
       }
     }
   }
@@ -319,6 +323,90 @@ export function updateAll({ locations = ['project', 'global'] } = {}) {
   return { results, pointers }
 }
 
+function optionValue(args, names) {
+  for (const name of names) {
+    const index = args.findIndex((arg) => arg === `--${name}` || arg.startsWith(`--${name}=`))
+    if (index === -1) continue
+    const raw = args[index]
+    if (raw.includes('=')) return raw.slice(raw.indexOf('=') + 1)
+    const value = args[index + 1]
+    if (!value || value.startsWith('--')) throw new Error(`Missing value for --${name}`)
+    return value
+  }
+  return null
+}
+
+export async function promptForSkills(modules, targets, input = process.stdin, output = process.stdout) {
+  const rl = readline.createInterface({ input, output, terminal: true })
+  rl.on('SIGINT', () => rl.close())
+  const ask = (prompt) => new Promise((resolve) => {
+    let finished = false
+    const finish = (answer) => {
+      if (finished) return
+      finished = true
+      rl.off('close', closed)
+      resolve(answer)
+    }
+    const closed = () => finish(null)
+    rl.on('close', closed)
+    rl.question(prompt, finish)
+  })
+  const optional = modules.filter((module) => !module.required)
+  const width = Math.max(32, output.columns || 80)
+  try {
+    while (true) {
+      output.write('\nAnti-Slop Engineering setup (Core is required)\n')
+      output.write('  1. Core only\n  2. Select plugins\n  3. Install everything\n  q. Cancel\n')
+      const mode = (await ask('Choose installation [1-3]: '))?.trim().toLowerCase()
+      if (mode == null || mode === 'q') return null
+      if (!['1', '2', '3'].includes(mode)) {
+        output.write('Enter 1, 2, 3, or q\n')
+        continue
+      }
+      let skills = [CORE_SKILL]
+      if (mode === '3') skills = resolveSkillSelection('all')
+      if (mode === '2') {
+        output.write('\nSelect optional plugins (Core remains installed):\n')
+        optional.forEach((module, index) => {
+          const name = `${index + 1}. ${module.id}`
+          const summary = module.description.slice(0, Math.max(0, width - name.length - 5))
+          output.write(`  ${name} ${summary}\n`)
+        })
+        const choice = (await ask('Plugin numbers or IDs (comma-separated; Enter none, b back, q cancel): '))?.trim()
+        if (choice == null || choice.toLowerCase() === 'q') return null
+        if (choice.toLowerCase() === 'b') continue
+        const parts = choice ? choice.split(',').map((part) => part.trim()) : []
+        const picked = []
+        let invalid = null
+        for (const part of parts) {
+          const plugin = /^\d+$/.test(part) ? optional[Number(part) - 1]?.id : part
+          if (!plugin || !optional.some((module) => module.id === plugin)) {
+            invalid = part
+            break
+          }
+          picked.push(plugin)
+        }
+        if (invalid != null) {
+          output.write(`Unknown plugin selection: ${invalid}\n`)
+          continue
+        }
+        skills = resolveSkillSelection(picked)
+      }
+      output.write(`\nInstallation plan:\n  Required: ${CORE_SKILL}\n`)
+      output.write(`  Optional: ${skills.filter((skill) => skill !== CORE_SKILL).join(', ') || '(none)'}\n`)
+      targets.forEach((target) => output.write(`  Target: ${target.path}\n`))
+      const confirmation = (await ask('Confirm installation? [y/N/b]: '))?.trim().toLowerCase()
+      if (confirmation == null || confirmation === 'q') return null
+      if (confirmation === 'b') continue
+      if (confirmation === 'y' || confirmation === 'yes') return skills
+      output.write('Installation cancelled before any files were changed\n')
+      return null
+    }
+  } finally {
+    rl.close()
+  }
+}
+
 export async function runInstallerCLI(args = process.argv.slice(2)) {
   if (args.includes('--help') || args.includes('-h')) {
     console.log(`
@@ -333,9 +421,11 @@ Options:
   --agent <names>     Target agents (comma-separated, or 'all'). Default: detected agents
   --scope <scope>     Install scope: 'project' (default) or 'global'
   --skills <skills>   Skills to install: 'all', 'core', or comma-separated names
+  --plugins <names>   Alias for --skills; core is always included
   --overwrite         Overwrite existing installed skills
   --dry-run           Simulate installation without writing files
   --json              Output JSON result
+  --no-interactive    Skip terminal selection (defaults to core only)
   --help, -h          Show this help menu
 `)
     return 0
@@ -362,12 +452,13 @@ Options:
     return 0
   }
 
-  const scopeArg = args.find((a) => a.startsWith('--scope='))?.split('=')[1] || (args.includes('--global') ? 'global' : 'project')
-  const agentArg = args.find((a) => a.startsWith('--agent='))?.split('=')[1]
-  const skillsArg = args.find((a) => a.startsWith('--skills='))?.split('=')[1] || 'all'
+  const scopeArg = optionValue(args, ['scope']) || (args.includes('--global') ? 'global' : 'project')
+  const agentArg = optionValue(args, ['agent'])
+  const skillsArg = optionValue(args, ['skills', 'plugins', 'modules'])
   const overwrite = args.includes('--overwrite')
   const dryRun = args.includes('--dry-run')
   const jsonMode = args.includes('--json')
+  if (!['project', 'global'].includes(scopeArg)) throw new Error(`Invalid installation scope: ${scopeArg}`)
 
   const detected = detectAgents(scopeArg)
   let selectedAgents = []
@@ -378,18 +469,25 @@ Options:
   } else {
     selectedAgents = detected.length > 0 ? detected : ['antigravity', 'claude', 'cursor']
   }
-
-  const availableSkills = listAvailableSkills()
-  let selectedSkills = []
-  if (skillsArg === 'core') {
-    selectedSkills = [CORE_SKILL]
-  } else if (skillsArg === 'all') {
-    selectedSkills = availableSkills
-  } else {
-    selectedSkills = skillsArg.split(',').map((s) => s.trim())
+  const validAgents = new Set(AGENTS.map((agent) => agent.id))
+  for (const agent of selectedAgents) {
+    if (!validAgents.has(agent)) throw new Error(`Unknown or invalid agent: ${agent}`)
   }
 
+  const availableSkills = listAvailableSkills()
+  let selectedSkills = resolveSkillSelection(skillsArg ?? 'core', availableSkills)
+
   const targets = resolveTargets(scopeArg, selectedAgents)
+
+  const interactive = !dryRun && !jsonMode && !process.env.CI && !args.includes('--no-interactive')
+    && skillsArg == null && process.stdin.isTTY && process.stdout.isTTY
+  if (interactive) {
+    selectedSkills = await promptForSkills(listAvailableModules(), targets)
+    if (selectedSkills == null) {
+      console.log('Setup cancelled; no installation files were changed')
+      return 130
+    }
+  }
 
   if (dryRun) {
     const plan = { scope: scopeArg, agents: selectedAgents, skills: selectedSkills, targets: targets.map((t) => t.path) }
@@ -421,8 +519,10 @@ Options:
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
-  runInstallerCLI().catch((err) => {
+  runInstallerCLI().then((code) => {
+    if (code !== 0) process.exitCode = code
+  }).catch((err) => {
     console.error(`Installer error: ${err.message}`)
-    process.exit(1)
+    process.exitCode = 1
   })
 }
