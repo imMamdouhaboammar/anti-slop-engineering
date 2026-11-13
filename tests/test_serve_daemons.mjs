@@ -133,8 +133,16 @@ test("serve-rust bounds the time spent draining an active request", { timeout: 2
   const socket = createConnection({ host: "127.0.0.1", port: Number(port) });
   t.after(() => socket.destroy());
   await once(socket, "connect");
-  socket.write("POST /v1/triage HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: 2\r\n\r\n{");
-  assert.equal(socket.destroyed, false);
+  socket.setEncoding("utf8");
+  socket.write("POST /v1/triage HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: 2\r\nExpect: 100-continue\r\n\r\n");
+  let response = "";
+  const signal = AbortSignal.timeout(deadline);
+  while (!response.includes("\r\n\r\n")) {
+    const [chunk] = await once(socket, "data", { signal });
+    response += chunk;
+  }
+  assert.match(response, /^HTTP\/1\.1 100 Continue\r\n/);
+  socket.write("{");
 
   assert.ok(run.child.kill("SIGTERM"));
   assert.deepEqual(await onceOrExit(run), [1, null]);
