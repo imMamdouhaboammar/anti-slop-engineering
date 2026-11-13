@@ -55,6 +55,35 @@ export function listAvailableSkills() {
   return entries
 }
 
+export function listAvailableModules() {
+  const source = skillSourceDir()
+  return listAvailableSkills().map((id) => {
+    const file = source && path.join(source, id, 'SKILL.md')
+    const content = file && fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : ''
+    const frontmatter = /^---\r?\n([\s\S]*?)\r?\n---/.exec(content)?.[1] || ''
+    const lines = frontmatter.split(/\r?\n/)
+    const index = lines.findIndex((line) => line.startsWith('description:'))
+    const raw = index < 0 ? '' : lines[index].slice('description:'.length).trim()
+    const description = /^[>|]/.test(raw)
+      ? lines.slice(index + 1).filter((line) => /^\s+\S/.test(line)).map((line) => line.trim()).join(' ')
+      : raw.replace(/^['"]|['"]$/g, '')
+    return { id, required: id === CORE_SKILL, description: description || id }
+  })
+}
+
+export function resolveSkillSelection(requested, available = listAvailableSkills()) {
+  const requestedIds = requested === 'all' ? available
+    : requested === 'core' || requested === '' ? []
+      : Array.isArray(requested) ? requested : requested.split(',').map((id) => id.trim())
+  const valid = new Set(available)
+  for (const id of requestedIds) {
+    if (!/^[a-z0-9][a-z0-9-]*$/.test(id) || !valid.has(id)) {
+      throw new Error(`Unknown or invalid plugin: ${id}`)
+    }
+  }
+  return [CORE_SKILL, ...new Set(requestedIds.filter((id) => id !== CORE_SKILL))]
+}
+
 function resolveBase(location) {
   return location === 'global' ? os.homedir() : process.cwd()
 }
