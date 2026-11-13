@@ -14,12 +14,16 @@ REPO = Path(__file__).resolve().parents[1]
 @unittest.skipUnless(os.name == "posix" and shutil.which("node"), "PTY and Node are required")
 class InteractiveInstallerTests(unittest.TestCase):
     def setUp(self):
+        import fcntl
         import pty
+        import struct
+        import termios
 
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.project = Path(self.temp.name)
         self.master, slave = pty.openpty()
+        fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 24, 42, 0, 0))
         self.process = subprocess.Popen(
             [shutil.which("node"), str(REPO / "scripts/installer.mjs"), "--agent=codex"],
             stdin=slave, stdout=slave, stderr=slave, cwd=self.project,
@@ -73,6 +77,56 @@ class InteractiveInstallerTests(unittest.TestCase):
         self.read_until("Core only")
         os.write(self.master, b"\x04")
         self.assertNotEqual(self.process.wait(timeout=8), 0)
+        self.assertFalse((self.project / ".codex").exists())
+
+    def test_declined_confirmation_does_not_install_anything(self):
+        self.read_until("Core only")
+        os.write(self.master, b"3\n")
+        self.read_until("Confirm installation")
+        os.write(self.master, b"n\n")
+        self.assertNotEqual(self.process.wait(timeout=8), 0)
+        self.assertFalse((self.project / ".codex").exists())
+
+    def test_small_terminal_displays_optional_descriptions_and_supports_empty_selection(self):
+        self.read_until("Core only")
+        os.write(self.master, b"2\n")
+        listing = self.read_until("Plugins (comma-separated")
+        self.assertIn("decision-guard", listing)
+        for line in listing.splitlines():
+            if line.startswith("  ") and not line.startswith("  Target:"):
+                self.assertLessEqual(len(line), 42, line)
+        os.write(self.master, b"\n")
+        self.read_until("Confirm installation")
+        os.write(self.master, b"y\n")
+        self.assertEqual(self.process.wait(timeout=15), 0)
+        self.assertFalse((self.project / ".codex/skills/decision-guard").exists())
+
+    def test_custom_selection_installs_multiple_plugins_with_core(self):
+        self.read_until("Core only")
+        os.write(self.master, b"2\n")
+        self.read_until("Plugins (comma-separated")
+        os.write(self.master, b"decision-guard,root-fix-gate\n")
+        self.read_until("Confirm installation")
+        os.write(self.master, b"y\n")
+        self.assertEqual(self.process.wait(timeout=15), 0)
+        root = self.project / ".codex/skills"
+        for module in ("anti-slop-engineering", "decision-guard", "root-fix-gate"):
+            self.assertTrue((root / module / "SKILL.md").is_file(), module)
+        self.assertFalse((root / "future-scale-gate").exists())
+
+    def test_user_can_change_agent_scope_before_confirmation(self):
+        self.read_until("Core only")
+        os.write(self.master, b"t\n")
+        self.read_until("Agent IDs")
+        os.write(self.master, b"codex\n")
+        self.read_until("Scope")
+        os.write(self.master, b"global\n")
+        self.read_until("Core only")
+        os.write(self.master, b"1\n")
+        self.read_until("Confirm installation")
+        os.write(self.master, b"y\n")
+        self.assertEqual(self.process.wait(timeout=15), 0)
+        self.assertTrue((self.project / ".agents/skills/anti-slop-engineering/SKILL.md").exists())
         self.assertFalse((self.project / ".codex").exists())
 
 

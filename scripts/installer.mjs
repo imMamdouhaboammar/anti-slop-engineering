@@ -46,11 +46,31 @@ export function skillSourceDir() {
   return null
 }
 
+function readSkillMetadata(file) {
+  if (!fs.existsSync(file) || !fs.lstatSync(file).isFile()) return null
+  const content = fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n')
+  if (!content.startsWith('---\n')) return null
+  const end = content.indexOf('\n---', 4)
+  if (end < 0) return null
+  const lines = content.slice(4, end).split('\n')
+  const name = lines.find((line) => line.startsWith('name:'))?.slice(5).trim().replace(/^['"]|['"]$/g, '')
+  const index = lines.findIndex((line) => line.startsWith('description:'))
+  const raw = index < 0 ? '' : lines[index].slice('description:'.length).trim()
+  const parts = []
+  if (/^[>|]/.test(raw)) {
+    for (const line of lines.slice(index + 1)) {
+      if (!/^\s+\S/.test(line)) break
+      parts.push(line.trim())
+    }
+  }
+  return { name, description: parts.length ? parts.join(' ') : raw.replace(/^['"]|['"]$/g, '') }
+}
+
 export function listAvailableSkills() {
   const dir = skillSourceDir()
   if (!dir) return [CORE_SKILL]
   const entries = fs.readdirSync(dir, { withFileTypes: true })
-    .filter((e) => e.isDirectory() && fs.existsSync(path.join(dir, e.name, 'SKILL.md')))
+    .filter((e) => e.isDirectory() && readSkillMetadata(path.join(dir, e.name, 'SKILL.md'))?.name === e.name)
     .map((e) => e.name)
   if (!entries.includes(CORE_SKILL)) entries.unshift(CORE_SKILL)
   return entries
@@ -60,15 +80,7 @@ export function listAvailableModules() {
   const source = skillSourceDir()
   return listAvailableSkills().map((id) => {
     const file = source && path.join(source, id, 'SKILL.md')
-    const content = file && fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : ''
-    const frontmatter = /^---\r?\n([\s\S]*?)\r?\n---/.exec(content)?.[1] || ''
-    const lines = frontmatter.split(/\r?\n/)
-    const index = lines.findIndex((line) => line.startsWith('description:'))
-    const raw = index < 0 ? '' : lines[index].slice('description:'.length).trim()
-    const description = /^[>|]/.test(raw)
-      ? lines.slice(index + 1).filter((line) => /^\s+\S/.test(line)).map((line) => line.trim()).join(' ')
-      : raw.replace(/^['"]|['"]$/g, '')
-    return { id, required: id === CORE_SKILL, description: description || id }
+    return { id, required: id === CORE_SKILL, description: (file && readSkillMetadata(file)?.description) || id }
   })
 }
 
@@ -109,12 +121,13 @@ export function detectAgents(location) {
   return AGENTS.flatMap((a) => fs.existsSync(path.dirname(skillPath(a, location))) ? [a.id] : [])
 }
 
-function safeCopy(src, dest, version) {
+function safeCopy(src, dest, version, dryRun = false) {
   const helper = path.join(rootDir, 'scripts', 'safe_install.py')
   const candidates = process.platform === 'win32' ? [['py', '-3'], ['python', '']] : [['python3', '']]
   for (const [executable, flag] of candidates) {
     const args = [...(flag ? [flag] : []), helper, '--source', src, '--dest', dest]
     if (version) args.push('--version', version)
+    if (dryRun) args.push('--dry-run')
     const result = spawnSync(executable, args, { encoding: 'utf8' })
     if (result.error?.code === 'ENOENT') continue
     if (result.error || result.status !== 0) {
@@ -125,7 +138,22 @@ function safeCopy(src, dest, version) {
   throw new Error('Python 3 is required for safe file installation')
 }
 
-export function installSkills({ skills, targets, overwrite = false }) {
+function sourceForSkill(skill, source) {
+  if (skill === CORE_SKILL) {
+    for (const candidate of [
+      path.join(rootDir, '.agents', 'skills', CORE_SKILL),
+      path.join(rootDir, 'skills', CORE_SKILL),
+      rootDir,
+    ]) {
+      if (fs.existsSync(path.join(candidate, 'SKILL.md'))) return candidate
+    }
+  } else if (source) {
+    return path.join(source, skill)
+  }
+  throw new Error(`Missing skill source: ${skill}`)
+}
+
+export function installSkills({ skills, targets, overwrite = false, dryRun = false }) {
   const source = skillSourceDir()
   const available = new Set(listAvailableSkills())
   for (const skill of skills) {
@@ -136,25 +164,14 @@ export function installSkills({ skills, targets, overwrite = false }) {
   const written = []
   for (const t of targets) {
     for (const skill of skills) {
-      let src = null
-      if (skill === CORE_SKILL) {
-        // Core skill may live at root or .agents/skills/anti-slop-engineering
-        const candidate1 = path.join(rootDir, '.agents', 'skills', CORE_SKILL)
-        const candidate2 = path.join(rootDir, 'skills', CORE_SKILL)
-        if (fs.existsSync(candidate1)) src = candidate1
-        else if (fs.existsSync(candidate2)) src = candidate2
-        else src = rootDir // has root SKILL.md
-      } else if (source) {
-        src = path.join(source, skill)
-      }
-      if (!src || !fs.existsSync(src)) throw new Error(`Missing skill source: ${skill}`)
+      const src = sourceForSkill(skill, source)
 
       const dest = path.join(t.path, skill)
       if (fs.existsSync(dest) && !overwrite) {
         written.push({ skill, agents: t.agents.map((a) => a.id), path: dest, status: 'skipped' })
         continue
       }
-      const outcome = safeCopy(src, dest, VERSION)
+      const outcome = safeCopy(src, dest, VERSION, dryRun)
       written.push({ skill, agents: t.agents.map((a) => a.id), path: dest, ...outcome })
     }
   }
@@ -163,6 +180,60 @@ export function installSkills({ skills, targets, overwrite = false }) {
 
 const POINTER_START = '<!-- anti-slop-engineering:start -->'
 const POINTER_END = '<!-- anti-slop-engineering:end -->'
+const SELECTION_FILE = '.anti-slop-selection.json'
+
+function assertSafeFilePath(entry) {
+  for (let current = path.resolve(entry); ; current = path.dirname(current)) {
+    try {
+      if (fs.lstatSync(current).isSymbolicLink()) {
+        throw new Error(`Refusing symbolic link in installer path: ${current}`)
+      }
+    } catch (err) {
+      if (err.code !== 'ENOENT') throw err
+    }
+    if (current === path.dirname(current)) break
+  }
+}
+
+function readSelection(target) {
+  const file = path.join(target.path, SELECTION_FILE)
+  assertSafeFilePath(file)
+  if (!fs.existsSync(file)) return null
+  const state = JSON.parse(fs.readFileSync(file, 'utf8'))
+  if (state?.format !== 1 || !Array.isArray(state.skills) || !Array.isArray(state.agents)
+    || !['project', 'global'].includes(state.scope) || typeof state.version !== 'string') {
+    throw new Error(`Invalid installed module selection: ${file}`)
+  }
+  const available = new Set(listAvailableSkills())
+  for (const id of state.skills) {
+    if (typeof id !== 'string' || !available.has(id)) {
+      throw new Error(`Unknown previously installed module ${String(id)} in ${file}`)
+    }
+  }
+  if (!state.skills.includes(CORE_SKILL)) throw new Error(`Missing required core in ${file}`)
+  return state
+}
+
+function writeSelections(targets, scope, skills) {
+  const states = []
+  for (const target of targets) {
+    const previous = readSelection(target)
+    const selected = [...new Set([...(previous?.skills || []), ...skills])]
+      .filter((id) => fs.existsSync(path.join(target.path, id, 'SKILL.md')))
+    const state = { format: 1, version: VERSION, scope,
+      agents: target.agents.map((agent) => agent.id), skills: selected }
+    const file = path.join(target.path, SELECTION_FILE)
+    const temporary = `${file}.${process.pid}.${randomUUID()}.tmp`
+    try {
+      fs.writeFileSync(temporary, JSON.stringify(state, null, 2) + '\n', { flag: 'wx' })
+      fs.renameSync(temporary, file)
+    } finally {
+      if (fs.existsSync(temporary)) fs.unlinkSync(temporary)
+    }
+    states.push({ file, ...state })
+  }
+  return states
+}
 
 function pointerBlock(skills, skillPaths) {
   return [
@@ -212,16 +283,7 @@ function scanMarkers(lines) {
 }
 
 export function writeBlock(entry, block) {
-  for (let current = path.resolve(entry); ; current = path.dirname(current)) {
-    try {
-      if (fs.lstatSync(current).isSymbolicLink()) {
-        throw new Error(`Refusing symbolic link in agent instruction path: ${current}`)
-      }
-    } catch (err) {
-      if (err.code !== 'ENOENT') throw err
-    }
-    if (current === path.dirname(current)) break
-  }
+  assertSafeFilePath(entry)
   let existing = ''
   let exists = true
   try {
@@ -278,9 +340,7 @@ export function updatePointers({ targets, skills }) {
       for (const skill of skills) {
         const file = path.join(t.path, skill, 'SKILL.md')
         if (!validSkills.has(skill) || skillPaths.has(skill) || !fs.existsSync(file)) continue
-        if (!fs.lstatSync(file).isFile()) continue
-        const frontmatter = /^---\r?\n([\s\S]*?)\r?\n---/.exec(fs.readFileSync(file, 'utf8'))?.[1] || ''
-        if (!new RegExp(`^name:\\s*["']?${skill}["']?\\s*$`, 'm').test(frontmatter)) continue
+        if (readSkillMetadata(file)?.name !== skill) continue
         skillPaths.set(skill, path.relative(process.cwd(), file).split(path.sep).join('/'))
       }
     }
@@ -303,16 +363,18 @@ export function updateAll({ locations = ['project', 'global'] } = {}) {
   for (const location of locations) {
     for (const target of resolveTargets(location)) {
       if (!fs.existsSync(path.join(target.path, CORE_SKILL))) continue
-      const skills = allAvailable.filter((s) => fs.existsSync(path.join(target.path, s)))
+      const saved = readSelection(target)
+      const skills = (saved?.skills || allAvailable).filter((s) => fs.existsSync(path.join(target.path, s)))
       if (skills.length === 0) continue
       const entries = installSkills({ skills, targets: [target], overwrite: true })
+      const state = writeSelections([target], location, skills)[0]
       const changes = Object.fromEntries(
         ['installed', 'updated', 'preserved', 'skipped', 'conflicted'].map(
           (status) => [status, entries.flatMap((entry) => entry[status] || [])]
         )
       )
       results.push({ location, path: target.path, agents: target.agents.map((a) => a.id),
-        skills, version: VERSION, changes, entries })
+        skills, version: VERSION, changes, entries, state })
       if (location === 'project') projectTargets.push(target)
     }
   }
@@ -336,7 +398,8 @@ function optionValue(args, names) {
   return null
 }
 
-export async function promptForSkills(modules, targets, input = process.stdin, output = process.stdout) {
+export async function promptForSkills(modules, targets, input = process.stdin, output = process.stdout,
+  setup = { scope: 'project', agents: [], allowTargetChange: true }) {
   const rl = readline.createInterface({ input, output, terminal: true })
   rl.on('SIGINT', () => rl.close())
   const ask = (prompt) => new Promise((resolve) => {
@@ -353,14 +416,41 @@ export async function promptForSkills(modules, targets, input = process.stdin, o
   })
   const optional = modules.filter((module) => !module.required)
   const width = Math.max(32, output.columns || 80)
+  let activeScope = setup.scope
+  let activeAgents = setup.agents
+  let activeTargets = targets
   try {
     while (true) {
       output.write('\nAnti-Slop Engineering setup (Core is required)\n')
-      output.write('  1. Core only\n  2. Select plugins\n  3. Install everything\n  q. Cancel\n')
-      const mode = (await ask('Choose installation [1-3]: '))?.trim().toLowerCase()
+      output.write('  1. Core only\n  2. Select plugins\n  3. Install everything\n')
+      if (setup.allowTargetChange) output.write('  t. Change agents/scope\n')
+      output.write('  q. Cancel\n')
+      const mode = (await ask('Choose installation: '))?.trim().toLowerCase()
       if (mode == null || mode === 'q') return null
+      if (mode === 't' && setup.allowTargetChange) {
+        output.write(`Available agents: ${AGENTS.map((agent) => agent.id).join(', ')}\n`)
+        const agentInput = (await ask('Agent IDs (comma-separated, Enter keep): '))?.trim()
+        if (agentInput == null) return null
+        const nextAgents = agentInput
+          ? [...new Set(agentInput.split(',').map((id) => id.trim().toLowerCase()))] : activeAgents
+        const known = new Set(AGENTS.map((agent) => agent.id))
+        if (nextAgents.length === 0 || nextAgents.some((agent) => !known.has(agent))) {
+          output.write('Unknown agent selection; keeping previous targets\n')
+          continue
+        }
+        const scopeInput = (await ask('Scope [project/global] (Enter keep): '))?.trim().toLowerCase()
+        if (scopeInput == null) return null
+        if (scopeInput && !['project', 'global'].includes(scopeInput)) {
+          output.write('Unknown scope; keeping previous targets\n')
+          continue
+        }
+        activeScope = scopeInput || activeScope
+        activeAgents = nextAgents
+        activeTargets = resolveTargets(activeScope, activeAgents)
+        continue
+      }
       if (!['1', '2', '3'].includes(mode)) {
-        output.write('Enter 1, 2, 3, or q\n')
+        output.write('Enter 1, 2, 3, t, or q\n')
         continue
       }
       let skills = [CORE_SKILL]
@@ -369,10 +459,13 @@ export async function promptForSkills(modules, targets, input = process.stdin, o
         output.write('\nSelect optional plugins (Core remains installed):\n')
         optional.forEach((module, index) => {
           const name = `${index + 1}. ${module.id}`
-          const summary = module.description.slice(0, Math.max(0, width - name.length - 5))
-          output.write(`  ${name} ${summary}\n`)
+          for (let i = 0; i < name.length; i += width - 4) {
+            output.write(`  ${name.slice(i, i + width - 4)}\n`)
+          }
+          const limit = width - 8
+          output.write(`    ${module.description.slice(0, limit)}${module.description.length > limit ? '...' : ''}\n`)
         })
-        const choice = (await ask('Plugin numbers or IDs (comma-separated; Enter none, b back, q cancel): '))?.trim()
+        const choice = (await ask('Plugins (comma-separated; b back): '))?.trim()
         if (choice == null || choice.toLowerCase() === 'q') return null
         if (choice.toLowerCase() === 'b') continue
         const parts = choice ? choice.split(',').map((part) => part.trim()) : []
@@ -394,11 +487,22 @@ export async function promptForSkills(modules, targets, input = process.stdin, o
       }
       output.write(`\nInstallation plan:\n  Required: ${CORE_SKILL}\n`)
       output.write(`  Optional: ${skills.filter((skill) => skill !== CORE_SKILL).join(', ') || '(none)'}\n`)
-      targets.forEach((target) => output.write(`  Target: ${target.path}\n`))
+      activeTargets.forEach((target) => output.write(`  Target: ${target.path}\n`))
+      const operations = installSkills({ skills, targets: activeTargets, overwrite: true, dryRun: true })
+      const counts = ['installed', 'updated', 'preserved', 'skipped', 'conflicted']
+        .map((kind) => `${kind}: ${operations.reduce((total, entry) => total + (entry[kind]?.length || 0), 0)}`)
+      output.write(`  Files: ${counts.join(', ')}\n`)
+      for (const entry of operations) {
+        for (const relative of entry.installed || []) output.write(`  Add: ${entry.path}/${relative}\n`)
+        for (const relative of entry.updated || []) output.write(`  Update: ${entry.path}/${relative}\n`)
+        if (entry.conflicted?.length) output.write(`  Conflicts preserved: ${entry.path}: ${entry.conflicted.join(', ')}\n`)
+      }
       const confirmation = (await ask('Confirm installation? [y/N/b]: '))?.trim().toLowerCase()
       if (confirmation == null || confirmation === 'q') return null
       if (confirmation === 'b') continue
-      if (confirmation === 'y' || confirmation === 'yes') return skills
+      if (confirmation === 'y' || confirmation === 'yes') {
+        return { skills, targets: activeTargets, scope: activeScope, agents: activeAgents }
+      }
       output.write('Installation cancelled before any files were changed\n')
       return null
     }
@@ -454,10 +558,11 @@ Options:
 
   const scopeArg = optionValue(args, ['scope']) || (args.includes('--global') ? 'global' : 'project')
   const agentArg = optionValue(args, ['agent'])
-  const skillsArg = optionValue(args, ['skills', 'plugins', 'modules'])
+  const skillsArg = args.includes('--all') ? 'all' : optionValue(args, ['skills', 'plugins', 'modules'])
   const overwrite = args.includes('--overwrite')
   const dryRun = args.includes('--dry-run')
   const jsonMode = args.includes('--json')
+  const selectionOnly = args.includes('--selection-only')
   if (!['project', 'global'].includes(scopeArg)) throw new Error(`Invalid installation scope: ${scopeArg}`)
 
   const detected = detectAgents(scopeArg)
@@ -477,33 +582,49 @@ Options:
   const availableSkills = listAvailableSkills()
   let selectedSkills = resolveSkillSelection(skillsArg ?? 'core', availableSkills)
 
-  const targets = resolveTargets(scopeArg, selectedAgents)
+  let targets = resolveTargets(scopeArg, selectedAgents)
+  let resolvedScope = scopeArg
 
+  const promptOutput = selectionOnly ? process.stderr : process.stdout
   const interactive = !dryRun && !jsonMode && !process.env.CI && !args.includes('--no-interactive')
-    && skillsArg == null && process.stdin.isTTY && process.stdout.isTTY
+    && skillsArg == null && process.stdin.isTTY && promptOutput.isTTY
   if (interactive) {
-    selectedSkills = await promptForSkills(listAvailableModules(), targets)
-    if (selectedSkills == null) {
-      console.log('Setup cancelled; no installation files were changed')
+    const response = await promptForSkills(listAvailableModules(), targets, process.stdin, promptOutput,
+      { scope: resolvedScope, agents: selectedAgents, allowTargetChange: !selectionOnly })
+    if (response == null) {
+      console.error('Setup cancelled; no installation files were changed')
       return 130
     }
+    selectedSkills = response.skills
+    targets = response.targets
+    resolvedScope = response.scope
+    selectedAgents = response.agents
+  }
+
+  if (selectionOnly) {
+    console.log(JSON.stringify({ skills: selectedSkills, agents: selectedAgents, scope: resolvedScope }))
+    return 0
   }
 
   if (dryRun) {
-    const plan = { scope: scopeArg, agents: selectedAgents, skills: selectedSkills, targets: targets.map((t) => t.path) }
+    const operations = installSkills({ skills: selectedSkills, targets, overwrite, dryRun: true })
+    const plan = { scope: resolvedScope, agents: selectedAgents, skills: selectedSkills, targets: targets.map((t) => t.path), operations }
     if (jsonMode) console.log(JSON.stringify(plan, null, 2))
     else console.log('Dry-run installation plan:', plan)
     return 0
   }
 
-  const installed = installSkills({ skills: selectedSkills, targets, overwrite })
-  const pointers = scopeArg === 'project' ? updatePointers({ targets, skills: selectedSkills }) : []
+  const installed = installSkills({ skills: selectedSkills, targets, overwrite: overwrite || interactive })
+  const selections = writeSelections(targets, resolvedScope, selectedSkills)
+  const installedSelection = [...new Set(selections.flatMap((state) => state.skills))]
+  const pointers = resolvedScope === 'project' ? updatePointers({ targets, skills: installedSelection }) : []
 
   if (jsonMode) {
-    console.log(JSON.stringify({ installed, pointers, version: VERSION }, null, 2))
+    console.log(JSON.stringify({ installed, pointers, selections, version: VERSION }, null, 2))
   } else {
     const changed = installed.filter((item) => item.installed?.length || item.updated?.length)
     console.log(`\n✅ Installed or updated ${changed.length} skill entries across ${targets.length} agent target(s).`)
+    console.log(`  Modules: ${selectedSkills.join(', ')}`)
     for (const item of installed) {
       if (item.conflicted?.length) console.log(`  ⚠ Conflicts preserved in ${item.path}: ${item.conflicted.join(', ')}`)
       if (item.backup) console.log(`  Previous installation retained: ${item.backup}`)
