@@ -64,6 +64,8 @@ bash install.sh --skills=decision-guard,root-fix-gate
 
 Piped Bash installation uses a predictable core-only default. Running the local Bash installer from a terminal uses the same plugin catalog and selection prompt when Node.js is available; its historical agent destinations and CLI links stay intact. To change agent targets or project/global scope interactively, use `bunx anti-slop-engineering setup`. Without Node.js, Bash installs the bundled core and requires Node.js to select optional modules.
 
+Installers running from a Git checkout copy tracked files from the working tree. Local agent settings, credentials and audit notes stay in the checkout.
+
 **Python CLI (pipx / uv):**
 
 ```bash

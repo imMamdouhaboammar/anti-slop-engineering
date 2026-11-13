@@ -56,6 +56,36 @@ test('Setup: both help entrypoints describe the required core and optional plugi
   assert.match(installerHelp.stdout, /optional skill/i)
 })
 
+test('Setup: a checkout uses its shipped core instead of a local agent copy', () => {
+  const checkout = fs.mkdtempSync(path.join(os.tmpdir(), 'anti-slop-checkout-'))
+  try {
+    for (const relative of ['bin/cli.js', 'scripts/installer.mjs', 'scripts/safe_install.py', 'package.json']) {
+      const destination = path.join(checkout, relative)
+      fs.mkdirSync(path.dirname(destination), { recursive: true })
+      fs.copyFileSync(path.join(root, relative), destination)
+    }
+    const core = 'skills/anti-slop-engineering/SKILL.md'
+    const local = '.agents/skills/anti-slop-engineering/SKILL.md'
+    for (const [relative, description] of [[core, 'Shipped core'], [local, 'Local agent copy']]) {
+      const destination = path.join(checkout, relative)
+      fs.mkdirSync(path.dirname(destination), { recursive: true })
+      fs.writeFileSync(destination, `---\nname: anti-slop-engineering\ndescription: ${description}\n---\n`)
+    }
+    for (const args of [['init', '-q'], ['add', 'bin', 'scripts', 'package.json', core]]) {
+      const git = spawnSync('git', args, { cwd: checkout, encoding: 'utf8' })
+      assert.equal(git.status, 0, git.stderr)
+    }
+    const result = spawnSync(process.execPath, [
+      path.join(checkout, 'bin/cli.js'), 'setup', '--agent=codex', '--scope=project', '--skills=core', '--json',
+    ], { cwd: checkout, encoding: 'utf8', env: { ...process.env, HOME: checkout, CI: 'true' }, timeout: 12000 })
+    assert.equal(result.status, 0, result.stderr)
+    const installed = path.join(checkout, '.codex/skills/anti-slop-engineering/SKILL.md')
+    assert.match(fs.readFileSync(installed, 'utf8'), /Shipped core/)
+  } finally {
+    fs.rmSync(checkout, { recursive: true, force: true })
+  }
+})
+
 test('Setup: module descriptions come from existing skill definitions', () => {
   const modules = listAvailableModules()
   assert.equal(modules.filter((module) => module.required).length, 1)

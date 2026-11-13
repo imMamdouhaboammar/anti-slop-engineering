@@ -10,6 +10,7 @@ import os
 import secrets
 import shutil
 import stat
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -43,13 +44,32 @@ def validate_destination(source, destination):
         raise ValueError(f"Installation destination is not a directory: {destination}")
 
 
+def tracked_source_paths(source):
+    checkout = Path(__file__).resolve().parents[1]
+    if not (checkout / ".git").exists() or not source.is_relative_to(checkout):
+        return None, None
+    scope = source.relative_to(checkout)
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(checkout), "--literal-pathspecs", "ls-files", "--cached", "-z", "--", str(scope)],
+            check=True, capture_output=True,
+        )
+    except subprocess.CalledProcessError as exc:
+        raise ValueError(f"Could not list tracked installation files: {source}") from exc
+    files = {Path(os.fsdecode(name)).relative_to(scope) for name in result.stdout.split(b"\0") if name}
+    directories = {parent for file in files for parent in file.parents}
+    return files, directories
+
+
 def collect_source(source, destination, version=None):
     files = {}
+    tracked, tracked_dirs = tracked_source_paths(source)
     for current, directories, names in os.walk(source, followlinks=False):
         parent = Path(current)
         for name in list(directories):
             item = parent / name
             if (name in EXCLUDED or item == destination
+                    or (tracked_dirs is not None and item.relative_to(source) not in tracked_dirs)
                     or (parent == destination.parent and name.startswith(
                         (f".{destination.name}.backup-", f".{destination.name}.stage-"
                     )))):
@@ -60,9 +80,12 @@ def collect_source(source, destination, version=None):
             if name in EXCLUDED or name == MANIFEST:
                 continue
             item = parent / name
+            relative = item.relative_to(source)
+            if tracked is not None and relative not in tracked:
+                continue
             if item.is_symlink() or not item.is_file():
                 raise ValueError(f"Unsupported source file type: {item}")
-            files[item.relative_to(source).as_posix()] = (
+            files[relative.as_posix()] = (
                 item.read_bytes(), stat.S_IMODE(item.stat().st_mode)
             )
     if version is not None:
