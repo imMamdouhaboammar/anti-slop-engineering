@@ -16,7 +16,7 @@ class SafeFileInstallTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
-        root = Path(self.temp.name)
+        root = Path(self.temp.name).resolve()
         self.source = root / "source"
         self.dest = root / "target" / "skill"
         self.source.mkdir()
@@ -211,6 +211,14 @@ class SafeFileInstallTests(unittest.TestCase):
         self.assertEqual((self.dest / "SKILL.md").read_text(), "my local content\n")
         self.assertEqual((self.dest / safe_install.MANIFEST).read_bytes(), before)
         self.assertEqual(list(self.dest.parent.glob(".skill.backup-*")), [])
+
+    def test_write_staged_file_creates_restrictive_permissions(self):
+        stage = Path(self.temp.name).resolve() / "staged"
+        stage.mkdir()
+        safe_install.write_staged_file(stage, "test.txt", b"secret\n", 0o644)
+        target = stage / "test.txt"
+        self.assertTrue(target.is_file())
+        self.assertEqual(stat.S_IMODE(target.stat().st_mode) & 0o077, 0o044)
 
 
 if __name__ == "__main__":

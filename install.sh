@@ -67,7 +67,8 @@ for skill in data["skills"]:
 ' "$setup_selection")"
 else
   case " $* " in
-    *--skills*|*--plugins*|*--modules*|*--all*)
+    *--skills=core*|*"-s core"*|*--plugins=core*|*--modules=core*) : ;;
+    *--skills*|*--plugins*|*--modules*|*"-s "*|*--all*)
       echo "Installer error: Node.js is needed to select optional plugins; core-only Bash installation is available" >&2
       exit 2 ;;
   esac
@@ -171,7 +172,7 @@ link_installed_cli() {
   fi
   mkdir -p "$bin_dir"
   local bin_name link
-  for bin_name in anti-slop-engineering diff-guard sre-guard rust-guard toil-guard; do
+  for bin_name in anti-slop-engineering diff-guard sre-guard rust-guard toil-guard exec-guard; do
     link="$bin_dir/$bin_name"
     if [ -L "$link" ] || [ -e "$link" ]; then
       if [ -L "$link" ] && [ "$(readlink "$link")" = "$target" ]; then

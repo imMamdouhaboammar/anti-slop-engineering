@@ -16,11 +16,14 @@ from pathlib import Path
 
 
 MANIFEST = ".anti-slop-managed.json"
-EXCLUDED = {".git", "node_modules", "target"}
+EXCLUDED = {".git", "node_modules", "target", ".agents"}
 
 
 def digest(content):
     return hashlib.sha256(content).hexdigest()
+
+
+SYSTEM_SYMLINKS = {Path("/var"), Path("/tmp"), Path("/etc")} if sys.platform == "darwin" else set()
 
 
 def validate_destination(source, destination):
@@ -29,6 +32,8 @@ def validate_destination(source, destination):
     if destination == Path(destination.anchor) or destination.name in {"", ".", ".."}:
         raise ValueError("Refusing to install into a filesystem root")
     for parent in (destination, *destination.parents):
+        if parent in SYSTEM_SYMLINKS:
+            break
         if parent.is_symlink():
             raise ValueError(f"Symbolic link in installation destination: {parent}")
     resolved = destination.resolve()
@@ -215,11 +220,15 @@ def write_staged_file(stage, relative, content, mode):
             metadata = None
         if metadata is not None and not stat.S_ISREG(metadata.st_mode):
             raise ValueError(f"Symbolic link or unsupported staged file: {relative}")
-        file_fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, mode, dir_fd=directory_fd)
+        file_fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600, dir_fd=directory_fd)
         with os.fdopen(file_fd, "wb") as output:
             output.write(content)
             output.flush()
-            os.fchmod(output.fileno(), mode)
+            safe_mode = mode & 0o755
+            if hasattr(os, "fchmod"):
+                os.fchmod(output.fileno(), safe_mode)
+            else:
+                os.chmod(name, safe_mode)
 
 
 def stage_install(destination, writes, managed, original_snapshot):
@@ -290,6 +299,60 @@ def install_tree(source, destination, version=None):
     return {**results, "destination": str(destination), "backup": backup, "recovered": recovered}
 
 
+def _open_instruction_parent_posix(stack, entry, flags):
+    directory_fd = os.open(entry.anchor, flags)
+    stack.callback(os.close, directory_fd)
+    for idx, component in enumerate(entry.parts[1:-1]):
+        comp_flags = flags
+        if sys.platform == "darwin" and idx == 0 and component in ("var", "tmp", "etc"):
+            comp_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+        try:
+            next_fd = os.open(component, comp_flags, dir_fd=directory_fd)
+        except OSError as exc:
+            if exc.errno in (errno.ELOOP, errno.ENOTDIR):
+                raise ValueError(f"Unsafe symbolic link in agent instruction path: {entry}") from exc
+            raise
+        stack.callback(os.close, next_fd)
+        directory_fd = next_fd
+    return directory_fd
+
+
+def _check_instruction_parent_windows(entry):
+    for ancestor in (entry, *entry.parents):
+        if ancestor.is_symlink():
+            raise ValueError(f"Symbolic link in agent instruction path: {ancestor}")
+    return entry.parent
+
+
+def _read_instruction_hash(entry, parent, open_args):
+    target = entry.name if parent is None else entry
+    try:
+        current_fd = os.open(target, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0), **open_args)
+    except FileNotFoundError:
+        return 0o600, "absent"
+    with os.fdopen(current_fd, "rb") as existing:
+        mode = stat.S_IMODE(os.fstat(existing.fileno()).st_mode)
+        if not stat.S_ISREG(os.fstat(existing.fileno()).st_mode):
+            raise ValueError(f"Unsafe agent instruction file: {entry}")
+        return mode, digest(existing.read())
+
+
+def _write_temporary_instruction(target, content, current_mode, open_args):
+    temporary_fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600, **open_args)
+    with os.fdopen(temporary_fd, "wb") as output:
+        output.write(content)
+        output.flush()
+        if hasattr(os, "fchmod"):
+            os.fchmod(output.fileno(), current_mode)
+    if not hasattr(os, "fchmod"):
+        os.chmod(target, current_mode)
+
+
+def _cleanup_temporary(target, open_args):
+    with suppress(FileNotFoundError):
+        os.unlink(target, **open_args)
+
+
 def write_instruction(entry, content, expected_hash):
     """Atomically replace an instruction file using a no-follow parent handle."""
     entry = Path(entry)
@@ -298,38 +361,15 @@ def write_instruction(entry, content, expected_hash):
     flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
     with ExitStack() as stack:
         if os.name == "posix":
-            directory_fd = os.open(entry.anchor, flags)
-            stack.callback(os.close, directory_fd)
-            for component in entry.parts[1:-1]:
-                try:
-                    next_fd = os.open(component, flags, dir_fd=directory_fd)
-                except OSError as exc:
-                    if exc.errno in (errno.ELOOP, errno.ENOTDIR):
-                        raise ValueError(f"Unsafe symbolic link in agent instruction path: {entry}") from exc
-                    raise
-                stack.callback(os.close, next_fd)
-                directory_fd = next_fd
+            directory_fd = _open_instruction_parent_posix(stack, entry, flags)
             parent = None
         else:
-            # Windows Python lacks dir_fd support; reject links at every existing ancestor.
-            for ancestor in (entry, *entry.parents):
-                if ancestor.is_symlink():
-                    raise ValueError(f"Symbolic link in agent instruction path: {ancestor}")
+            _check_instruction_parent_windows(entry)
             directory_fd = None
             parent = entry.parent
 
         open_args = {"dir_fd": directory_fd} if directory_fd is not None else {}
-        current_mode = 0o600
-        try:
-            current_fd = os.open(entry.name if parent is None else entry, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0), **open_args)
-        except FileNotFoundError:
-            current_hash = "absent"
-        else:
-            with os.fdopen(current_fd, "rb") as existing:
-                current_mode = stat.S_IMODE(os.fstat(existing.fileno()).st_mode)
-                if not stat.S_ISREG(os.fstat(existing.fileno()).st_mode):
-                    raise ValueError(f"Unsafe agent instruction file: {entry}")
-                current_hash = digest(existing.read())
+        current_mode, current_hash = _read_instruction_hash(entry, parent, open_args)
         if current_hash != expected_hash:
             raise ValueError(f"Agent instructions changed during installation: {entry}")
 
@@ -337,23 +377,15 @@ def write_instruction(entry, content, expected_hash):
         target = temporary if parent is None else parent / temporary
         created = False
         try:
-            temporary_fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600, **open_args)
+            _write_temporary_instruction(target, content, current_mode, open_args)
             created = True
-            with os.fdopen(temporary_fd, "wb") as output:
-                output.write(content)
-                output.flush()
-                if hasattr(os, "fchmod"):
-                    os.fchmod(output.fileno(), current_mode)
-            if not hasattr(os, "fchmod"):
-                os.chmod(target, current_mode)
             if directory_fd is not None:
                 os.replace(temporary, entry.name, src_dir_fd=directory_fd, dst_dir_fd=directory_fd)
             else:
                 os.replace(parent / temporary, entry)
         finally:
             if created:
-                with suppress(FileNotFoundError):
-                    os.unlink(target, **open_args)
+                _cleanup_temporary(target, open_args)
 
 
 def preview_tree(source, destination, version=None):

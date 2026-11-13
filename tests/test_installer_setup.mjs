@@ -87,9 +87,13 @@ test('Setup: install everything writes the complete validated skill catalog', ()
       })
     assert.equal(result.status, 0, result.stderr)
     const installed = JSON.parse(result.stdout).installed.map((entry) => entry.skill)
-    const catalog = listAvailableModules().map((module) => module.id)
-    assert.deepEqual(installed, catalog)
-    for (const id of catalog) {
+    const skillsDir = path.join(root, 'skills')
+    const diskSkills = fs.readdirSync(skillsDir, { withFileTypes: true })
+      .filter((e) => e.isDirectory() && fs.existsSync(path.join(skillsDir, e.name, 'SKILL.md')))
+      .map((e) => e.name)
+    const expectedCatalog = ['anti-slop-engineering', ...diskSkills.filter((s) => s !== 'anti-slop-engineering')]
+    assert.deepEqual(installed.sort(), expectedCatalog.sort())
+    for (const id of expectedCatalog) {
       assert.ok(fs.existsSync(path.join(project, '.codex/skills', id, 'SKILL.md')), id)
     }
   } finally {
@@ -278,5 +282,43 @@ test('Postinstall: package lifecycle cannot launch remote skills add', () => {
     assert.match(result.stdout, /anti-slop-engineering (?:setup|install)/)
   } finally {
     fs.rmSync(temporary, { recursive: true, force: true })
+  }
+})
+
+test('Setup: preflight rejects corrupted target selection before copying', () => {
+  const project = fs.mkdtempSync(path.join(os.tmpdir(), 'anti-slop-corrupt-preflight-'))
+  try {
+    const target = path.join(project, '.codex', 'skills')
+    fs.mkdirSync(target, { recursive: true })
+    fs.writeFileSync(path.join(target, '.anti-slop-selection.json'), '{ "format": 999 }')
+    const result = spawnSync(process.execPath, [installer, '--agent=codex', '--skills=core'], {
+      cwd: project,
+      encoding: 'utf8',
+      env: { ...process.env, HOME: project, CI: 'true' },
+      timeout: 10000,
+    })
+    assert.notEqual(result.status, 0)
+    assert.match(result.stderr, /Invalid installed module selection/i)
+    assert.equal(fs.existsSync(path.join(target, 'anti-slop-engineering', 'SKILL.md')), false)
+  } finally {
+    fs.rmSync(project, { recursive: true, force: true })
+  }
+})
+
+test('Setup: updateAll scopes instruction pointer updates to installed project selection', () => {
+  const project = fs.mkdtempSync(path.join(os.tmpdir(), 'anti-slop-update-pointers-'))
+  const run = (args) => spawnSync(process.execPath, [installer, ...args], {
+    cwd: project, encoding: 'utf8', env: { ...process.env, HOME: project, CI: 'true' }, timeout: 12000,
+  })
+  try {
+    const setup = run(['--agent=codex', '--skills=core', '--json'])
+    assert.equal(setup.status, 0, setup.stderr)
+    const updateResult = run(['update', '--json'])
+    assert.equal(updateResult.status, 0, updateResult.stderr)
+    const agentsMd = fs.readFileSync(path.join(project, 'AGENTS.md'), 'utf8')
+    assert.ok(agentsMd.includes('`anti-slop-engineering`: `.codex/skills/anti-slop-engineering/SKILL.md`'))
+    assert.equal(agentsMd.includes('decision-guard'), false)
+  } finally {
+    fs.rmSync(project, { recursive: true, force: true })
   }
 })

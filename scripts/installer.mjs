@@ -47,8 +47,13 @@ export function skillSourceDir() {
 }
 
 function readSkillMetadata(file) {
-  if (!fs.existsSync(file) || !fs.lstatSync(file).isFile()) return null
-  const content = fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n')
+  let content
+  try {
+    content = fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n')
+  } catch (err) {
+    if (err && (err.code === 'ENOENT' || err.code === 'EISDIR' || err.code === 'ENOTDIR')) return null
+    throw err
+  }
   if (!content.startsWith('---\n')) return null
   const end = content.indexOf('\n---', 4)
   if (end < 0) return null
@@ -183,8 +188,11 @@ const POINTER_START = '<!-- anti-slop-engineering:start -->'
 const POINTER_END = '<!-- anti-slop-engineering:end -->'
 const SELECTION_FILE = '.anti-slop-selection.json'
 
+const SYSTEM_SYMLINKS = new Set(process.platform === 'darwin' ? ['/var', '/tmp', '/etc'] : [])
+
 function assertSafeFilePath(entry) {
   for (let current = path.resolve(entry); ; current = path.dirname(current)) {
+    if (SYSTEM_SYMLINKS.has(current)) break
     try {
       if (fs.lstatSync(current).isSymbolicLink()) {
         throw new Error(`Refusing symbolic link in installer path: ${current}`)
@@ -203,8 +211,19 @@ function isString(value) {
 function readSelection(target) {
   const file = path.join(target.path, SELECTION_FILE)
   assertSafeFilePath(file)
-  if (!fs.existsSync(file)) return null
-  const state = JSON.parse(fs.readFileSync(file, 'utf8'))
+  let raw
+  try {
+    raw = fs.readFileSync(file, 'utf8')
+  } catch (err) {
+    if (err && err.code === 'ENOENT') return null
+    throw err
+  }
+  let state
+  try {
+    state = JSON.parse(raw)
+  } catch {
+    throw new Error(`Invalid installed module selection: ${file}`)
+  }
   if (state?.format !== 1 || !Array.isArray(state.skills) || !Array.isArray(state.agents)
     || !['project', 'global'].includes(state.scope) || !isString(state.version)) {
     throw new Error(`Invalid installed module selection: ${file}`)
@@ -220,11 +239,24 @@ function readSelection(target) {
 }
 
 function writeSelections(targets, scope, skills) {
+  const source = skillSourceDir()
   const states = []
   for (const target of targets) {
     const previous = readSelection(target)
-    const selected = [...new Set([...(previous?.skills || []), ...skills])]
-      .filter((id) => fs.existsSync(path.join(target.path, id, 'SKILL.md')))
+    const coreSkillPath = path.join(target.path, CORE_SKILL, 'SKILL.md')
+    if (!fs.existsSync(coreSkillPath) && source) {
+      try {
+        const src = sourceForSkill(CORE_SKILL, source)
+        safeCopy(src, path.join(target.path, CORE_SKILL), VERSION, false)
+      } catch {
+        // repair attempt
+      }
+    }
+    const combined = new Set([...(previous?.skills || []), ...skills, CORE_SKILL])
+    const selected = [...combined].filter((id) => fs.existsSync(path.join(target.path, id, 'SKILL.md')))
+    if (!selected.includes(CORE_SKILL)) {
+      selected.unshift(CORE_SKILL)
+    }
     const state = { format: 1, version: VERSION, scope,
       agents: target.agents.map((agent) => agent.id), skills: selected }
     const file = path.join(target.path, SELECTION_FILE)
@@ -384,8 +416,9 @@ export function updateAll({ locations = ['project', 'global'] } = {}) {
     }
   }
 
+  const projectSkills = [...new Set(results.filter((r) => r.location === 'project').flatMap((r) => r.skills || []))]
   const pointers = projectTargets.length > 0
-    ? updatePointers({ targets: projectTargets, skills: allAvailable })
+    ? updatePointers({ targets: projectTargets, skills: projectSkills })
     : []
   return { results, pointers }
 }
@@ -615,6 +648,10 @@ Options:
   if (selectionOnly) {
     console.log(JSON.stringify({ skills: selectedSkills, agents: selectedAgents, scope: resolvedScope }))
     return 0
+  }
+
+  for (const t of targets) {
+    readSelection(t)
   }
 
   if (dryRun) {
