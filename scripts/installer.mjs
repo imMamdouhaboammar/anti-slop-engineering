@@ -167,6 +167,7 @@ export function installSkills({ skills, targets, overwrite = false, dryRun = fal
       const src = sourceForSkill(skill, source)
 
       const dest = path.join(t.path, skill)
+      assertSafeFilePath(dest)
       if (fs.existsSync(dest) && !overwrite) {
         written.push({ skill, agents: t.agents.map((a) => a.id), path: dest, status: 'skipped' })
         continue
