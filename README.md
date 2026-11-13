@@ -39,19 +39,30 @@ bunx anti-slop-engineering sre --base HEAD --strict
 npx skills add imMamdouhaboammar/anti-slop-engineering
 ```
 
-**npm / Bun (auto-installs the agent skill on postinstall):**
+**npm / Bun (package installation, followed by optional setup):**
 
 ```bash
 bun add anti-slop-engineering
 # or
 npm install anti-slop-engineering
+
+# Interactive terminal setup (core required, plugins optional)
+bunx anti-slop-engineering setup
+
+# Reproducible non-interactive installation
+bunx anti-slop-engineering install --agent=codex --skills=core --scope=project --json
 ```
 
 **Universal multi-agent installer:**
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/imMamdouhaboammar/anti-slop-engineering/main/install.sh | bash
+
+# When using a local checkout, explicitly select optional skills:
+bash install.sh --skills=decision-guard,root-fix-gate
 ```
+
+Piped Bash installation uses a predictable core-only default. Running the local Bash installer from a terminal uses the same plugin catalog and selection prompt when Node.js is available; its historical agent destinations and CLI links stay intact. To change agent targets or project/global scope interactively, use `bunx anti-slop-engineering setup`. Without Node.js, Bash installs the bundled core and requires Node.js to select optional modules.
 
 **Python CLI (pipx / uv):**
 
@@ -531,7 +542,7 @@ The agent skill wires Anti-Slop Engineering into your AI coding agent's context.
 npx skills add imMamdouhaboammar/anti-slop-engineering
 ```
 
-When installed via `npm install anti-slop-engineering` or `bun add anti-slop-engineering`, the postinstall hook runs `npx skills add` automatically.
+Package installation does not automatically download skills or build native executables. Run `bunx anti-slop-engineering setup` in a terminal to choose **Core only**, **Select plugins**, or **Install everything** before confirming. The core skill is always included; optional selections are the skill directories in this distribution, not separately loaded guard executables. In CI or piped input, setup defaults to core only; use `--skills=all` or `--plugins=decision-guard,root-fix-gate` to choose explicitly. Existing managed files are updated without overwriting local modifications, and `update` keeps your previously installed skill selection.
 
 ---
 
