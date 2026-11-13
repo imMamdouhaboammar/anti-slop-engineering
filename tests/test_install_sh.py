@@ -115,11 +115,7 @@ class BashInstallerSafetyTests(unittest.TestCase):
             "---\nname: decision-guard\ndescription: Decision checks\n---\nmodule v1\n",
             encoding="utf-8",
         )
-        node = shutil.which("node")
-        if not node:
-            self.skipTest("Node.js is required for explicit optional module selection")
-        env = {**os.environ, "HOME": str(self.home / "home"),
-               "PATH": f"{Path(node).parent}:/usr/bin:/bin"}
+        env = {**os.environ, "HOME": str(self.home / "home"), "PATH": SAFE_PATH}
 
         def install_fixture():
             # Core-first is now the default; explicitly select this optional module.

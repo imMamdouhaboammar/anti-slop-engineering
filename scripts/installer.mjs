@@ -196,18 +196,22 @@ function assertSafeFilePath(entry) {
   }
 }
 
+function isString(value) {
+  return Object.prototype.toString.call(value) === '[object String]'
+}
+
 function readSelection(target) {
   const file = path.join(target.path, SELECTION_FILE)
   assertSafeFilePath(file)
   if (!fs.existsSync(file)) return null
   const state = JSON.parse(fs.readFileSync(file, 'utf8'))
   if (state?.format !== 1 || !Array.isArray(state.skills) || !Array.isArray(state.agents)
-    || !['project', 'global'].includes(state.scope) || typeof state.version !== 'string') {
+    || !['project', 'global'].includes(state.scope) || !isString(state.version)) {
     throw new Error(`Invalid installed module selection: ${file}`)
   }
   const available = new Set(listAvailableSkills())
   for (const id of state.skills) {
-    if (typeof id !== 'string' || !available.has(id)) {
+    if (!isString(id) || !available.has(id)) {
       throw new Error(`Unknown previously installed module ${String(id)} in ${file}`)
     }
   }
