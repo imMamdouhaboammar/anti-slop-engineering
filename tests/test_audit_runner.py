@@ -332,3 +332,56 @@ class AuditRunnerTests(unittest.TestCase):
         finally:
             if tmp_file.exists():
                 tmp_file.unlink()
+
+    def test_records_dict_with_flag_names(self):
+        """Passing flag-style keys in records dict evaluates the record-based guard."""
+        example_record = ROOT_DIR / "skills" / "decision-guard" / "examples" / "architecture-record.json"
+        findings, guards = audit_runner.collect_audit_findings(
+            base="HEAD",
+            records={"--decision-record": str(example_record)},
+        )
+        self.assertIn("decision_guard", guards)
+        self.assertIn(guards["decision_guard"]["status"], ("PASS", "FINDINGS"))
+        self.assertTrue(guards["decision_guard"]["applicable"])
+
+    def test_remediation_workflow_distinguishes_requires_input(self):
+        """When 0 findings exist but guards require input, remediation lists required records."""
+        guards = {
+            "diff_guard": {"status": "PASS", "title": "Diff Guard", "findings_count": 0},
+            "decision_guard": {
+                "status": "SKIPPED",
+                "skip_type": "requires-input",
+                "input_flag": "--decision-record",
+                "reason": "Requires dedicated Decision Guard JSON record",
+            },
+        }
+        tmp_file = Path(__file__).resolve().parent / "tmp_audit_requires_input.md"
+        try:
+            content = generate_audit_markdown([], tmp_file, guards=guards, mode="during")
+            self.assertNotIn("All guards passed with 0 findings. No remediation required.", content)
+            self.assertIn("### Input Assessment Records Required", content)
+            self.assertIn("--decision-record <file>", content)
+            self.assertIn("decision_guard", content)
+        finally:
+            if tmp_file.exists():
+                tmp_file.unlink()
+
+    def test_action_result_evaluation(self):
+        """Validate that action_result evaluate_report accepts valid unified reports."""
+        from action_result import evaluate_report
+        findings, guards = audit_runner.collect_audit_findings(base="HEAD")
+        blockers = sum(1 for f in findings if f.get("severity") == "BLOCKER")
+        has_error = any(result.get("status") == "ERROR" for result in guards.values())
+        expected_status = "ERROR" if has_error else ("BLOCKED" if blockers else "PASS")
+        audit_exit = {"PASS": 0, "BLOCKED": 1, "ERROR": 2}[expected_status]
+        report = {
+            "status": expected_status,
+            "total_findings": len(findings),
+            "blockers_count": blockers,
+            "findings": findings,
+            "guards": guards,
+        }
+        status, total, blockers_cnt = evaluate_report(report, audit_exit=audit_exit)
+        self.assertEqual(status, "PASSED" if expected_status == "PASS" else expected_status)
+        self.assertEqual(total, len(findings))
+        self.assertEqual(blockers_cnt, blockers)

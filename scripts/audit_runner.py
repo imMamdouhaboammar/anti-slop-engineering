@@ -635,7 +635,6 @@ def guard_commands(
     return [
         (name, build_guard_command(name, base, pr_title, pr_body_file, template_file, canary_token))
         for name in GUARD_REGISTRY
-        if not GUARD_REGISTRY[name].get("excluded_from_audit")
     ]
 
 
@@ -723,13 +722,22 @@ def redact_command(command: List[str]) -> List[str]:
 
 
 def _extract_raw_findings(report: Dict[str, Any]) -> Optional[List[Dict[str, Any]]]:
-    raw = report.get("findings")
-    if raw is None and isinstance(report.get("issues"), list):
-        raw = report.get("issues")
-    if raw is None and isinstance(report.get("violations"), list):
-        raw = report.get("violations")
-    if raw is None and (report.get("verdict") or report.get("status") or report.get("passed") is not None):
-        raw = []
+    container_keys = [k for k in ("findings", "issues", "violations") if k in report]
+    if container_keys:
+        for k in container_keys:
+            if not isinstance(report[k], list):
+                return None
+        raw: Optional[List[Any]] = None
+        for k in ("findings", "issues", "violations"):
+            if k in report and isinstance(report[k], list):
+                raw = report[k]
+                break
+    else:
+        if report.get("verdict") or report.get("status") or report.get("passed") is not None:
+            raw = []
+        else:
+            return None
+
     if raw is None or not isinstance(raw, list):
         return None
     normalized: List[Dict[str, Any]] = []
@@ -767,6 +775,8 @@ def _validate_report_outcome(
 
     reported_status = str(report.get("status", "")).upper()
     reported_verdict = str(report.get("verdict", "")).upper()
+    if (reported_status == "FINDINGS" or reported_verdict == "FINDINGS") and not findings:
+        return "Guard reported FINDINGS status without findings"
     if (reported_status in {"FAIL", "BLOCKED"} or reported_verdict in {"FAIL", "REJECT"}) and not blockers:
         return "Guard reported FAIL without matching blocker findings"
     if reported_status in {"ERROR", "INCOMPLETE"} or reported_verdict in {"ERROR", "INCOMPLETE"}:
@@ -780,11 +790,12 @@ def _make_inactive_guard_entry(
     reason: str,
 ) -> Dict[str, Any]:
     return {
-        "title": spec["title"],
+        "title": spec.get("title", ""),
         "status": "SKIPPED",
         "skip_type": skip_type,
         "applicable": False,
-        "input_type": spec["input_type"],
+        "input_type": spec.get("input_type", "unknown"),
+        "input_flag": spec.get("input_flag"),
         "reason": reason,
         "command": None,
         "exit_code": None,
@@ -902,21 +913,28 @@ def collect_audit_findings(
     records: Optional[Dict[str, str]] = None,
     **extra_records: Any,
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Dict[str, Any]]]:
-    records_map: Dict[str, str] = dict(records or {})
-    for k, v in extra_records.items():
-        if v and isinstance(v, (str, Path)):
-            norm_k = k.replace("-", "_")
-            records_map[norm_k] = str(v)
-            if norm_k in RECORD_FLAG_TO_GUARD_MAP:
-                records_map[RECORD_FLAG_TO_GUARD_MAP[norm_k]] = str(v)
+    records_map: Dict[str, str] = {}
+    for source in (records or {}, extra_records):
+        for k, v in source.items():
+            if not (v and isinstance(v, (str, Path))):
+                continue
+            norm_k = str(k).lstrip("-").replace("-", "_")
+            val = str(v)
+            records_map[norm_k] = val
+            guard_key = RECORD_FLAG_TO_GUARD_MAP.get(norm_k)
+            if guard_key:
+                records_map[guard_key] = val
 
     findings: List[Dict[str, Any]] = []
     guards: Dict[str, Dict[str, Any]] = {}
 
     for name, spec in GUARD_REGISTRY.items():
         if spec.get("excluded_from_audit"):
+            reason = spec.get("exclusion_reason", "Excluded from static audit runner")
+            guards[name] = _make_inactive_guard_entry(spec, "not-applicable", reason)
             continue
 
+        record_path: Optional[str] = None
         if spec.get("requires_input"):
             record_path = (
                 records_map.get(name)
@@ -927,10 +945,11 @@ def collect_audit_findings(
                 guards[name] = _make_inactive_guard_entry(spec, "requires-input", reason)
                 continue
 
+        resolved_record = record_path or records_map.get(name)
         command = build_guard_command(
             name, base, pr_title=pr_title, pr_body_file=pr_body_file,
             template_file=template_file, canary_token=canary_token,
-            record_file=records_map.get(name),
+            record_file=resolved_record,
         )
 
         outcome, child_findings = evaluate_guard(name, command, spec)
@@ -985,7 +1004,11 @@ def _render_guards_coverage_table(guards: Dict[str, Dict[str, Any]]) -> List[str
     return lines
 
 
-def _render_remediation_workflow(findings: List[Dict[str, Any]], mode: str) -> List[str]:
+def _render_remediation_workflow(
+    findings: List[Dict[str, Any]],
+    mode: str,
+    guards: Optional[Dict[str, Dict[str, Any]]] = None,
+) -> List[str]:
     lines = [
         "---",
         "",
@@ -1027,12 +1050,35 @@ def _render_remediation_workflow(findings: List[Dict[str, Any]], mode: str) -> L
         lines.append("python3 scripts/audit_runner.py audit --base HEAD")
         lines.append("```")
     else:
-        lines.append("All guards passed with 0 findings. No remediation required.")
-        lines.append("")
-        lines.append("```bash")
-        lines.append("# Verify audit status before committing:")
-        lines.append("python3 scripts/audit_runner.py audit --base HEAD")
-        lines.append("```")
+        req_input = [
+            (n, g) for n, g in (guards or {}).items()
+            if g.get("skip_type") == "requires-input" or g.get("status") == "requires-input"
+        ]
+        if req_input:
+            lines.append("### Input Assessment Records Required")
+            lines.append("")
+            lines.append(
+                "All evaluated guards passed with 0 findings. However, the following "
+                "guards require dedicated assessment records for full audit coverage:"
+            )
+            lines.append("")
+            for name, g in req_input:
+                flag = g.get("input_flag") or f"--{name.replace('_', '-')}-record"
+                reason = g.get("reason", "Requires assessment record")
+                lines.append(f"- [ ] `{name}`: Provide `{flag} <file>` ({reason})")
+            lines.append("")
+            lines.append("To run full audit with all assessment records:")
+            lines.append("")
+            lines.append("```bash")
+            lines.append("python3 scripts/audit_runner.py audit --base HEAD <record-flags>")
+            lines.append("```")
+        else:
+            lines.append("All guards passed with 0 findings. No remediation required.")
+            lines.append("")
+            lines.append("```bash")
+            lines.append("# Verify audit status before committing:")
+            lines.append("python3 scripts/audit_runner.py audit --base HEAD")
+            lines.append("```")
     return lines
 
 
@@ -1099,7 +1145,8 @@ def generate_audit_markdown(
 
     evaluated_count = sum(1 for g in (guards or {}).values() if g.get("status") in ("PASS", "FINDINGS", "BLOCKED"))
     requires_input_count = sum(1 for g in (guards or {}).values() if g.get("skip_type") == "requires-input" or g.get("status") == "requires-input")
-    skipped_count = sum(1 for g in (guards or {}).values() if g.get("status") == "SKIPPED" and g.get("skip_type") != "requires-input")
+    skipped_count = sum(1 for g in (guards or {}).values() if g.get("status") == "SKIPPED" and g.get("skip_type") not in ("requires-input", "not-applicable"))
+    not_applicable_count = sum(1 for g in (guards or {}).values() if g.get("skip_type") == "not-applicable" or g.get("status") == "not-applicable")
 
     lines = [
         f"# Anti-Slop Engineering Audit Report — {audit_file.stem}",
@@ -1115,7 +1162,7 @@ def generate_audit_markdown(
         f"- **Low Severity:** {low}",
         f"- **Guards Evaluated:** {evaluated_count}",
         f"- **Guards Requiring Input:** {requires_input_count}",
-        f"- **Guards Skipped / Inapplicable:** {skipped_count}",
+        f"- **Guards Skipped / Inapplicable:** {skipped_count + not_applicable_count}",
         f"- **Status:** {status or ('BLOCKED' if blockers > 0 else 'PASS')}",
         "",
     ]
@@ -1127,7 +1174,7 @@ def generate_audit_markdown(
     lines.extend(_render_detailed_dossiers(findings, guards))
 
     effective_mode = mode if mode is not None else load_settings().get("mode", "during")
-    lines.extend(_render_remediation_workflow(findings, effective_mode))
+    lines.extend(_render_remediation_workflow(findings, effective_mode, guards=guards))
 
     content = "\n".join(lines) + "\n"
     with open(audit_file, "w", encoding="utf-8") as out_f:
@@ -1166,9 +1213,9 @@ def run_audit(
         "guards_summary": {
             "total_registered": len(guards),
             "evaluated": sum(1 for g in guards.values() if g.get("status") in ("PASS", "FINDINGS", "BLOCKED")),
-            "requires_input": sum(1 for g in guards.values() if g.get("status") == "requires-input"),
-            "skipped": sum(1 for g in guards.values() if g.get("status") == "SKIPPED"),
-            "not_applicable": sum(1 for g in guards.values() if g.get("status") == "not-applicable"),
+            "requires_input": sum(1 for g in guards.values() if g.get("skip_type") == "requires-input" or g.get("status") == "requires-input"),
+            "skipped": sum(1 for g in guards.values() if g.get("status") == "SKIPPED" and g.get("skip_type") not in ("requires-input", "not-applicable")),
+            "not_applicable": sum(1 for g in guards.values() if g.get("skip_type") == "not-applicable" or g.get("status") == "not-applicable"),
             "errors": sum(1 for g in guards.values() if g.get("status") == "ERROR"),
         },
         "findings": findings,
