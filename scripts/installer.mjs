@@ -517,6 +517,11 @@ export async function runInstallerCLI(args = process.argv.slice(2)) {
     console.log(`
 📦 Anti-Slop Engineering Universal Multi-Agent Installer (v${VERSION})
 
+Core is required in every installation. Optional skill plugins are discovered
+from bundled SKILL.md definitions; native guards are still shipped together.
+An interactive terminal prompts when no explicit skill selection was given.
+CI, piped input, --json and --dry-run default to core only.
+
 Usage:
   bunx anti-slop-engineering install [options]
   bunx anti-slop-engineering update
@@ -525,9 +530,10 @@ Usage:
 Options:
   --agent <names>     Target agents (comma-separated, or 'all'). Default: detected agents
   --scope <scope>     Install scope: 'project' (default) or 'global'
-  --skills <skills>   Skills to install: 'all', 'core', or comma-separated names
+  --skills <skills>   Optional skill IDs: 'all', 'core', or comma-separated names
   --plugins <names>   Alias for --skills; core is always included
-  --overwrite         Overwrite existing installed skills
+  --all               Select every available optional skill
+  --overwrite         Refresh managed files, preserving local edits and conflicts
   --dry-run           Simulate installation without writing files
   --json              Output JSON result
   --no-interactive    Skip terminal selection (defaults to core only)
