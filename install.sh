@@ -29,6 +29,50 @@ if [ -z "$SOURCE_DIR" ] || [ ! -f "$SOURCE_DIR/SKILL.md" ]; then
   SOURCE_DIR="$TEMP_DIR/repo"
 fi
 
+if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
+  echo "Usage: bash install.sh [--skills=core|all|id1,id2] [--local|--project]"
+  echo "Use 'anti-slop-engineering setup' for interactive agent and scope selection."
+  exit 0
+fi
+
+BASH_DRY_RUN=0
+for argument in "$@"; do
+  case "$argument" in
+    --dry-run) BASH_DRY_RUN=1 ;;
+    --json)
+      echo "Installer error: use 'anti-slop-engineering install --json' for structured JSON output" >&2
+      exit 2 ;;
+    --agent*|--scope*)
+      echo "Installer error: agent/scope flags require 'anti-slop-engineering setup'; the Bash installer keeps its legacy target locations" >&2
+      exit 2 ;;
+  esac
+done
+
+# The JavaScript installer owns the plugin catalog and the terminal picker.
+# A minimal Bash-only environment still gets the mandatory core.
+SELECTED_MODULES=""
+if command -v node >/dev/null 2>&1 && [ -f "$SOURCE_DIR/scripts/installer.mjs" ]; then
+  if ! setup_selection="$(node "$SOURCE_DIR/scripts/installer.mjs" --selection-only --scope=global "$@")"; then
+    echo "Installer error: plugin selection failed; no files were installed" >&2
+    exit 2
+  fi
+  SELECTED_MODULES="$(python3 -c '
+import json, re, sys
+data = json.loads(sys.argv[1])
+for skill in data["skills"]:
+    if not re.fullmatch(r"[a-z0-9][a-z0-9-]*", skill):
+        raise ValueError("Invalid plugin ID in selection")
+    if skill != "anti-slop-engineering":
+        print(skill)
+' "$setup_selection")"
+else
+  case " $* " in
+    *--skills*|*--plugins*|*--modules*|*--all*)
+      echo "Installer error: Node.js is needed to select optional plugins; core-only Bash installation is available" >&2
+      exit 2 ;;
+  esac
+fi
+
 report_install() {
   local result="$1"
   local label="$2"
@@ -50,15 +94,20 @@ install_to() {
   local dest="$1"
   local label="$2"
   local result
-  result="$(python3 "$SOURCE_DIR/scripts/safe_install.py" --source "$SOURCE_DIR" --dest "$dest")"
+  local preview=()
+  if [ "$BASH_DRY_RUN" -eq 1 ]; then preview=(--dry-run); fi
+  result="$(python3 "$SOURCE_DIR/scripts/safe_install.py" --source "$SOURCE_DIR" --dest "$dest" "${preview[@]}")"
   report_install "$result" "$label" "$dest"
-  # Install each bundled module as a discoverable top-level skill.
-  for module in decision-guard root-fix-gate future-scale-gate paranoid-principal-architect install-anti-slop; do
-    if [ -d "$SOURCE_DIR/skills/$module" ]; then
-      local module_dest="$(dirname "$dest")/$module"
-      result="$(python3 "$SOURCE_DIR/scripts/safe_install.py" --source "$SOURCE_DIR/skills/$module" --dest "$module_dest")"
-      report_install "$result" "$module" "$module_dest"
+  # Install only the optional skills selected from the authoritative catalog.
+  local module
+  for module in $SELECTED_MODULES; do
+    if [ ! -f "$SOURCE_DIR/skills/$module/SKILL.md" ]; then
+      echo "Installer error: selected plugin source disappeared: $module" >&2
+      return 2
     fi
+    local module_dest="$(dirname "$dest")/$module"
+    result="$(python3 "$SOURCE_DIR/scripts/safe_install.py" --source "$SOURCE_DIR/skills/$module" --dest "$module_dest" "${preview[@]}")"
+    report_install "$result" "$module" "$module_dest"
   done
 }
 
@@ -142,10 +191,18 @@ link_installed_cli() {
   done
 }
 
-link_installed_cli
+if [ "$BASH_DRY_RUN" -eq 0 ]; then
+  link_installed_cli
+fi
 
 echo ""
-echo "🎉 Installation complete! Installed into ${INSTALLED_COUNT} agent environment(s)."
+if [ "$BASH_DRY_RUN" -eq 1 ]; then
+  echo "Dry-run complete: planned ${INSTALLED_COUNT} agent environment(s); no files changed"
+else
+  echo "🎉 Installation complete! Installed into ${INSTALLED_COUNT} agent environment(s)."
+fi
+echo "  Required core: $TARGET_NAME"
+echo "  Optional modules: ${SELECTED_MODULES:-none}"
 echo ""
 echo "Quick Verifications:"
 echo "  • CLI triage:    npx anti-slop-engineering --base HEAD"

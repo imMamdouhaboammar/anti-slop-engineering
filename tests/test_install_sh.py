@@ -255,6 +255,45 @@ class BashInstallerSafetyTests(unittest.TestCase):
         self.assertIn("symbolic link", result.stderr.lower())
         self.assertEqual(list(outside.iterdir()), [])
 
+    def test_default_bash_install_selects_only_core_skill(self):
+        result = self.install()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        skills = self.home / ".agents/skills"
+        self.assertTrue((skills / "anti-slop-engineering/SKILL.md").exists())
+        self.assertFalse((skills / "decision-guard").exists())
+
+    def test_bash_accepts_any_catalog_plugin_and_does_not_install_unselected_ones(self):
+        result = subprocess.run(
+            ["bash", str(REPO / "install.sh"), "--skills=api-ergonomics-and-contract-governor"],
+            cwd=self.home, env={**os.environ, "HOME": str(self.home), "PATH": SAFE_PATH},
+            capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        skills = self.home / ".agents/skills"
+        self.assertTrue((skills / "anti-slop-engineering/SKILL.md").exists())
+        self.assertTrue((skills / "api-ergonomics-and-contract-governor/SKILL.md").exists())
+        self.assertFalse((skills / "decision-guard").exists())
+
+    def test_bash_rejects_unknown_plugin_before_creating_targets(self):
+        result = subprocess.run(
+            ["bash", str(REPO / "install.sh"), "--skills=missing-plugin"],
+            cwd=self.home, env={**os.environ, "HOME": str(self.home), "PATH": SAFE_PATH},
+            capture_output=True, text=True,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse((self.home / ".agents/skills/anti-slop-engineering").exists())
+
+    def test_bash_dry_run_does_not_install_files_or_links(self):
+        result = subprocess.run(
+            ["bash", str(REPO / "install.sh"), "--skills=decision-guard", "--dry-run"],
+            cwd=self.home, env={**os.environ, "HOME": str(self.home), "PATH": SAFE_PATH},
+            capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("decision-guard", result.stdout)
+        self.assertFalse((self.home / ".agents").exists())
+        self.assertFalse((self.home / ".local").exists())
+
 
 if __name__ == "__main__":
     unittest.main()
