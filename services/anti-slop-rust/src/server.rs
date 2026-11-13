@@ -6,7 +6,7 @@ use axum::{
     Router,
 };
 use serde::{Deserialize, Serialize};
-use std::net::SocketAddr;
+use std::{future::IntoFuture, io, net::SocketAddr, time::Duration};
 
 use crate::model::AuditReport;
 use crate::{LADDER_AUDITOR, SHIT_INTERCEPTOR};
@@ -119,9 +119,23 @@ pub async fn run_server(port: u16) -> Result<(), Box<dyn std::error::Error>> {
         "anti-slop-rust daemon listening on http://{}",
         listener.local_addr()?
     );
-    axum::serve(listener, create_router())
-        .with_graceful_shutdown(shutdown)
-        .await?;
+    let (draining, started) = tokio::sync::oneshot::channel();
+    let server = axum::serve(listener, create_router())
+        .with_graceful_shutdown(async move {
+            shutdown.await;
+            let _ = draining.send(());
+        })
+        .into_future();
+    tokio::pin!(server);
+
+    tokio::select! {
+        result = &mut server => result?,
+        _ = started => {
+            tokio::time::timeout(Duration::from_secs(5), &mut server)
+                .await
+                .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, "daemon shutdown timed out"))??;
+        }
+    }
     println!("anti-slop-rust daemon shut down");
     Ok(())
 }

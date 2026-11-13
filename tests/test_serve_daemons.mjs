@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { createServer } from "node:net";
+import { createConnection, createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -126,6 +126,20 @@ for (const { command, service, status, shutdown } of services) {
     assert.match(run.stderr(), /binary not found.*anti-slop-engineering build/i);
   });
 }
+
+test("serve-rust bounds the time spent draining an active request", { timeout: 2 * deadline }, async (t) => {
+  const run = startCli(t, ["serve-rust", "--port", "0"]);
+  const [, port] = await run.output(/listening on http:\/\/127\.0\.0\.1:([1-9]\d*)\n/);
+  const socket = createConnection({ host: "127.0.0.1", port: Number(port) });
+  t.after(() => socket.destroy());
+  await once(socket, "connect");
+  socket.write("POST /v1/triage HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: 2\r\n\r\n{");
+  assert.equal(socket.destroyed, false);
+
+  assert.ok(run.child.kill("SIGTERM"));
+  assert.deepEqual(await onceOrExit(run), [1, null]);
+  assert.match(run.stderr(), /shutdown timed out/i);
+});
 
 async function onceOrExit(run) {
   const timer = AbortSignal.timeout(deadline);
