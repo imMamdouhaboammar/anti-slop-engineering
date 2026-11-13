@@ -60,7 +60,11 @@ const goExecutable = "toil-guard" + nativeSuffix;
 const disableNative = process.env.ANTI_SLOP_DISABLE_NATIVE === "1" || process.env.ANTI_SLOP_FORCE_FALLBACK === "1";
 const rustBinPath = !disableNative && existsSync(resolve(rootDir, "dist", "bin", rustExecutable))
   ? resolve(rootDir, "dist", "bin", rustExecutable)
-  : (!disableNative ? resolve(rootDir, "services", "anti-slop-rust", "target", "release", rustExecutable) : "");
+  : (!disableNative && existsSync(resolve(rootDir, "services", "anti-slop-rust", "target", "release", rustExecutable))
+    ? resolve(rootDir, "services", "anti-slop-rust", "target", "release", rustExecutable)
+    : (!disableNative && existsSync(resolve(rootDir, "services", "anti-slop-rust", "target", "debug", rustExecutable))
+      ? resolve(rootDir, "services", "anti-slop-rust", "target", "debug", rustExecutable)
+      : ""));
 const goBinPath = !disableNative && existsSync(resolve(rootDir, "dist", "bin", goExecutable))
   ? resolve(rootDir, "dist", "bin", goExecutable)
   : (!disableNative ? resolve(rootDir, "services", "toil-guard-go", "bin", goExecutable) : "");
@@ -261,12 +265,31 @@ function spawnProcess(execPath, execArgs, label) {
     cwd: process.cwd(),
     stdio: "inherit",
   });
+  const forwardSignal = (sig) => {
+    if (child && !child.killed) {
+      try {
+        child.kill(sig);
+      } catch (err) {
+        if (err && err.code !== "ESRCH") {
+          process.stderr.write(`Failed to forward ${sig}: ${err.message}\n`);
+        }
+      }
+    }
+  };
+  process.on("SIGTERM", () => forwardSignal("SIGTERM"));
+  process.on("SIGINT", () => forwardSignal("SIGINT"));
   child.on("error", (err) => {
     console.error(`Failed to launch ${label}: ${err.message}`);
     process.exit(1);
   });
-  child.on("close", (code) => {
-    process.exit(code ?? 1); // Signal termination must never be reported as success.
+  child.on("close", (code, signal) => {
+    if (code !== null) {
+      process.exit(code);
+    }
+    if (signal === "SIGTERM" || signal === "SIGINT") {
+      process.exit(0);
+    }
+    process.exit(1);
   });
 }
 

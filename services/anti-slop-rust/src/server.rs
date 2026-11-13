@@ -85,9 +85,32 @@ async fn triage_handler(Json(payload): Json<TriageRequest>) -> impl IntoResponse
 pub fn create_router() -> Router {
     Router::new()
         .route("/health", get(health_handler))
+        .route("/healthz", get(health_handler))
         .route("/v1/shit-check", post(shit_check_handler))
         .route("/v1/ladder-audit", post(ladder_audit_handler))
         .route("/v1/triage", post(triage_handler))
+}
+
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        let _ = tokio::signal::ctrl_c().await;
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        if let Ok(mut sig) = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+            sig.recv().await;
+        }
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => {},
+        _ = terminate => {},
+    }
+    println!("\nShutting down anti-slop-rust daemon gracefully...");
 }
 
 pub async fn run_server(port: u16) -> Result<(), Box<dyn std::error::Error>> {
@@ -95,6 +118,8 @@ pub async fn run_server(port: u16) -> Result<(), Box<dyn std::error::Error>> {
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
     let listener = tokio::net::TcpListener::bind(addr).await?;
     println!("anti-slop-rust daemon listening on http://{addr}");
-    axum::serve(listener, app).await?;
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal())
+        .await?;
     Ok(())
 }

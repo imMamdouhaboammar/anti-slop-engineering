@@ -188,3 +188,37 @@ test('Installer: updateAll reports preserved customization conflicts', () => {
     fs.rmSync(root, { recursive: true, force: true })
   }
 })
+
+test('Installer: clean offline installation writes local skills without network egress', () => {
+  const root = makeTempDir('anti-slop-offline-')
+  const original = process.cwd()
+  try {
+    process.chdir(root)
+    const target = resolveTargets('project', ['codex'])[0]
+    installSkills({ skills: [CORE_SKILL], targets: [target], overwrite: true })
+    const installedSkill = path.join(target.path, CORE_SKILL, 'SKILL.md')
+    assert.equal(fs.existsSync(installedSkill), true)
+    const content = fs.readFileSync(installedSkill, 'utf8')
+    assert.match(content, /anti-slop-engineering/i)
+  } finally {
+    process.chdir(original)
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('Installer: compiler-absent environment installs skills without cargo or go', () => {
+  const root = makeTempDir('anti-slop-compiler-absent-')
+  const original = process.cwd()
+  try {
+    process.chdir(root)
+    const target = resolveTargets('project', ['claude'])[0]
+    installSkills({ skills: [CORE_SKILL], targets: [target], overwrite: true })
+    const skillPath = path.join(target.path, CORE_SKILL, 'SKILL.md')
+    assert.equal(fs.existsSync(skillPath), true)
+    assert.equal(fs.existsSync(path.join(root, 'target')), false)
+  } finally {
+    process.chdir(original)
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})
+

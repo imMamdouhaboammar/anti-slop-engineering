@@ -189,6 +189,25 @@ bunx anti-slop-engineering toil stream
 bunx anti-slop-engineering serve-go --port 9092
 ```
 
+### Native Build Costs & Install Side Effects
+
+| Operational Metric | Node / CLI Default | Native Microservice Compilation (`build`) |
+|---|---|---|
+| **Egress / Network** | 0 B (fully offline, vendored skill files) | Dependent on Cargo (`crates.io`) & Go proxy dependencies |
+| **Install Overhead** | 0 s additional compile time | ~15–45 s compile time (Cargo / Go toolchains) |
+| **Disk Footprint** | ~1.5 MB total (CLI + rules + docs) | +12.8 MB native binaries (`dist/bin/anti-slop-rust`, `toil-guard`) + intermediate caches |
+| **Toolchain Dependencies** | Pure Node 18+ / Bun runtime | Requires `cargo` >=1.75, `go` >=1.21, C compiler / linker |
+| **Daemonless Fallback** | Runs all core gates, AST checks, Python guards | Transparent bypass when daemons are not running |
+
+### Prebuilt Optional Binary Trade-offs
+
+| Trade-off Dimension | Source Compilation (`npm run build:native`) | Prebuilt Binary Distribution |
+|---|---|---|
+| **Platform Matrix** | Exact target host match (x86_64, arm64, linux, darwin) | Multi-arch matrix overhead (`darwin-arm64`, `linux-x64`, `win-x64`) |
+| **Integrity & Checksum** | Local compiler hash verification; no remote binaries | SHA-256 release checksum manifest required; remote fetch risk |
+| **Source Availability** | 100% auditable open-source Rust & Go codebase in repo | Pre-compiled opaque artifacts require supply-chain SLSA provenance |
+| **Upgrade & Rollback Costs** | Atomic rebuild on checkout; immediate Git rollback | Binary cache invalidation, version drift, and ABI compatibility management |
+
 ---
 
 ## The Seven Gates
