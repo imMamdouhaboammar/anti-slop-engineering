@@ -227,7 +227,7 @@ Commands:
   tagore, discourse      Run Tagore Engineering Discourse & Substance Guard (29 tells, 8-dim rubric, voice calibration)
   audit                  Run unified multi-guard audit and generate numbered markdown dossier (anti-slop/audit-NNN.md)
   mode [during|after|ask] Configure anti-slop execution mode (active inline vs post-hoc audit)
-  install, setup         Install anti-slop skills and pointer blocks across 14 AI coding agents
+  install, setup         Install required core and optional skill plugins (TTY wizard or explicit flags)
   update                 Upgrade installed skills and refresh agent pointer blocks in one shot
   ruff                   Run Ruff linter on Python codebase
   oxlint                 Run Oxlint linter with configured anti-slop rules

@@ -101,6 +101,7 @@ class BashInstallerSafetyTests(unittest.TestCase):
         self.assertFalse((local / ".agents").exists())
         self.assertFalse((self.home / "home/.local/bin/anti-slop-engineering").exists())
 
+    @unittest.skipUnless(HAS_NODE, "Node.js required for plugin catalog selection")
     def test_bundled_module_conflicts_are_printed_as_readable_paths(self):
         """Verify bundled sub-module conflicts report clean readable destination paths."""
         source = self.home / "fixture"
@@ -109,18 +110,28 @@ class BashInstallerSafetyTests(unittest.TestCase):
         module.mkdir(parents=True)
         shutil.copy2(REPO / "install.sh", source / "install.sh")
         shutil.copy2(REPO / "scripts/safe_install.py", source / "scripts/safe_install.py")
+        shutil.copy2(REPO / "scripts/installer.mjs", source / "scripts/installer.mjs")
         (source / "SKILL.md").write_text("core\n", encoding="utf-8")
-        (module / "SKILL.md").write_text("module v1\n", encoding="utf-8")
-        env = {**os.environ, "HOME": str(self.home / "home"), "PATH": "/usr/bin:/bin"}
+        (module / "SKILL.md").write_text(
+            "---\nname: decision-guard\ndescription: Decision checks\n---\nmodule v1\n",
+            encoding="utf-8",
+        )
+        env = {**os.environ, "HOME": str(self.home / "home"), "PATH": SAFE_PATH}
 
         def install_fixture():
-            return subprocess.run(["bash", "install.sh"], cwd=source, env=env,
+            # Core-first is now the default; explicitly select this optional module.
+            return subprocess.run(["bash", "install.sh", "--skills=all"], cwd=source, env=env,
                                   capture_output=True, text=True)
 
-        self.assertEqual(install_fixture().returncode, 0)
+        first = install_fixture()
+        self.assertEqual(first.returncode, 0, first.stderr)
         installed = Path(env["HOME"]) / ".agents/skills/decision-guard/SKILL.md"
+        self.assertTrue(installed.is_file(), first.stdout + first.stderr)
         installed.write_text("user edit\n", encoding="utf-8")
-        (module / "SKILL.md").write_text("module v2\n", encoding="utf-8")
+        (module / "SKILL.md").write_text(
+            "---\nname: decision-guard\ndescription: Decision checks\n---\nmodule v2\n",
+            encoding="utf-8",
+        )
         result = install_fixture()
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("Conflicts retained: SKILL.md", result.stdout)
@@ -132,7 +143,7 @@ class BashInstallerSafetyTests(unittest.TestCase):
         result = self.install()
         self.assertEqual(result.returncode, 0, result.stderr)
         cli = self.home / ".agents/skills/anti-slop-engineering/bin/cli.js"
-        for name in ("anti-slop-engineering", "diff-guard", "sre-guard", "rust-guard", "toil-guard"):
+        for name in ("anti-slop-engineering", "diff-guard", "sre-guard", "rust-guard", "toil-guard", "exec-guard"):
             link = self.home / ".local/bin" / name
             self.assertTrue(link.is_symlink(), f"Missing {link}")
             self.assertEqual(link.resolve(), cli)
@@ -160,7 +171,7 @@ class BashInstallerSafetyTests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         expected_cli = self.home / ".agents/skills/anti-slop-engineering/bin/cli.js"
-        for name in ("anti-slop-engineering", "diff-guard", "sre-guard", "rust-guard", "toil-guard"):
+        for name in ("anti-slop-engineering", "diff-guard", "sre-guard", "rust-guard", "toil-guard", "exec-guard"):
             link = self.home / ".local/bin" / name
             self.assertTrue(link.is_symlink(), f"Missing {link}")
             self.assertEqual(link.resolve(), expected_cli)
@@ -254,6 +265,70 @@ class BashInstallerSafetyTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("symbolic link", result.stderr.lower())
         self.assertEqual(list(outside.iterdir()), [])
+
+    def test_default_bash_install_selects_only_core_skill(self):
+        result = self.install()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        skills = self.home / ".agents/skills"
+        self.assertTrue((skills / "anti-slop-engineering/SKILL.md").exists())
+        self.assertFalse((skills / "decision-guard").exists())
+
+    @unittest.skipUnless(HAS_NODE, "Node.js required for plugin catalog selection")
+    def test_bash_accepts_any_catalog_plugin_and_does_not_install_unselected_ones(self):
+        result = subprocess.run(
+            ["bash", str(REPO / "install.sh"), "--skills=api-ergonomics-and-contract-governor"],
+            cwd=self.home, env={**os.environ, "HOME": str(self.home), "PATH": SAFE_PATH},
+            capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        skills = self.home / ".agents/skills"
+        self.assertTrue((skills / "anti-slop-engineering/SKILL.md").exists())
+        self.assertTrue((skills / "api-ergonomics-and-contract-governor/SKILL.md").exists())
+        self.assertFalse((skills / "decision-guard").exists())
+
+    def test_bash_rejects_unknown_plugin_before_creating_targets(self):
+        result = subprocess.run(
+            ["bash", str(REPO / "install.sh"), "--skills=missing-plugin"],
+            cwd=self.home, env={**os.environ, "HOME": str(self.home), "PATH": SAFE_PATH},
+            capture_output=True, text=True,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse((self.home / ".agents/skills/anti-slop-engineering").exists())
+
+    def test_bash_dry_run_does_not_install_files_or_links(self):
+        result = subprocess.run(
+            ["bash", str(REPO / "install.sh"), "--skills=decision-guard", "--dry-run"],
+            cwd=self.home, env={**os.environ, "HOME": str(self.home), "PATH": SAFE_PATH},
+            capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("decision-guard", result.stdout)
+        self.assertFalse((self.home / ".agents").exists())
+        self.assertFalse((self.home / ".local").exists())
+
+    @unittest.skipUnless(HAS_NODE, "Node.js required for plugin catalog selection")
+    def test_bash_all_installs_every_valid_catalog_skill(self):
+        result = subprocess.run(
+            ["bash", str(REPO / "install.sh"), "--skills=all"],
+            cwd=self.home, env={**os.environ, "HOME": str(self.home), "PATH": SAFE_PATH},
+            capture_output=True, text=True, timeout=30,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        for entry in (REPO / "skills").iterdir():
+            if entry.is_dir() and (entry / "SKILL.md").is_file():
+                self.assertTrue((self.home / ".agents/skills" / entry.name / "SKILL.md").is_file(), entry.name)
+
+    def test_bash_core_flags_succeed_even_without_node(self):
+        """Verify --skills=core and -s core succeed even without Node.js in PATH."""
+        env = {**os.environ, "HOME": str(self.home), "PATH": "/usr/bin:/bin"}
+        result = subprocess.run(
+            ["bash", str(REPO / "install.sh"), "--skills=core"],
+            cwd=self.home, env=env, capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        skills = self.home / ".agents/skills"
+        self.assertTrue((skills / "anti-slop-engineering/SKILL.md").exists())
+        self.assertFalse((skills / "decision-guard").exists())
 
 
 if __name__ == "__main__":

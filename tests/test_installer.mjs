@@ -16,6 +16,10 @@ import {
   writeBlock,
 } from '../scripts/installer.mjs'
 
+function makeTempDir(prefix) {
+  return fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), prefix)))
+}
+
 test('Installer: AGENTS list has 14 supported agents', () => {
   assert.equal(AGENTS.length, 14)
   const ids = AGENTS.map((a) => a.id)
@@ -42,7 +46,7 @@ test('Installer: resolveTargets deduplicates shared folders', () => {
 })
 
 test('Installer: writeBlock safely injects and replaces pointer block', () => {
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'anti-slop-install-test-'))
+  const tmpDir = makeTempDir('anti-slop-install-test-')
   const entryFile = path.join(tmpDir, 'AGENTS.md')
   try {
     fs.writeFileSync(entryFile, '# Existing Agent Config\n\nSome custom instructions.\n')
@@ -74,7 +78,7 @@ test('Installer: writeBlock safely injects and replaces pointer block', () => {
 })
 
 test('Installer: overwriting a managed skill preserves modified files and user additions', () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'anti-slop-preserve-'))
+  const root = makeTempDir('anti-slop-preserve-')
   const target = { path: root, agents: [{ id: 'codex', entry: 'AGENTS.md' }] }
   try {
     installSkills({ skills: [CORE_SKILL], targets: [target], overwrite: true })
@@ -93,7 +97,7 @@ test('Installer: overwriting a managed skill preserves modified files and user a
 })
 
 test('Installer: refuses skill IDs containing path traversal', () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'anti-slop-traversal-'))
+  const root = makeTempDir('anti-slop-traversal-')
   const target = { path: path.join(root, 'skills'), agents: [{ id: 'codex', entry: 'AGENTS.md' }] }
   try {
     assert.throws(
@@ -107,7 +111,7 @@ test('Installer: refuses skill IDs containing path traversal', () => {
 })
 
 test('Installer: never follows symlinked agent instruction files', () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'anti-slop-pointer-'))
+  const root = makeTempDir('anti-slop-pointer-')
   const config = path.join(root, 'AGENTS.md')
   const victim = path.join(root, 'outside.md')
   try {
@@ -125,7 +129,7 @@ test('Installer: never follows symlinked agent instruction files', () => {
 })
 
 test('Installer: rejects dangling agent instruction symlinks', () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'anti-slop-dangling-'))
+  const root = makeTempDir('anti-slop-dangling-')
   const entry = path.join(root, 'AGENTS.md')
   try {
     fs.symlinkSync(path.join(root, 'not-created.md'), entry)
@@ -137,7 +141,7 @@ test('Installer: rejects dangling agent instruction symlinks', () => {
 })
 
 test('Installer: refuses an instruction ancestor swapped to a link after initial validation', () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'anti-slop-pointer-race-'))
+  const root = makeTempDir('anti-slop-pointer-race-')
   const parent = path.join(root, 'agent')
   const moved = path.join(root, 'agent-original')
   const outside = path.join(root, 'outside')
@@ -167,7 +171,7 @@ test('Installer: refuses an instruction ancestor swapped to a link after initial
 })
 
 test('Installer: updateAll reports preserved customization conflicts', () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'anti-slop-update-'))
+  const root = makeTempDir('anti-slop-update-')
   const original = process.cwd()
   try {
     process.chdir(root)

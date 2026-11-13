@@ -16,7 +16,7 @@ class SafeFileInstallTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
-        root = Path(self.temp.name)
+        root = Path(self.temp.name).resolve()
         self.source = root / "source"
         self.dest = root / "target" / "skill"
         self.source.mkdir()
@@ -200,6 +200,25 @@ class SafeFileInstallTests(unittest.TestCase):
         self.assertEqual(first["installed"], ["SKILL.md"])
         self.assertEqual(second["skipped"], ["SKILL.md"])
         self.assertFalse((local / ".agents").exists())
+
+    def test_preview_reports_conflicts_without_modifying_disk(self):
+        self.install()
+        (self.dest / "SKILL.md").write_text("my local content\n", encoding="utf-8")
+        (self.source / "SKILL.md").write_text("next release\n", encoding="utf-8")
+        before = (self.dest / safe_install.MANIFEST).read_bytes()
+        outcome = safe_install.preview_tree(self.source, self.dest)
+        self.assertEqual(outcome["conflicted"], ["SKILL.md"])
+        self.assertEqual((self.dest / "SKILL.md").read_text(), "my local content\n")
+        self.assertEqual((self.dest / safe_install.MANIFEST).read_bytes(), before)
+        self.assertEqual(list(self.dest.parent.glob(".skill.backup-*")), [])
+
+    def test_write_staged_file_creates_restrictive_permissions(self):
+        stage = Path(self.temp.name).resolve() / "staged"
+        stage.mkdir()
+        safe_install.write_staged_file(stage, "test.txt", b"secret\n", 0o644)
+        target = stage / "test.txt"
+        self.assertTrue(target.is_file())
+        self.assertEqual(stat.S_IMODE(target.stat().st_mode) & 0o077, 0o044)
 
 
 if __name__ == "__main__":

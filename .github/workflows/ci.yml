@@ -138,7 +138,8 @@ jobs:
 
       - name: Verify Universal Installer
         run: |
-          bash ./install.sh
+          bash ./install.sh --all
+          test -f "$HOME/.agents/skills/anti-slop-engineering/SKILL.md"
           test -f "$HOME/.agents/skills/root-fix-gate/SKILL.md"
 
       - name: Validate Skill & Distribution Manifests
