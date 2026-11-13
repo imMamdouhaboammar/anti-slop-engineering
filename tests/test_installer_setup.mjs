@@ -68,6 +68,25 @@ test('Setup: explicit all includes every available skill', () => {
   assert.ok(plan.skills.includes('anti-slop-engineering'))
 })
 
+test('Setup: install everything writes the complete validated skill catalog', () => {
+  const project = fs.mkdtempSync(path.join(os.tmpdir(), 'anti-slop-all-'))
+  try {
+    const result = spawnSync(process.execPath,
+      [installer, '--agent=codex', '--skills=all', '--json'], {
+        cwd: project, encoding: 'utf8', env: { ...process.env, HOME: project, CI: 'true' }, timeout: 20000,
+      })
+    assert.equal(result.status, 0, result.stderr)
+    const installed = JSON.parse(result.stdout).installed.map((entry) => entry.skill)
+    const catalog = listAvailableModules().map((module) => module.id)
+    assert.deepEqual(installed, catalog)
+    for (const id of catalog) {
+      assert.ok(fs.existsSync(path.join(project, '.codex/skills', id, 'SKILL.md')), id)
+    }
+  } finally {
+    fs.rmSync(project, { recursive: true, force: true })
+  }
+})
+
 test('Setup: --all flag explicitly requests the full optional catalog', () => {
   const result = inDisposableProject(['--agent=codex', '--all', '--dry-run', '--json'])
   assert.equal(result.status, 0, result.stderr)

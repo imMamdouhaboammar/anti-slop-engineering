@@ -294,6 +294,17 @@ class BashInstallerSafetyTests(unittest.TestCase):
         self.assertFalse((self.home / ".agents").exists())
         self.assertFalse((self.home / ".local").exists())
 
+    def test_bash_all_installs_every_valid_catalog_skill(self):
+        result = subprocess.run(
+            ["bash", str(REPO / "install.sh"), "--skills=all"],
+            cwd=self.home, env={**os.environ, "HOME": str(self.home), "PATH": SAFE_PATH},
+            capture_output=True, text=True, timeout=30,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        for entry in (REPO / "skills").iterdir():
+            if entry.is_dir() and (entry / "SKILL.md").is_file():
+                self.assertTrue((self.home / ".agents/skills" / entry.name / "SKILL.md").is_file(), entry.name)
+
 
 if __name__ == "__main__":
     unittest.main()
