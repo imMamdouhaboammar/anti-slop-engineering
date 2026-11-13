@@ -21,7 +21,10 @@ import sys
 from typing import Any, Dict, List, Optional, Tuple
 
 _WORD = re.compile(r"\b[\w'-]+\b")
-_ANCHOR_LINE = re.compile(r"^\s*(?:[-*→#>]|\d+\s*[.)→])", re.M)
+_ANCHOR_LINE = re.compile(
+    r"^\s*(?:[-*→#>]|\d+\s*[.)→])",
+    re.M,
+)
 _BOLD = re.compile(r"\*\*.+?\*\*", re.S)
 
 # Opener wrapper patterns (Deliverable Impurity)
@@ -75,7 +78,9 @@ _OPT_LINE = re.compile(
 )
 
 # List item detector for working memory bounding
-_LIST_ITEM_LINE = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+(.+)$")
+_LIST_ITEM_LINE = re.compile(
+    r"^\s*(?:[-*+]|\d+[.)])\s+(.+)$"
+)
 
 
 def count_words(text: str) -> int:
@@ -445,9 +450,11 @@ def audit_git_diff_markdown(base: str = "HEAD", repo_root: Optional[str] = None)
     if not text_to_audit.strip():
         # Fallback to auditing README.md if diff is empty
         readme_path = os.path.join(repo_root or ".", "README.md")
-        if os.path.exists(readme_path):
-            with open(readme_path, "r", encoding="utf-8") as f:
-                text_to_audit = f.read()
+        try:
+            with open(readme_path, "r", encoding="utf-8") as readme:
+                text_to_audit = readme.read()
+        except FileNotFoundError:
+            text_to_audit = ""
 
     return audit_text(text_to_audit, target_name="git-diff")
 
@@ -457,7 +464,7 @@ def main():
     parser.add_argument("--file", "-f", help="Path to markdown or text file to audit")
     parser.add_argument("--text", "-t", help="Raw text string to audit directly")
     parser.add_argument("--base", default="HEAD", help="Git base to check modified docs against")
-    parser.add_argument("--check-deliverable", action="store_true", help="Enforce 100% deliverable purity (zero openers/closers)")
+    parser.add_argument("--check-deliverable", action="store_true", help="Enforce 100%% deliverable purity (zero openers/closers)")
     parser.add_argument("--json", action="store_true", help="Output machine-readable JSON")
     parser.add_argument("--fail-on-blocker", action="store_true", help="Exit code 2 if blocker findings exist")
 
