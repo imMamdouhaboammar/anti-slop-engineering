@@ -400,11 +400,18 @@ Opinionated anti-slop Oxlint lint rules and agent skill for TypeScript and JavaS
 
 Invoke `/install-anti-slop` in any supported AI coding agent (Claude Code, Antigravity, Gemini CLI, Cursor, Windsurf) to automatically inspect the target repository, detect package managers, vendor the AST plugins, and configure `oxlint.config.ts` or `.oxlintrc.json`.
 
+The `/install-anti-slop` workflow manages the full five-phase vendoring lifecycle:
+1. **Target Discovery & Scoping:** Detects existing package managers (`bun`, `pnpm`, `npm`), existing Oxlint configuration, and installed skill entrypoints.
+2. **Deterministic Vendoring:** Copies the bundled AST plugin to `tools/oxlint/anti-slop/` (or user-chosen relative destination) while strictly preserving upstream licenses and `UPSTREAM.md` provenance.
+3. **Exact Dependency Pinning:** Pins matching compatible `@oxlint/plugins` and `oxlint` versions into `devDependencies`.
+4. **Configuration Fusion:** Merges project-local agent ignore patterns, registers `anti-slop` (and optional `anti-slop-effect`) `jsPlugins`, and enables the 18 AST lint rules.
+5. **Quality Verification:** Executes `oxlint` checks, validates whitespace/formatting stability, and verifies provenance.
+
 ### Install & Update Vendored Oxlint Plugin
 
 ```bash
-# Install Oxlint plugin directly into target repository (creates tools/oxlint/anti-slop/):
-bunx anti-slop-engineering install-oxlint
+# Install Oxlint plugin directly into target repository (creates tools/oxlint/anti-slop/ by default, or custom destination):
+bunx anti-slop-engineering install-oxlint [destination]
 
 # Reconcile and update vendored rules while preserving local custom modifications:
 bunx anti-slop-engineering update-oxlint tools/oxlint/anti-slop --apply
@@ -593,7 +600,7 @@ Spotted a recurring failure mode from an AI agent — test tampering, scope cree
 2. Document symptom, root cause, and remediation using the 5-part catalog schema.
 3. Update [`SKILL.md`](SKILL.md) with explicit agent rules.
 4. Add heuristics to `scripts/diff_guard.py` with unit tests.
-5. Run `make check-all` — all unit and polyglot tests (458 Python, 21 Rust, 14 Go, 49 Node/Bun) and linters must stay green.
+5. Run `make check-all` — all unit and polyglot tests (392 Python, 21 Rust, 26 Go, 96 Node/Bun) and linters must stay green.
 
 ```bash
 npx anti-slop-engineering contribute
