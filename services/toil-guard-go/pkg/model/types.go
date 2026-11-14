@@ -57,7 +57,7 @@ func NewAuditReport(findings []Finding, sli SLIReport) AuditReport {
 	}
 	return AuditReport{
 		Engine:   "toil-guard-go",
-		Version:  "1.7.0",
+		Version:  "1.8.0",
 		SLI:      sli,
 		Findings: findings,
 	}
