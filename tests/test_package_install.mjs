@@ -32,8 +32,9 @@ test("packaged CLI installs offline with or without native compilers on PATH", (
   assert.match(files, /package\/services\/anti-slop-rust\/Cargo.lock/);
   assert.match(files, /package\/services\/toil-guard-go\/go.mod/);
 
-  const npm = output(run("/bin/sh", ["-c", "command -v npm"])).trim();
+  const npm = output(run("/bin/sh", ["-c", 'which -a npm 2>/dev/null | grep -v "$HOME/.local/bin" | grep -v "$HOME/.bun/bin" | head -n 1 || command -v npm'])).trim();
   const python = output(run("/bin/sh", ["-c", "command -v python3"])).trim();
+  const bash = output(run("/bin/sh", ["-c", "command -v bash"])).trim();
 
   for (const toolchains of ["absent", "present"]) {
     const project = join(dir, toolchains);
@@ -43,6 +44,7 @@ test("packaged CLI installs offline with or without native compilers on PATH", (
     writeFileSync(join(project, "package.json"), '{"name":"anti-slop-smoke","private":true}\n');
     symlinkSync(process.execPath, join(bin, "node"));
     symlinkSync("/bin/sh", join(bin, "sh"));
+    if (bash) symlinkSync(bash, join(bin, "bash"));
     symlinkSync(python, join(bin, "python3"));
 
     const commands = toolchains === "present" ? ["cargo", "go", "bunx", "npx"] : ["bunx", "npx"];
