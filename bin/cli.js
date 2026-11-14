@@ -184,7 +184,7 @@ if (executableAliases[invokedAs]) args.unshift(executableAliases[invokedAs]);
 
 function printBanner() {
   console.log(`
-🛡️  Anti-Slop Engineering CLI (v1.7.0)
+🛡️  Anti-Slop Engineering CLI (v1.8.0)
    Clean-Room AI Coding Guard & High-Performance Polyglot Architecture
    Engines: Standard Library Python Guard | Rust Microservice | Go Toil Guard
    Author: Mamdouh Aboammar <mamdouhfces1997@gmail.com>
