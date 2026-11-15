@@ -15,9 +15,11 @@ const __dirname = path.dirname(__filename)
 const rootDir = path.resolve(__dirname, '..')
 
 const pkgPath = path.join(rootDir, 'package.json')
-export const VERSION = fs.existsSync(pkgPath)
-  ? JSON.parse(fs.readFileSync(pkgPath, 'utf8')).version
-  : '1.6.0'
+let detectedVersion = '1.6.0'
+try {
+  detectedVersion = JSON.parse(fs.readFileSync(pkgPath, 'utf8')).version || '1.6.0'
+} catch {}
+export const VERSION = detectedVersion
 
 export const CORE_SKILL = 'anti-slop-engineering'
 
@@ -37,6 +39,66 @@ export const AGENTS = [
   { id: 'pi', label: 'Pi', dir: '.pi/skills', globalDir: '.pi/agent/skills', readsAlso: ['.agents/skills'], entry: 'AGENTS.md' },
   { id: 'windsurf', label: 'Windsurf', dir: '.windsurf/skills', entry: 'AGENTS.md' },
 ]
+
+export const ENFORCEMENT_MODES = ['strict', 'advisory', 'git-boundary', 'skills-only']
+
+export const AGENT_CAPABILITIES = {
+  antigravity: { pre_execution_deny: true, git_boundary: true, prompt_injection: true, label: 'Antigravity' },
+  claude: { pre_execution_deny: true, git_boundary: true, prompt_injection: true, label: 'Claude Code' },
+  cursor: { pre_execution_deny: false, git_boundary: true, prompt_injection: true, label: 'Cursor' },
+  codex: { pre_execution_deny: false, git_boundary: true, prompt_injection: true, label: 'Codex' },
+  windsurf: { pre_execution_deny: false, git_boundary: true, prompt_injection: true, label: 'Windsurf' },
+  gemini: { pre_execution_deny: false, git_boundary: true, prompt_injection: true, label: 'Gemini CLI' },
+  opencode: { pre_execution_deny: false, git_boundary: true, prompt_injection: true, label: 'OpenCode' },
+  cline: { pre_execution_deny: false, git_boundary: true, prompt_injection: true, label: 'Cline' },
+  amp: { pre_execution_deny: false, git_boundary: true, prompt_injection: true, label: 'Amp' },
+  hermes: { pre_execution_deny: false, git_boundary: true, prompt_injection: true, label: 'Hermes' },
+  copilot: { pre_execution_deny: false, git_boundary: true, prompt_injection: true, label: 'GitHub Copilot' },
+  kimi: { pre_execution_deny: false, git_boundary: true, prompt_injection: true, label: 'Kimi Code' },
+  deepseek: { pre_execution_deny: false, git_boundary: true, prompt_injection: true, label: 'DeepSeek Harness' },
+  pi: { pre_execution_deny: false, git_boundary: true, prompt_injection: true, label: 'Pi' },
+}
+
+export const RECOVERY_INSTRUCTIONS =
+  'Recovery: To recover from a blocked hook, run: git status or change enforcement to advisory in .anti-slop/settings.json'
+
+export function computeAgentCapabilities(selectedAgents, requestedMode) {
+  return selectedAgents.map((agentId) => {
+    const meta = AGENT_CAPABILITIES[agentId] || { pre_execution_deny: false, git_boundary: true, prompt_injection: true, label: agentId }
+    let effectiveMode = requestedMode
+    let protectionLevel = ''
+    let capabilityGap = null
+
+    if (requestedMode === 'strict') {
+      if (meta.pre_execution_deny) {
+        effectiveMode = 'strict'
+        protectionLevel = 'In-flight pre-execution deny hooks + Git boundary gates'
+      } else {
+        effectiveMode = 'git-boundary'
+        protectionLevel = 'Git boundary gates (agent lacks native in-flight deny hooks; prompt instructions applied)'
+        capabilityGap = `Native in-flight pre-execution tool interception is not supported by ${meta.label}; falling back to Git boundary triage.`
+      }
+    } else if (requestedMode === 'advisory') {
+      effectiveMode = 'advisory'
+      protectionLevel = 'Advisory audit warnings & recommendations; no execution blocking'
+    } else if (requestedMode === 'git-boundary') {
+      effectiveMode = 'git-boundary'
+      protectionLevel = 'Git boundary gates and commit diff triage'
+    } else if (requestedMode === 'skills-only') {
+      effectiveMode = 'skills-only'
+      protectionLevel = 'Instruction prompts only; no hooks installed'
+    }
+
+    return {
+      agent: agentId,
+      requested_mode: requestedMode,
+      effective_mode: effectiveMode,
+      protection_level: protectionLevel,
+      supports_in_flight_deny: Boolean(meta.pre_execution_deny),
+      ...(capabilityGap ? { capability_gap: capabilityGap } : {}),
+    }
+  })
+}
 
 export function skillSourceDir() {
   const rootSkills = path.join(rootDir, 'skills')
@@ -102,13 +164,15 @@ export function resolveSkillSelection(requested, available = listAvailableSkills
   return [CORE_SKILL, ...new Set(requestedIds.filter((id) => id !== CORE_SKILL))]
 }
 
-function resolveBase(location) {
+function resolveBase(location, depth = 0) {
+  if (depth > 10) throw new Error('Maximum resolution depth exceeded')
   return location === 'global' ? os.homedir() : process.cwd()
 }
 
-function skillPath(agent, location) {
+function skillPath(agent, location, depth = 0) {
+  if (depth > 10) throw new Error('Maximum resolution depth exceeded')
   const dir = location === 'global' ? (agent.globalDir ?? agent.dir) : agent.dir
-  return path.join(resolveBase(location), dir)
+  return path.join(resolveBase(location, depth + 1), dir)
 }
 
 export function resolveTargets(location, selected = AGENTS.map((a) => a.id)) {
@@ -398,21 +462,21 @@ export function updateAll({ locations = ['project', 'global'] } = {}) {
   const allAvailable = listAvailableSkills()
 
   for (const location of locations) {
-    for (const target of resolveTargets(location)) {
-      if (!fs.existsSync(path.join(target.path, CORE_SKILL))) continue
-      const saved = readSelection(target)
-      const skills = (saved?.skills || allAvailable).filter((s) => fs.existsSync(path.join(target.path, s)))
+    for (const destTarget of resolveTargets(location)) {
+      if (!fs.existsSync(path.join(destTarget.path, CORE_SKILL))) continue
+      const saved = readSelection(destTarget)
+      const skills = (saved?.skills || allAvailable).filter((s) => fs.existsSync(path.join(destTarget.path, s)))
       if (skills.length === 0) continue
-      const entries = installSkills({ skills, targets: [target], overwrite: true })
-      const state = writeSelections([target], location, skills)[0]
+      const entries = installSkills({ skills, targets: [destTarget], overwrite: true })
+      const state = writeSelections([destTarget], location, skills)[0]
       const changes = Object.fromEntries(
         ['installed', 'updated', 'preserved', 'skipped', 'conflicted'].map(
           (status) => [status, entries.flatMap((entry) => entry[status] || [])]
         )
       )
-      results.push({ location, path: target.path, agents: target.agents.map((a) => a.id),
+      results.push({ location, path: destTarget.path, agents: destTarget.agents.map((a) => a.id),
         skills, version: VERSION, changes, entries, state })
-      if (location === 'project') projectTargets.push(target)
+      if (location === 'project') projectTargets.push(destTarget)
     }
   }
 
@@ -565,16 +629,19 @@ Usage:
   bunx anti-slop-engineering setup
 
 Options:
-  --agent <names>     Target agents (comma-separated, or 'all'). Default: detected agents
-  --scope <scope>     Install scope: 'project' (default) or 'global'
-  --skills <skills>   Optional skill IDs: 'all', 'core', or comma-separated names
-  --plugins <names>   Alias for --skills; core is always included
-  --all               Select every available optional skill
-  --overwrite         Refresh managed files, preserving local edits and conflicts
-  --dry-run           Simulate installation without writing files
-  --json              Output JSON result
-  --no-interactive    Skip terminal selection (defaults to core only)
-  --help, -h          Show this help menu
+  --agent <names>       Target agents (comma-separated, or 'all'). Default: detected agents
+  --scope <scope>       Install scope: 'project' (default) or 'global'
+  --skills <skills>     Optional skill IDs: 'all', 'core', or comma-separated names
+  --plugins <names>     Alias for --skills; core is always included
+  --all                 Select every available optional skill
+  --enforcement <mode>  Hook enforcement: strict, advisory (default), git-boundary, skills-only
+  --mode <mode>         Alias for --enforcement
+  --deny-on-error       Fail-closed denial on hook error with recovery guidance
+  --overwrite           Refresh managed files, preserving local edits and conflicts
+  --dry-run             Simulate installation without writing files
+  --json                Output JSON result
+  --no-interactive      Skip terminal selection (defaults to core only)
+  --help, -h            Show this help menu
 `)
     return 0
   }
@@ -603,6 +670,11 @@ Options:
   const scopeArg = optionValue(args, ['scope']) || (args.includes('--global') ? 'global' : 'project')
   const agentArg = optionValue(args, ['agent'])
   const skillsArg = args.includes('--all') ? 'all' : optionValue(args, ['skills', 'plugins', 'modules'])
+  const enforcementArg = optionValue(args, ['enforcement', 'mode']) || 'advisory'
+  if (!ENFORCEMENT_MODES.includes(enforcementArg)) {
+    throw new Error(`Invalid enforcement mode: ${enforcementArg}. Allowed: ${ENFORCEMENT_MODES.join(', ')}`)
+  }
+  const denyOnError = args.includes('--deny-on-error')
   const overwrite = args.includes('--overwrite')
   const dryRun = args.includes('--dry-run')
   const jsonMode = args.includes('--json')
@@ -622,6 +694,8 @@ Options:
   for (const agent of selectedAgents) {
     if (!validAgents.has(agent)) throw new Error(`Unknown or invalid agent: ${agent}`)
   }
+
+  const agentCapabilities = computeAgentCapabilities(selectedAgents, enforcementArg)
 
   const availableSkills = listAvailableSkills()
   let selectedSkills = resolveSkillSelection(skillsArg ?? 'core', availableSkills)
@@ -656,7 +730,17 @@ Options:
 
   if (dryRun) {
     const operations = installSkills({ skills: selectedSkills, targets, overwrite, dryRun: true })
-    const plan = { scope: resolvedScope, agents: selectedAgents, skills: selectedSkills, targets: targets.map((t) => t.path), operations }
+    const plan = {
+      scope: resolvedScope,
+      agents: selectedAgents,
+      skills: selectedSkills,
+      enforcement: enforcementArg,
+      deny_on_error: denyOnError,
+      recovery_instructions: RECOVERY_INSTRUCTIONS,
+      agent_capabilities: agentCapabilities,
+      targets: targets.map((t) => t.path),
+      operations,
+    }
     if (jsonMode) console.log(JSON.stringify(plan, null, 2))
     else console.log('Dry-run installation plan:', plan)
     return 0
@@ -667,8 +751,33 @@ Options:
   const installedSelection = [...new Set(selections.flatMap((state) => state.skills))]
   const pointers = resolvedScope === 'project' ? updatePointers({ targets, skills: installedSelection }) : []
 
+  if (resolvedScope === 'project') {
+    const settingsPath = path.join(process.cwd(), '.anti-slop', 'settings.json')
+    try {
+      let settings = {}
+      if (fs.existsSync(settingsPath)) {
+        settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'))
+      } else {
+        fs.mkdirSync(path.dirname(settingsPath), { recursive: true })
+      }
+      settings.mode = enforcementArg
+      settings.enforcement = enforcementArg
+      settings.deny_on_error = denyOnError
+      fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2))
+    } catch {}
+  }
+
   if (jsonMode) {
-    console.log(JSON.stringify({ installed, pointers, selections, version: VERSION }, null, 2))
+    console.log(JSON.stringify({
+      installed,
+      pointers,
+      selections,
+      enforcement: enforcementArg,
+      deny_on_error: denyOnError,
+      recovery_instructions: RECOVERY_INSTRUCTIONS,
+      agent_capabilities: agentCapabilities,
+      version: VERSION,
+    }, null, 2))
   } else {
     const changed = installed.filter((item) => item.installed?.length || item.updated?.length)
     console.log(`\n✅ Installed or updated ${changed.length} skill entries across ${targets.length} agent target(s).`)

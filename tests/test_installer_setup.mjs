@@ -352,3 +352,43 @@ test('Setup: updateAll scopes instruction pointer updates to installed project s
     fs.rmSync(project, { recursive: true, force: true })
   }
 })
+
+test('Setup: supports --enforcement=strict and reports capability matrix per agent', () => {
+  const result = inDisposableProject(['--agent=claude,cursor', '--enforcement=strict', '--dry-run', '--json'])
+  assert.equal(result.status, 0, result.stderr)
+  const plan = JSON.parse(result.stdout)
+  assert.equal(plan.enforcement, 'strict')
+  assert.ok(Array.isArray(plan.agent_capabilities))
+  const claude = plan.agent_capabilities.find((a) => a.agent === 'claude')
+  assert.equal(claude.effective_mode, 'strict')
+  assert.equal(claude.supports_in_flight_deny, true)
+  const cursor = plan.agent_capabilities.find((a) => a.agent === 'cursor')
+  assert.equal(cursor.effective_mode, 'git-boundary')
+  assert.equal(cursor.supports_in_flight_deny, false)
+  assert.ok(cursor.capability_gap.includes('in-flight'))
+})
+
+test('Setup: supports --enforcement=skills-only and reports zero hooks', () => {
+  const result = inDisposableProject(['--agent=claude', '--enforcement=skills-only', '--dry-run', '--json'])
+  assert.equal(result.status, 0, result.stderr)
+  const plan = JSON.parse(result.stdout)
+  assert.equal(plan.enforcement, 'skills-only')
+  const claude = plan.agent_capabilities.find((a) => a.agent === 'claude')
+  assert.equal(claude.effective_mode, 'skills-only')
+  assert.match(claude.protection_level, /instruction prompts only/i)
+})
+
+test('Setup: invalid enforcement mode rejects with clean error', () => {
+  const result = inDisposableProject(['--enforcement=invalid_mode', '--dry-run', '--json'])
+  assert.notEqual(result.status, 0)
+  assert.match(result.stderr, /Invalid enforcement mode: invalid_mode/i)
+})
+
+test('Setup: --deny-on-error includes local recovery instructions in plan', () => {
+  const result = inDisposableProject(['--agent=claude', '--enforcement=strict', '--deny-on-error', '--dry-run', '--json'])
+  assert.equal(result.status, 0, result.stderr)
+  const plan = JSON.parse(result.stdout)
+  assert.equal(plan.deny_on_error, true)
+  assert.ok(plan.recovery_instructions)
+  assert.match(plan.recovery_instructions, /recovery/i)
+})
