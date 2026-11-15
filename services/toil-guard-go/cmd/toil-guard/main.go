@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -32,6 +33,13 @@ func main() {
 	switch command {
 	case "audit":
 		runAudit(os.Args[2:])
+	case "runtime-check":
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		code := executeRuntimeCheck(ctx, os.Args[2:], os.Stdout, os.Stderr, runSandboxedRuntimeFixture)
+		stop()
+		os.Exit(code)
+	case "_runtime-worker":
+		os.Exit(runRuntimeWorker(os.Args[2:]))
 	case "serve":
 		runServe(os.Args[2:])
 	case "stream":
@@ -52,6 +60,7 @@ func printUsage() {
 	fmt.Println()
 	fmt.Println("Commands:")
 	fmt.Println("  audit   [paths...]     Audit source paths or git changes against KISS, DRY, YAGNI, and Scale")
+	fmt.Println("  runtime-check --fixture=go-lookup  Run a built-in runtime fixture in a verified macOS sandbox")
 	fmt.Println("  serve   [--port 9092]  Start high-throughput HTTP SRE daemon with /healthz, /metrics, /v1/audit")
 	fmt.Println("  stream  [--interval 3s]  Stream git diff statistics (not a live error-budget calculation)")
 	fmt.Println("  help                   Show this help message")
@@ -138,51 +147,129 @@ func collectExplicitTargetFiles(targets []string) (map[string]string, error) {
 	return fileMap, nil
 }
 
-func runGitCommand(args ...string) ([]byte, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	return exec.CommandContext(ctx, "git", args...).CombinedOutput()
+func readGitOutput(cmd *exec.Cmd) ([]byte, error) {
+	out, err := cmd.Output()
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) && len(exitErr.Stderr) > 0 {
+		return nil, fmt.Errorf("%w: %s", err, strings.TrimSpace(string(exitErr.Stderr)))
+	}
+	return out, err
 }
 
 func collectGitDiffFiles(base string) (map[string]string, error) {
 	if strings.TrimSpace(base) == "" || strings.HasPrefix(base, "-") {
 		return nil, fmt.Errorf("invalid git base reference %q", base)
 	}
-	if revOut, revErr := runGitCommand("rev-parse", "--verify", base+"^{commit}"); revErr != nil {
-		return nil, fmt.Errorf("invalid git base %q: %w: %s", base, revErr, strings.TrimSpace(string(revOut)))
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	rawRoot, err := readGitOutput(exec.CommandContext(ctx, "git", "rev-parse", "--show-toplevel"))
+	if err != nil {
+		return nil, fmt.Errorf("locating Git repository root: %w", err)
+	}
+	rootPath := strings.TrimSuffix(string(rawRoot), "\n")
+	revision, err := readGitOutput(exec.CommandContext(ctx, "git", "-C", rootPath,
+		"rev-parse", "--verify", "--end-of-options", base+"^{commit}"))
+	if err != nil {
+		return nil, fmt.Errorf("invalid git base %q: %w", base, err)
 	}
 
-	out, err := runGitCommand("-c", "diff.noprefix=false", "-c", "diff.mnemonicPrefix=false", "diff", "--no-ext-diff", base, "--")
+	resolvedBase := strings.TrimSpace(string(revision))
+	tracked, err := readGitOutput(exec.CommandContext(ctx, "git", "-C", rootPath,
+		"diff", "--no-ext-diff", "--no-relative", "--name-only", "-z", "--diff-filter=d", resolvedBase, "--"))
 	if err != nil {
-		return nil, fmt.Errorf("git diff %q failed: %w: %s", base, err, strings.TrimSpace(string(out)))
+		return nil, fmt.Errorf("git diff %q failed: %w", base, err)
 	}
-	if len(out) > 0 {
-		return parseGitDiff(string(out))
+	// A worktree edit can undo a staged change relative to the chosen base.
+	staged, err := readGitOutput(exec.CommandContext(ctx, "git", "-C", rootPath,
+		"diff", "--cached", "--no-ext-diff", "--no-relative", "--name-only", "-z", "--diff-filter=d", resolvedBase, "--"))
+	if err != nil {
+		return nil, fmt.Errorf("git diff --cached %q failed: %w", base, err)
 	}
-	return collectUntrackedAndModifiedStatusFiles()
+	untracked, err := readGitOutput(exec.CommandContext(ctx, "git", "-C", rootPath,
+		"ls-files", "--others", "--exclude-standard", "-z"))
+	if err != nil {
+		return nil, fmt.Errorf("listing untracked files: %w", err)
+	}
+
+	paths, err := parseGitPaths(string(tracked) + string(staged) + string(untracked))
+	if err != nil {
+		return nil, err
+	}
+	return readChangedSources(rootPath, paths)
 }
 
-func collectUntrackedAndModifiedStatusFiles() (map[string]string, error) {
-	fileMap := make(map[string]string)
-	statusOut, statusErr := runGitCommand("status", "--porcelain", "--untracked-files=all")
-	if statusErr != nil {
-		return nil, fmt.Errorf("git status failed: %w: %s", statusErr, strings.TrimSpace(string(statusOut)))
+func parseGitPaths(output string) ([]string, error) {
+	if output == "" {
+		return nil, nil
 	}
-	for _, line := range strings.Split(string(statusOut), "\n") {
-		if len(line) < 4 || line[0] == 'D' || line[1] == 'D' {
+	remaining, ok := strings.CutSuffix(output, "\x00")
+	if !ok {
+		return nil, fmt.Errorf("unterminated git path list")
+	}
+	paths := strings.Split(remaining, "\x00")
+	for _, path := range paths {
+		if path == "" {
+			return nil, fmt.Errorf("empty path in git path list")
+		}
+	}
+	return paths, nil
+}
+
+func readChangedSources(rootPath string, paths []string) (map[string]string, error) {
+	root, err := os.OpenRoot(rootPath)
+	if err != nil {
+		return nil, fmt.Errorf("opening repository root: %w", err)
+	}
+	defer root.Close()
+
+	files := make(map[string]string, len(paths))
+	for _, path := range paths {
+		if _, exists := files[path]; exists || !isAuditable(path) || isDocFile(path) {
 			continue
 		}
-		path := strings.TrimSpace(line[3:])
-		if !isAuditable(path) {
+		info, err := root.Lstat(path)
+		if missingAuditSource(err) {
 			continue
 		}
-		content, err := os.ReadFile(path)
+		if err != nil {
+			return nil, fmt.Errorf("inspecting %q: %w", path, err)
+		}
+		if !info.Mode().IsRegular() {
+			continue
+		}
+		file, err := root.OpenFile(path, os.O_RDONLY|auditSourceOpenFlags, 0)
+		if missingAuditSource(err) {
+			continue
+		}
+		if err != nil {
+			return nil, fmt.Errorf("opening %q: %w", path, err)
+		}
+		content, err := readRegularSource(file, info)
+		file.Close()
 		if err != nil {
 			return nil, fmt.Errorf("reading %q: %w", path, err)
 		}
-		fileMap[path] = string(content)
+		if bytes.IndexByte(content, 0) < 0 {
+			files[path] = string(content)
+		}
 	}
-	return fileMap, nil
+	return files, nil
+}
+
+func missingAuditSource(err error) bool {
+	return errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ENOTDIR)
+}
+
+func readRegularSource(file *os.File, expected os.FileInfo) ([]byte, error) {
+	actual, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if !actual.Mode().IsRegular() || !os.SameFile(expected, actual) {
+		return nil, errors.New("source file changed before it could be read")
+	}
+	return io.ReadAll(file)
 }
 
 func writeAuditReport(w io.Writer, report model.AuditReport, format string) error {
@@ -303,44 +390,4 @@ func isDocFile(path string) bool {
 	return strings.HasSuffix(lower, ".md") || strings.HasSuffix(lower, ".markdown") ||
 		strings.HasSuffix(lower, ".txt") || strings.HasSuffix(lower, ".rst") ||
 		strings.Contains(lower, "/docs/") || strings.HasPrefix(lower, "docs/")
-}
-
-func parseGitDiff(diffOutput string) (map[string]string, error) {
-	fileMap := make(map[string]string)
-	if strings.TrimSpace(diffOutput) == "" {
-		return fileMap, nil
-	}
-
-	lines := strings.Split(diffOutput, "\n")
-	currentFile := ""
-	var currentLines []string
-	sawDiffHeader := false
-
-	flush := func() {
-		if currentFile != "" && len(currentLines) > 0 && isAuditable(currentFile) && !isDocFile(currentFile) {
-			fileMap[currentFile] = strings.Join(currentLines, "\n")
-		}
-		currentLines = nil
-	}
-
-	for _, line := range lines {
-		if strings.HasPrefix(line, "diff --git ") {
-			sawDiffHeader = true
-			flush()
-			parts := strings.Split(line, " b/")
-			if len(parts) > 1 {
-				currentFile = strings.TrimSpace(parts[1])
-			}
-		} else if strings.HasPrefix(line, "+++ b/") {
-			currentFile = strings.TrimSpace(line[6:])
-		} else if strings.HasPrefix(line, "+") && !strings.HasPrefix(line, "+++") {
-			currentLines = append(currentLines, line[1:])
-		}
-	}
-	flush()
-
-	if !sawDiffHeader {
-		return nil, fmt.Errorf("malformed git diff output: missing diff header")
-	}
-	return fileMap, nil
 }

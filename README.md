@@ -62,7 +62,7 @@ curl -fsSL https://raw.githubusercontent.com/imMamdouhaboammar/anti-slop-enginee
 bash install.sh --skills=decision-guard,root-fix-gate
 ```
 
-Piped Bash installation uses a predictable core-only default. Running the local Bash installer from a terminal uses the same plugin catalog and selection prompt when Node.js is available; its historical agent destinations and CLI links stay intact. To change agent targets or project/global scope interactively, use `bunx anti-slop-engineering setup`. Without Node.js, Bash installs the bundled core and requires Node.js to select optional modules.
+Piped Bash installation interactively prompts for plugin selection when a terminal (`/dev/tty`) is present and Node.js is installed, or defaults cleanly to core in headless/CI environments. Running the local Bash installer from a terminal uses the same plugin catalog and selection prompt when Node.js is available; its historical agent destinations and CLI links stay intact. To change agent targets or project/global scope interactively, use `bunx anti-slop-engineering setup`. Without Node.js, Bash installs the bundled core and requires Node.js to select optional modules.
 
 Installers running from a Git checkout copy tracked files from the working tree. Local agent settings, credentials and audit notes stay in the checkout.
 
@@ -189,7 +189,28 @@ bunx anti-slop-engineering toil stream
 
 # Start the optional HTTP service:
 bunx anti-slop-engineering serve-go --port 9092
+
+# Opt-in runtime fixture, with the native Go binary built:
+bunx anti-slop-engineering toil runtime-check --fixture=go-lookup
 ```
+
+The built-in Go lookup fixture measures single-item and batched dependency calls,
+checks result equality, and records recovery from one injected local failure.
+A two-worker scenario records observed overlap and cancels while both workers
+are in flight. It reports completed, canceled and unstarted operations for six
+local lookups. Elapsed times describe the fixture run.
+
+On macOS, the worker uses a disposable directory and verifies denial of a read
+canary, file creation, local TCP connection and listening, and child execution
+before measuring. The profile blocks reads from the caller's working directory
+and account home. Other system reads remain available for runtime startup. A
+five-second timeout, two CPU seconds, an output ceiling, and a fixed workload
+bound the worker. The Go memory target is 32 MiB.
+
+The JSON status is `passed` (exit 0) or `failed` (exit 1) for an executed
+fixture. If containment checks fail or the host lacks the supported macOS
+sandbox, it reports `inconclusive` with `executed: false` (exit 2).
+Static `toil audit` works independently.
 
 ### Package Installation and Native Builds
 
@@ -578,11 +599,24 @@ npx skills add imMamdouhaboammar/anti-slop-engineering
 
 Package installation does not automatically download skills or build native executables. Run `bunx anti-slop-engineering setup` in a terminal to choose **Core only**, **Select plugins**, or **Install everything** before confirming. The core skill is always included; optional selections are the skill directories in this distribution, not separately loaded guard executables. In CI or piped input, setup defaults to core only; use `--skills=all` or `--plugins=decision-guard,root-fix-gate` to choose explicitly. Existing managed files are updated without overwriting local modifications, and `update` keeps your previously installed skill selection.
 
+To use the installed skill selection for optional review checks, pass the manifest from the actual agent destination:
+
+```bash
+bunx anti-slop-engineering audit --base HEAD --installed-selection .codex/skills/.anti-slop-selection.json --json
+```
+
+This option applies to the Tagore prose review, Re0 handoff review, and reduction review. The audit reports absent skills as `SKIPPED` with `skip_type: not-selected`. Mandatory and security checks retain their normal behavior. An ordinary audit runs the full applicable set. An invalid explicit manifest produces an error and the audit still runs the full applicable set.
+
 ---
 
 ## Anti-pattern catalog (217 patterns)
 
 The catalog in [`references/anti-pattern-catalog.md`](references/anti-pattern-catalog.md) documents 217 diagnostic patterns across 14 engineering domains, each with a canonical ID, symptom, root cause, and remediation.
+
+Use `bunx anti-slop-engineering explain OPS-01` for catalog guidance or `bunx anti-slop-engineering explain STS-H02 --json` for a raw engine rule. Exact lookup returns the entry, related mapped rules, remediation and the evidence rubric. An unmapped catalog entry still returns its guidance. An unknown ID exits 1. Invalid input exits 2.
+
+The `catalog-coverage` CI artifact measures selected Rust, Go and Python detectors against positive and negative fixtures. `automatic` means at least one mapped detector observed the expected positive case and ran a negative control. `manual-review` means automated coverage has not been established by those fixtures. The counts describe the reviewed mapping and fixture set. Other detectors may exist, and fixture precision cannot estimate production precision. Use the [severity and evidence rubric](references/engineering-judgment.md#how-to-classify-a-suspected-smell) to assess impact. Existing engine severity and exit behavior are preserved.
+
 
 **Domains covered:**
 

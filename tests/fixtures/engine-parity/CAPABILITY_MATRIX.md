@@ -1,5 +1,18 @@
 # Engine Parity Capability Matrix
 
+## Runtime ownership
+
+| Runtime | Owned behavior | Portable behavior |
+| --- | --- | --- |
+| Node | CLI routing and installation, chooses native binaries when available | Python commands remain directly runnable. |
+| Python | Portable Git checks, SRE and record checks, unified audit | Standard-library scripts exercise required behavior without native engines. |
+| Rust | Structural triage, read-only intent and file scope checks | Python Diff Guard covers documented heuristic triage. Native-only options return a capability error when unavailable. |
+| Go | Native SRE analysis, SLI reporting and optional serve/stream | Python SRE covers documented audit operations. Native-only daemon/stream requests require Go. |
+
+[Tested capability and rule fixture](contracts.json)
+
+The fixture identifies one canonical owner for the observed error-swallow and blind-sleep rules, and records alternate implementations with their actual IDs and severities. Different decisions are preserved by parity tests during migration. New shared-rule records must link to a fixture, declare one owner, and register each engine and emitted identifier once. Overlaps without independent evidence remain listed as current behavior in this matrix.
+
 ## `anti-slop-rust triage` ↔ `scripts/diff_guard.py`
 
 | Contract / Behavior | `anti-slop-rust triage` | `scripts/diff_guard.py` | Classification |

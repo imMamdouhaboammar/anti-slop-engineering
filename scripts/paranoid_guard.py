@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 """Check paranoid principal architect records for zero-trust and 10M-scale compliance."""
 
-import argparse
 import json
 import sys
 from pathlib import Path
+if __package__ is None:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from scripts import repository_evidence  # noqa: E402
 
 VALID_THREAT_CLASSES = {
     "race_condition",
@@ -196,10 +199,7 @@ def audit(record):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=["audit"])
-    parser.add_argument("record", type=Path)
-    parser.add_argument("--json", action="store_true")
+    parser = repository_evidence.audit_parser(__doc__)
     args = parser.parse_args()
 
     try:
@@ -211,6 +211,8 @@ def main():
         print("Invalid paranoid architect record: %s" % error, file=sys.stderr)
         return 1
 
+    if args.verify_evidence:
+        repository_evidence.attach_evidence(result, record, args.repo)
     if args.json:
         print(json.dumps(result, indent=2))
     else:
@@ -219,7 +221,7 @@ def main():
             print("  [%s] %s: %s" % (item["severity"], item["code"], item["message"]))
         print("Structural audit only: domain security and live load testing must be verified independently.")
 
-    return 2 if result["record_status"] == "incomplete" else 0
+    return repository_evidence.exit_code(result, 2 if result["record_status"] == "incomplete" else 0, args.json)
 
 
 if __name__ == "__main__":

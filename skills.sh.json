@@ -37,6 +37,7 @@
         "safe-evolution-and-rollout-choreographer",
         "zero-downtime-migration-gate",
         "privacy-and-data-lineage-gate",
+        "cryptographic-agility-and-secret-lifecycle-gate",
         "observability-and-slo-architect",
         "observability-and-slo-gate"
       ]
@@ -47,7 +48,8 @@
       "skills": [
         "mechanical-sympathy-and-perf-gate",
         "mechanical-sympathy-profiler",
-        "scientific-fault-isolation"
+        "scientific-fault-isolation",
+        "context-window-and-token-economics-architect"
       ]
     },
     {
