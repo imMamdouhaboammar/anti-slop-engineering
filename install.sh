@@ -129,6 +129,13 @@ INSTALLED_COUNT=0
 if [ "$LOCAL_INSTALL" -eq 1 ]; then
   # Local project installation
   install_to "$PWD/.agents/skills/${TARGET_NAME}" "Local Project (.agents/skills)"
+  if [ "$BASH_DRY_RUN" -eq 0 ] && [ -f "$SOURCE_DIR/package.json" ]; then
+    modules=()
+    while IFS= read -r module; do
+      if [ -n "$module" ]; then modules+=("$module"); fi
+    done <<< "$SELECTED_MODULES"
+    python3 "$SOURCE_DIR/scripts/bash_selection.py" "$PWD/.agents/skills" "$SOURCE_DIR/package.json" "${modules[@]}"
+  fi
   INSTALLED_COUNT=$((INSTALLED_COUNT + 1))
 else
   # 1. Claude Code & Claude Desktop
