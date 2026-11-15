@@ -143,6 +143,9 @@ jobs:
       - name: Run Bun Security Regression Suite
         run: bun run test:security
 
+      - name: Verify React version advisory
+        run: bun test tests/react_ref_advisory.test.mjs
+
       - name: Test explicit skill setup and offline package install
         run: node --test tests/test_installer.mjs tests/test_installer_setup.mjs tests/test_package_install.mjs
 
