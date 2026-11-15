@@ -50,3 +50,26 @@ We codified Google SRE discipline (Site Reliability Engineering Book Chapters 5 
 - 30/30 unit tests pass via `python3 -m unittest discover -s tests -v`.
 - `make check` executes lint, test-verbose, diff_guard, and sre_guard cleanly with 0 SRE blockers and 0 reviews.
 - Self-diff verification confirms zero regressions.
+
+## Enforcement tiers
+
+| Capability | Activation | Evidence and limits |
+| --- | --- | --- |
+| Tier 1, local static review | Run `python3 scripts/diff_guard.py --base <ref> --json` and `python3 scripts/sre_guard.py --base <ref> --json` in a checkout. Git and Python 3.9+ are required. | Looks for supported patterns and emits findings and scope limits. The scripts require no Python packages, compiler, service, or registry. A report applies to the files it scanned. Inspect the Diff Guard untracked-file notice before relying on coverage. |
+| Tier 1, CI gate | Set `--fail-on-blocker` for Diff Guard and `--strict` for SRE Guard, or configure the repository CI audit gate. | The two scripts use exit 2 for a configured blocker and exit 1 for a failed Git inspection. Default scans return zero when they completed, including findings. An unavailable revision is an error. Unified audit applies a 60-second timeout per child and records a timed-out guard as incomplete/error. Full audit has no measured total latency bound. |
+| Tier 2, dynamic evidence | Enable a provider or local verifier explicitly. Provider policy must identify the permitted actions, inputs, isolation, output location, and wall/CPU budgets. | Availability depends on a tested provider and environment. Post-action, commit-boundary, and advisory checks provide evidence at their own boundaries. Only a verified pre-action hook that can deny the action constitutes prevention. Record actual execution and diagnostics even when the expected toolchain binary exists. |
+
+Tier 1 can run by itself in an offline checkout. Keep Tier 2 disabled unless its adapter and permissions are verified for the selected environment. A running service, compiler adapter, hook, or sandbox cannot stand in for an unavailable Tier 1 result. Preserve actual execution states. An unavailable provider, timeout, failed isolation probe, or missing dependency is inconclusive for intended dynamic behavior. Keep any runtime artifact in a disposable directory, record bounded diagnostics and provenance, and leave network access and telemetry disabled unless explicitly enabled by the operator. Where a provider supports test-only access, verify the restrictions before invoking the test.
+
+For a Tier 2 runtime fixture, record the isolation probe, elapsed time, dependency-call count, and recovery result. The opt-in Go lookup fixture in [#81](https://github.com/imMamdouhaboammar/anti-slop-engineering/issues/81) tracks the native implementation.
+
+### Measured Tier 1 cost
+
+Wall time includes Python startup, Git queries and JSON formatting. The test used five serial runs per cell, an Apple M4 arm64 Mac, Python 3.14.6, the repository's release commit `5af649d`, and network-denied execution. The fixtures started with tracked regular Python files of one line each and replaced them with per-file numeric assignments. Larger projects and real code can differ.
+
+| Fixture | Diff Guard median / max | SRE Guard median / max |
+| --- | ---: | ---: |
+| 3 changed files, 9 added lines | 0.291 s / 0.356 s | 0.269 s / 0.322 s |
+| 100 changed files, 10,000 added lines | 0.552 s / 0.575 s | 0.395 s / 0.437 s |
+
+Both guards returned zero in those runs. Replacing the base with an unavailable revision made both return 1. A separate loopback-bind canary was denied under the same network profile. The table is a measurement, with no cross-host latency commitment.
