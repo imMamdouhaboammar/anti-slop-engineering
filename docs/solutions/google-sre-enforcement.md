@@ -73,3 +73,14 @@ Wall time includes Python startup, Git queries and JSON formatting. The test use
 | 100 changed files, 10,000 added lines | 0.552 s / 0.575 s | 0.395 s / 0.437 s |
 
 Both guards returned zero in those runs. Replacing the base with an unavailable revision made both return 1. A separate loopback-bind canary was denied under the same network profile. The table is a measurement, with no cross-host latency commitment.
+
+Reproduce the workloads and verify the invalid-revision behavior from a repository checkout.
+
+```bash
+python3 -I -S scripts/benchmark_static_guards.py --samples 5
+python3 -m unittest discover -s tests -p test_audit_runner_failures.py -v
+```
+
+The benchmark generates two disposable Git repositories, runs the fixed Python guards with Git system and user configuration disabled, and emits JSON with interpreter, Git, host, scan counts, elapsed time and invalid-revision outcomes. Each child has an eight-second measurement deadline, and a timeout, failed Git fixture or unexpected guard result makes the benchmark inconclusive. The benchmark needs only Git and Python. The failure suite runs the audit coordinator with fixed failing and timing-out child fixtures.
+
+For a network-denied reproduction on macOS, wrap the benchmark with `sandbox-exec -p '(version 1)(allow default)(deny network*)' ...`. The benchmark's raw timings vary between hosts and run conditions.
