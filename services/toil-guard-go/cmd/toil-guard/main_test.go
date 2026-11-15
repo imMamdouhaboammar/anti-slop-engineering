@@ -194,6 +194,38 @@ func TestParseGitDiffRejectsMalformedNonEmptyOutput(t *testing.T) {
 	}
 }
 
+func TestParseGitDiffPreservesContextAndLineOffsets(t *testing.T) {
+	diff := `diff --git a/pkg/calc.go b/pkg/calc.go
+--- a/pkg/calc.go
++++ b/pkg/calc.go
+@@ -10,3 +10,4 @@ func Calc() {
+  ctx1 := 1
++ add1 := 2
+  ctx2 := 3
+`
+	files, err := parseGitDiff(diff)
+	if err != nil {
+		t.Fatalf("parseGitDiff failed: %v", err)
+	}
+	content, ok := files["pkg/calc.go"]
+	if !ok {
+		t.Fatalf("expected pkg/calc.go in files")
+	}
+	lines := strings.Split(content, "\n")
+	if len(lines) < 12 {
+		t.Fatalf("expected at least 12 padded lines, got %d", len(lines))
+	}
+	if lines[9] != " ctx1 := 1" {
+		t.Errorf("expected line 10 to be ' ctx1 := 1', got %q", lines[9])
+	}
+	if lines[10] != " add1 := 2" {
+		t.Errorf("expected line 11 to be ' add1 := 2', got %q", lines[10])
+	}
+	if lines[11] != " ctx2 := 3" {
+		t.Errorf("expected line 12 to be ' ctx2 := 3', got %q", lines[11])
+	}
+}
+
 func TestExecuteAuditCollectsUntrackedFileInNestedDir(t *testing.T) {
 	dir := initTempGitRepo(t)
 	t.Chdir(dir)

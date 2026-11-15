@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -12,6 +13,8 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -152,14 +155,34 @@ func collectGitDiffFiles(base string) (map[string]string, error) {
 		return nil, fmt.Errorf("invalid git base %q: %w: %s", base, revErr, strings.TrimSpace(string(revOut)))
 	}
 
+	fileMap := make(map[string]string)
 	out, err := runGitCommand("-c", "diff.noprefix=false", "-c", "diff.mnemonicPrefix=false", "diff", "--no-ext-diff", base, "--")
 	if err != nil {
 		return nil, fmt.Errorf("git diff %q failed: %w: %s", base, err, strings.TrimSpace(string(out)))
 	}
 	if len(out) > 0 {
-		return parseGitDiff(string(out))
+		diffMap, err := parseGitDiff(string(out))
+		if err != nil {
+			return nil, err
+		}
+		for k, v := range diffMap {
+			if content, err := os.ReadFile(k); err == nil && isAuditable(k) {
+				fileMap[k] = string(content)
+			} else {
+				fileMap[k] = v
+			}
+		}
 	}
-	return collectUntrackedAndModifiedStatusFiles()
+	statusMap, err := collectUntrackedAndModifiedStatusFiles()
+	if err != nil {
+		return nil, err
+	}
+	for k, v := range statusMap {
+		if _, exists := fileMap[k]; !exists {
+			fileMap[k] = v
+		}
+	}
+	return fileMap, nil
 }
 
 func collectUntrackedAndModifiedStatusFiles() (map[string]string, error) {
@@ -305,6 +328,98 @@ func isDocFile(path string) bool {
 		strings.Contains(lower, "/docs/") || strings.HasPrefix(lower, "docs/")
 }
 
+var hunkHeaderRegex = regexp.MustCompile(`^@@\s+-[0-9]+(?:,[0-9]+)?\s+\+([0-9]+)(?:,[0-9]+)?\s+@@`)
+
+func cleanGitPath(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" || trimmed == "/dev/null" {
+		return ""
+	}
+	if strings.HasPrefix(trimmed, "\"") && strings.HasSuffix(trimmed, "\"") && len(trimmed) >= 2 {
+		trimmed = unescapeGitCString(trimmed[1 : len(trimmed)-1])
+	}
+	trimmed = strings.TrimPrefix(trimmed, "b/")
+	trimmed = strings.TrimPrefix(trimmed, "a/")
+	return filepath.Clean(filepath.ToSlash(trimmed))
+}
+
+func parseOctal(runes []rune, start int) (byte, int) {
+	val := int(runes[start] - '0')
+	idx := start
+	count := 1
+	for count < 3 && idx+1 < len(runes) && runes[idx+1] >= '0' && runes[idx+1] <= '7' {
+		idx++
+		count++
+		val = val*8 + int(runes[idx]-'0')
+	}
+	return byte(val), idx
+}
+
+func decodeEscapeByte(c rune) (byte, bool) {
+	switch c {
+	case 'n':
+		return '\n', true
+	case 'r':
+		return '\r', true
+	case 't':
+		return '\t', true
+	case 'b':
+		return '\b', true
+	case 'f':
+		return '\f', true
+	case 'a':
+		return '\a', true
+	case 'v':
+		return '\v', true
+	case '\\':
+		return '\\', true
+	case '"':
+		return '"', true
+	default:
+		return 0, false
+	}
+}
+
+func unescapeGitCString(s string) string {
+	var buf bytes.Buffer
+	runes := []rune(s)
+	for i := 0; i < len(runes); i++ {
+		if runes[i] != '\\' || i+1 >= len(runes) {
+			buf.WriteRune(runes[i])
+			continue
+		}
+		i++
+		c := runes[i]
+		if c >= '0' && c <= '7' {
+			b, nextIdx := parseOctal(runes, i)
+			buf.WriteByte(b)
+			i = nextIdx
+			continue
+		}
+		if b, ok := decodeEscapeByte(c); ok {
+			buf.WriteByte(b)
+		} else {
+			buf.WriteRune(c)
+		}
+	}
+	return buf.String()
+}
+
+func padLinesToHunkStart(currentLines []string, line string) []string {
+	m := hunkHeaderRegex.FindStringSubmatch(line)
+	if len(m) <= 1 {
+		return currentLines
+	}
+	start, err := strconv.Atoi(m[1])
+	if err != nil || start <= 1 {
+		return currentLines
+	}
+	for len(currentLines) < start-1 {
+		currentLines = append(currentLines, "")
+	}
+	return currentLines
+}
+
 func parseGitDiff(diffOutput string) (map[string]string, error) {
 	fileMap := make(map[string]string)
 	if strings.TrimSpace(diffOutput) == "" {
@@ -315,26 +430,51 @@ func parseGitDiff(diffOutput string) (map[string]string, error) {
 	currentFile := ""
 	var currentLines []string
 	sawDiffHeader := false
+	inHunk := false
 
 	flush := func() {
 		if currentFile != "" && len(currentLines) > 0 && isAuditable(currentFile) && !isDocFile(currentFile) {
 			fileMap[currentFile] = strings.Join(currentLines, "\n")
 		}
 		currentLines = nil
+		inHunk = false
 	}
 
 	for _, line := range lines {
 		if strings.HasPrefix(line, "diff --git ") {
 			sawDiffHeader = true
 			flush()
-			parts := strings.Split(line, " b/")
-			if len(parts) > 1 {
-				currentFile = strings.TrimSpace(parts[1])
+			rest := strings.TrimPrefix(line, "diff --git ")
+			var targetPart string
+			if idx := strings.LastIndex(rest, " \"b/"); idx != -1 {
+				targetPart = rest[idx+1:]
+			} else if idx := strings.LastIndex(rest, " b/"); idx != -1 {
+				targetPart = rest[idx+1:]
+			} else {
+				targetPart = rest
 			}
-		} else if strings.HasPrefix(line, "+++ b/") {
-			currentFile = strings.TrimSpace(line[6:])
-		} else if strings.HasPrefix(line, "+") && !strings.HasPrefix(line, "+++") {
-			currentLines = append(currentLines, line[1:])
+			currentFile = cleanGitPath(targetPart)
+		} else if strings.HasPrefix(line, "+++ ") {
+			target := cleanGitPath(strings.TrimPrefix(line, "+++ "))
+			if target != "" {
+				currentFile = target
+			}
+		} else if strings.HasPrefix(line, "rename to ") {
+			target := cleanGitPath(strings.TrimPrefix(line, "rename to "))
+			if target != "" {
+				currentFile = target
+			}
+		} else if strings.HasPrefix(line, "@@") {
+			inHunk = true
+			currentLines = padLinesToHunkStart(currentLines, line)
+		} else if inHunk {
+			if strings.HasPrefix(line, "+") && !strings.HasPrefix(line, "+++") {
+				currentLines = append(currentLines, line[1:])
+			} else if strings.HasPrefix(line, " ") {
+				currentLines = append(currentLines, line[1:])
+			} else if line == "" {
+				currentLines = append(currentLines, "")
+			}
 		}
 	}
 	flush()
