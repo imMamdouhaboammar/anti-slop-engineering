@@ -85,6 +85,16 @@ class RepositoryEvidenceTests(unittest.TestCase):
         self.assertEqual(result["evidence_status"], "implementation_verified")
         self.assertEqual(self.path.read_text(encoding="utf-8"), "uncommitted version\n")
 
+    def test_live_git_evidence_uses_committed_attributes(self):
+        packet = self.packet()
+        (self.repo / ".gitattributes").write_text("src.py -diff\n", encoding="utf-8")
+
+        code, result = self.run_audit(packet, "--verify-evidence")
+
+        self.assertEqual(code, 0, result)
+        self.assertEqual(result["evidence_status"], "implementation_verified")
+        self.assertTrue(result["evidence_checks"]["paths"][0]["patch_matches"])
+
     def test_manually_asserted_check_does_not_receive_verification(self):
         packet = self.packet()
         packet["repository_evidence"]["check"]["stdout_sha256"] = digest(b"fabricated output")

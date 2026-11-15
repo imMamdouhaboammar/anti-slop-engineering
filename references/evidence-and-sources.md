@@ -38,14 +38,14 @@ An opt-in record uses the following fields. All hashes are lowercase hex. Git ob
 | `paths` | 1 to 16 objects with `path` (repository-relative regular file), `blob_sha256` (file bytes at head), and `patch_sha256` (exact Git patch bytes for that path) |
 | `check` | Object with `name` equal to `git_diff_check`, `exit_code` equal to `0`, and `stdout_sha256` and `stderr_sha256` of the two output streams |
 
-From the selected checkout, collect hashes with this example. The baseline must contain the old commit locally. Use the same Git version and repository attributes for reproducible patch bytes.
+From the selected checkout, collect hashes with this example. The baseline must contain the old commit locally. Use the same Git version and repository-local attributes for reproducible patch bytes. The verifier reads committed attributes from the evidence head. A repository-local `.git/info/attributes` file can override them. Git versions without `--attr-source` produce an inconclusive opt-in result.
 
 ```bash
 base="$(git rev-parse HEAD^)"
 head="$(git rev-parse HEAD)"
 path="src/example.py"
 git cat-file blob "$head:$path" | shasum -a 256
-git --literal-pathspecs -c core.quotePath=true -c core.abbrev=12 diff \
+git --attr-source="$head" --literal-pathspecs -c core.quotePath=true -c core.abbrev=12 diff \
   --no-ext-diff --no-textconv --no-renames --no-color --no-relative \
   --diff-algorithm=myers --no-indent-heuristic \
   --src-prefix=a/ --dst-prefix=b/ --unified=3 "$base" "$head" -- "$path" | shasum -a 256

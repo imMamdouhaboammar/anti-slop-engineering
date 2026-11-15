@@ -35,7 +35,7 @@ def _sha256(data):
     return hashlib.sha256(data).hexdigest()
 
 
-def _git(repo, *args, check=True):
+def _git(repo, *args, check=True, attr_source=None):
     # Local objects only, including when the repository is a partial clone.
     env = {name: value for name, value in os.environ.items() if not name.startswith("GIT_")}
     env.update(GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull, GIT_NO_REPLACE_OBJECTS="1",
@@ -44,6 +44,8 @@ def _git(repo, *args, check=True):
                "-c", "core.attributesFile=" + os.devnull, "-c", "diff.submodule=short",
                "-c", "diff.wsErrorHighlight=new", "-c", "core.fsmonitor=false",
                "-c", "core.abbrev=12", "-c", "core.whitespace=blank-at-eol,blank-at-eof,space-before-tab"]
+    if attr_source is not None:
+        command.append("--attr-source=" + attr_source)
     command.extend(args)
     return subprocess.run(command, capture_output=True, check=check, env=env, timeout=5)
 
@@ -102,7 +104,7 @@ def _verify_path(repo, base, head, claim):
     _blob_oid(repo, base, path, required=False)
     oid = _blob_oid(repo, head, path, required=True)
     blob = _git(repo, "cat-file", "blob", oid).stdout
-    patch = _git(repo, "diff", *DIFF_OPTIONS, base, head, "--", path).stdout
+    patch = _git(repo, "diff", *DIFF_OPTIONS, base, head, "--", path, attr_source=head).stdout
     return {
         "path": path,
         "blob_matches": _sha256(blob) == claim["blob_sha256"],
@@ -129,7 +131,7 @@ def attach_evidence(result, record, repo):
         _git(repo, "merge-base", "--is-ancestor", base, head)
         checks["paths"] = [_verify_path(repo, base, head, item) for item in paths]
         observed = _git(repo, "diff", *DIFF_OPTIONS, "--check", base, head, "--",
-                        *(item["path"] for item in paths), check=False)
+                        *(item["path"] for item in paths), check=False, attr_source=head)
     except ValueError as error:
         checks["reason"] = str(error)
         return
