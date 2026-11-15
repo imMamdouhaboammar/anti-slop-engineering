@@ -17,7 +17,20 @@ from pathlib import Path
 
 
 MANIFEST = ".anti-slop-managed.json"
-EXCLUDED = {".git", "node_modules", "target", ".agents"}
+EXCLUDED = {
+    ".git",
+    "node_modules",
+    "target",
+    ".agents",
+    "skills",
+    "tests",
+    "test",
+    "services",
+    "cases",
+    "docs",
+    ".github",
+    "submission",
+}
 
 
 def digest(content):
@@ -61,14 +74,18 @@ def tracked_source_paths(source):
     return files, directories
 
 
-def collect_source(source, destination, version=None):
+def collect_source(source, destination, version=None, excludes=None):
     files = {}
+    effective_excluded = set(EXCLUDED)
+    if excludes:
+        effective_excluded.update(excludes)
     tracked, tracked_dirs = tracked_source_paths(source)
     for current, directories, names in os.walk(source, followlinks=False):
         parent = Path(current)
         for name in list(directories):
             item = parent / name
-            if (name in EXCLUDED or item == destination
+            rel = item.relative_to(source).as_posix()
+            if (name in effective_excluded or rel in effective_excluded or item == destination
                     or (tracked_dirs is not None and item.relative_to(source) not in tracked_dirs)
                     or (parent == destination.parent and name.startswith(
                         (f".{destination.name}.backup-", f".{destination.name}.stage-"
@@ -77,9 +94,10 @@ def collect_source(source, destination, version=None):
             elif item.is_symlink():
                 raise ValueError(f"Source directory is a symbolic link: {item}")
         for name in names:
-            if name in EXCLUDED or name == MANIFEST:
-                continue
             item = parent / name
+            rel = item.relative_to(source).as_posix()
+            if name in effective_excluded or rel in effective_excluded or name == MANIFEST:
+                continue
             relative = item.relative_to(source)
             if tracked is not None and relative not in tracked:
                 continue
@@ -309,12 +327,12 @@ def prepared_paths(source, destination):
     return source, destination
 
 
-def install_tree(source, destination, version=None):
+def install_tree(source, destination, version=None, excludes=None):
     source, destination = prepared_paths(source, destination)
     recovered = recover_interrupted_swap(destination)
     previous = load_manifest(destination)
     original_snapshot = snapshot_tree(destination)
-    source_files = collect_source(source, destination, version)
+    source_files = collect_source(source, destination, version, excludes=excludes)
     results, writes, managed = plan_files(source_files, destination, previous)
     backup = None
     if writes or managed != previous or not destination.exists():
@@ -411,10 +429,10 @@ def write_instruction(entry, content, expected_hash):
                 _cleanup_temporary(target, open_args)
 
 
-def preview_tree(source, destination, version=None):
+def preview_tree(source, destination, version=None, excludes=None):
     source, destination = prepared_paths(source, destination)
     previous = load_manifest(destination)
-    source_files = collect_source(source, destination, version)
+    source_files = collect_source(source, destination, version, excludes=excludes)
     results, _, _ = plan_files(source_files, destination, previous)
     return {**results, "destination": str(destination), "backup": None, "recovered": None,
             "recovery_required": not destination.exists() and any(
@@ -422,11 +440,16 @@ def preview_tree(source, destination, version=None):
             )}
 
 
+def parse_excludes(items):
+    return {part.strip() for item in (items or ()) for part in item.split(",") if part.strip()}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source")
     parser.add_argument("--dest")
     parser.add_argument("--version")
+    parser.add_argument("--exclude", action="append", default=[], help="Exclude relative path or directory name")
     parser.add_argument("--write-instruction")
     parser.add_argument("--expected-hash")
     parser.add_argument("--dry-run", action="store_true")
@@ -439,8 +462,9 @@ def main():
             return 0
         if not options.source or not options.dest:
             parser.error("--source and --dest are required for installation")
+        excludes = parse_excludes(options.exclude)
         operation = preview_tree if options.dry_run else install_tree
-        print(json.dumps(operation(options.source, options.dest, options.version)))
+        print(json.dumps(operation(options.source, options.dest, options.version, excludes=excludes or None)))
     except (OSError, ValueError) as exc:
         print(f"Installer error: {exc}", file=sys.stderr)
         return 2

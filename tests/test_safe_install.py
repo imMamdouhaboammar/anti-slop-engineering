@@ -220,6 +220,52 @@ class SafeFileInstallTests(unittest.TestCase):
         self.assertTrue(target.is_file())
         self.assertEqual(stat.S_IMODE(target.stat().st_mode) & 0o077, 0o044)
 
+    def test_default_excluded_paths_prevent_skills_and_dev_directories_leakage(self):
+        """Verify default exclusions prevent optional skills and dev-only folders from being installed."""
+        (self.source / "skills" / "decision-guard").mkdir(parents=True)
+        (self.source / "skills" / "decision-guard" / "SKILL.md").write_text("decision skill\n", encoding="utf-8")
+        for dev_dir in ("tests", "test", "services", "cases", "docs", ".github", "submission"):
+            target_dir = self.source / dev_dir
+            target_dir.mkdir(parents=True, exist_ok=True)
+            (target_dir / "internal.txt").write_text("dev artifact\n", encoding="utf-8")
+
+        result = self.install()
+        self.assertIn("SKILL.md", result["installed"])
+        self.assertFalse((self.dest / "skills").exists())
+        self.assertFalse((self.dest / "skills" / "decision-guard").exists())
+        for dev_dir in ("tests", "test", "services", "cases", "docs", ".github", "submission"):
+            self.assertFalse((self.dest / dev_dir).exists(), f"Dev directory {dev_dir} was leaked to destination")
+
+    def test_custom_exclude_parameter_and_cli_flag_exclude_specified_paths(self):
+        """Verify custom excludes argument filters out extra paths during installation."""
+        (self.source / "extra").mkdir()
+        (self.source / "extra" / "data.json").write_text("{}\n", encoding="utf-8")
+        (self.source / "unwanted.md").write_text("skip me\n", encoding="utf-8")
+
+        result = safe_install.install_tree(self.source, self.dest, excludes={"extra", "unwanted.md"})
+        self.assertIn("SKILL.md", result["installed"])
+        self.assertNotIn("extra/data.json", result["installed"])
+        self.assertNotIn("unwanted.md", result["installed"])
+        self.assertFalse((self.dest / "extra").exists())
+        self.assertFalse((self.dest / "unwanted.md").exists())
+
+    def test_optional_skill_installation_preserves_nested_assets(self):
+        """Verify installing an individual optional skill copies its assets without interference from exclusions."""
+        optional_source = Path(self.temp.name).resolve() / "optional-source"
+        optional_dest = Path(self.temp.name).resolve() / "target" / "decision-guard"
+        optional_source.mkdir()
+        (optional_source / "SKILL.md").write_text("decision guard\n", encoding="utf-8")
+        for sub in ("agents", "evals", "examples", "references", "usecases"):
+            sub_dir = optional_source / sub
+            sub_dir.mkdir()
+            (sub_dir / "asset.txt").write_text(f"{sub} content\n", encoding="utf-8")
+
+        result = safe_install.install_tree(optional_source, optional_dest)
+        self.assertIn("SKILL.md", result["installed"])
+        for sub in ("agents", "evals", "examples", "references", "usecases"):
+            self.assertIn(f"{sub}/asset.txt", result["installed"])
+            self.assertTrue((optional_dest / sub / "asset.txt").is_file())
+
 
 if __name__ == "__main__":
     unittest.main()

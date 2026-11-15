@@ -299,6 +299,38 @@ class BashInstallerSafetyTests(unittest.TestCase):
         skills = self.home / ".agents/skills"
         self.assertTrue((skills / "anti-slop-engineering/SKILL.md").exists())
         self.assertFalse((skills / "decision-guard").exists())
+        self.assertFalse((skills / "anti-slop-engineering/skills").exists())
+
+    def test_bash_core_install_leaves_no_optional_skills_leaked(self):
+        """Verify core-only install does not copy optional skills or dev directories into destination."""
+        env = {**os.environ, "HOME": str(self.home), "PATH": SAFE_PATH}
+        result = subprocess.run(
+            ["bash", str(REPO / "install.sh"), "--skills=core"],
+            cwd=self.home, env=env, capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        core_dir = self.home / ".agents/skills/anti-slop-engineering"
+        self.assertTrue((core_dir / "SKILL.md").is_file())
+        self.assertFalse((core_dir / "skills").exists())
+        for dev_dir in ("tests", "test", "services", "cases", "docs", ".github", "submission"):
+            self.assertFalse((core_dir / dev_dir).exists(), f"Dev directory {dev_dir} leaked into core install")
+
+    @unittest.skipUnless(HAS_NODE, "Node.js required for plugin catalog selection")
+    def test_bash_optional_plugin_install_does_not_leak_unselected_skills_into_core(self):
+        """Verify installing one optional plugin installs only that plugin and leaves core unpolluted."""
+        result = subprocess.run(
+            ["bash", str(REPO / "install.sh"), "--skills=decision-guard"],
+            cwd=self.home, env={**os.environ, "HOME": str(self.home), "PATH": SAFE_PATH},
+            capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        skills = self.home / ".agents/skills"
+        self.assertTrue((skills / "anti-slop-engineering/SKILL.md").exists())
+        self.assertFalse((skills / "anti-slop-engineering/skills").exists())
+        self.assertTrue((skills / "decision-guard/SKILL.md").exists())
+        self.assertTrue((skills / "decision-guard/references/decision-method.md").exists())
+        self.assertFalse((skills / "root-fix-gate").exists())
+        self.assertFalse((skills / "future-scale-gate").exists())
 
     @unittest.skipUnless(HAS_NODE, "Node.js required for plugin catalog selection")
     def test_bash_accepts_any_catalog_plugin_and_does_not_install_unselected_ones(self):
