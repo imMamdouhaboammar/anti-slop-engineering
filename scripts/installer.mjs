@@ -14,10 +14,16 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const rootDir = path.resolve(__dirname, '..')
 
-const pkgPath = path.join(rootDir, 'package.json')
-export const VERSION = fs.existsSync(pkgPath)
-  ? JSON.parse(fs.readFileSync(pkgPath, 'utf8')).version
-  : '1.6.0'
+function readPackageVersion() {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(rootDir, 'package.json'), 'utf8')).version
+  } catch (error) {
+    if (error.code === 'ENOENT') return '1.6.0'
+    throw error
+  }
+}
+
+export const VERSION = readPackageVersion()
 
 export const CORE_SKILL = 'anti-slop-engineering'
 
