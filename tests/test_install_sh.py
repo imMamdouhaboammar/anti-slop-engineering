@@ -128,6 +128,25 @@ class BashInstallerSafetyTests(unittest.TestCase):
         self.assertFalse((local / ".agents").exists())
         self.assertFalse((self.home / "home/.local/bin/anti-slop-engineering").exists())
 
+    def test_local_flag_as_second_argument_installs_locally_only(self):
+        """Verify --local passed as second argument installs only locally and leaves HOME untouched."""
+        source = self.home / "source"
+        (source / "scripts").mkdir(parents=True)
+        shutil.copy2(REPO / "install.sh", source / "install.sh")
+        shutil.copy2(REPO / "scripts/safe_install.py", source / "scripts/safe_install.py")
+        (source / "SKILL.md").write_text("fixture\n", encoding="utf-8")
+        home_dir = self.home / "home"
+        home_dir.mkdir(parents=True, exist_ok=True)
+        (home_dir / ".claude").mkdir(parents=True, exist_ok=True)
+        env = {**os.environ, "HOME": str(home_dir), "PATH": SAFE_PATH}
+        result = subprocess.run(["bash", "install.sh", "--skills=core", "--local"], cwd=source,
+                                env=env, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        local = source / ".agents/skills/anti-slop-engineering"
+        self.assertTrue((local / "SKILL.md").exists())
+        self.assertFalse((home_dir / ".claude/skills").exists())
+        self.assertFalse((home_dir / ".agents").exists())
+
     @unittest.skipUnless(HAS_NODE, "Node.js required for plugin catalog selection")
     def test_bundled_module_conflicts_are_printed_as_readable_paths(self):
         """Verify bundled sub-module conflicts report clean readable destination paths."""
