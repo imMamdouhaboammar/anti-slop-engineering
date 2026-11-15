@@ -26,7 +26,12 @@ fn report(out: &Output, code: i32) -> AuditReport {
         "{}",
         String::from_utf8_lossy(&out.stderr)
     );
-    serde_json::from_slice(&out.stdout).expect("parse Rust report")
+    serde_json::from_slice(&out.stdout).unwrap_or_else(|error| {
+        panic!(
+            "parse Rust report: {error}. stderr: {}",
+            String::from_utf8_lossy(&out.stderr)
+        )
+    })
 }
 
 fn collect_fixture() -> String {
@@ -54,12 +59,16 @@ with tempfile.TemporaryDirectory() as temp:
     binary = root / "assets" / "data.bin"
     binary.write_bytes(b"\x00one")
     (root / "src" / "script.sh").write_text("exit 0\n", encoding="utf-8")
+    (root / "src" / "link").write_bytes(b"\x00binary")
     git("add", ".")
     git("commit", "-qm", "base")
     git("mv", "old name.txt", "src/renamed name.txt")
     git("update-index", "--chmod=+x", "src/script.sh")
     binary.write_bytes(b"\x00two")
     git("add", "assets/data.bin")
+    (root / "src" / "link").unlink()
+    (root / "src" / "link").symlink_to("script.sh")
+    git("add", "src/link")
     (root / "untracked.txt").write_text("local only\n", encoding="utf-8")
     print(json.dumps(collect_changes(root, "HEAD", "index")))
 "#;
@@ -80,6 +89,12 @@ with tempfile.TemporaryDirectory() as temp:
 #[test]
 fn python_v1_index_records_reach_the_rust_check() {
     let source = collect_fixture();
+    let changes: serde_json::Value = serde_json::from_str(&source).unwrap();
+    assert!(changes["files"].as_array().unwrap().iter().any(|file| {
+        file["status"] == "T"
+            && file["binary"] == true
+            && !file["hunks"].as_array().unwrap().is_empty()
+    }));
     let out = check(&source, &["--read-only", "--allowed", "src/"]);
     let findings = report(&out, 1).findings;
     let paths = |code| {
@@ -93,7 +108,12 @@ fn python_v1_index_records_reach_the_rust_check() {
     };
     assert_eq!(
         paths("STS-I01"),
-        ["assets/data.bin", "src/renamed name.txt", "src/script.sh"]
+        [
+            "assets/data.bin",
+            "src/link",
+            "src/renamed name.txt",
+            "src/script.sh"
+        ]
     );
     assert_eq!(paths("STS-S01"), ["assets/data.bin", "old name.txt"]);
     assert!(findings.iter().all(|f| f.line == 1));
@@ -139,4 +159,36 @@ fn unsupported_path_bytes_are_explicit_and_untracked_requires_opt_in() {
     let result = report(&all, 1);
     assert!(result.findings.iter().any(|f| f.file == "untracked.txt"));
     assert!(result.findings.iter().any(|f| f.file == "unknown"));
+}
+
+#[test]
+fn oversized_file_rejects_even_a_valid_json_prefix() {
+    let path = std::env::temp_dir().join(format!(
+        "anti-slop-change-check-{}-limit.json",
+        std::process::id()
+    ));
+    let file = std::fs::File::options()
+        .read(true)
+        .write(true)
+        .create_new(true)
+        .open(&path)
+        .unwrap();
+    let prefix = br#"{"version":1,"snapshot":"index","base":"1111111111111111111111111111111111111111","target":null,"files":[],"untracked":[]}"#;
+    let chunk = [b' '; 1024 * 1024];
+    let mut file = std::io::BufWriter::new(file);
+    file.write_all(prefix).unwrap();
+    for _ in 0..64 {
+        file.write_all(&chunk).unwrap();
+    }
+    file.flush().unwrap();
+    drop(file);
+    let out = Command::new(env!("CARGO_BIN_EXE_anti-slop-rust"))
+        .args(["change-check", "--changeset"])
+        .arg(&path)
+        .output()
+        .expect("run oversized input check");
+    std::fs::remove_file(&path).unwrap();
+    assert!(!out.status.success());
+    assert!(out.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&out.stderr).contains("64 MiB"));
 }

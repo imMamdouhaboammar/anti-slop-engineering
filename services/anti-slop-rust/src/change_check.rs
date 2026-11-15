@@ -2,6 +2,8 @@ use anti_slop_rust::model::{AuditReport, Finding, Severity, ViolationCategory};
 use serde::Deserialize;
 use std::io::{self, Read};
 
+const MAX_INPUT_BYTES: usize = 64 * 1024 * 1024;
+
 #[derive(Deserialize)]
 #[serde(rename_all = "lowercase")]
 enum Snapshot {
@@ -125,7 +127,10 @@ impl FileChange {
         for path in [&self.old_path, &self.new_path].into_iter().flatten() {
             path.validate()?;
         }
-        if self.binary && (self.added.is_some() || self.deleted.is_some() || !self.hunks.is_empty())
+        if self.binary
+            && (self.added.is_some()
+                || self.deleted.is_some()
+                || (self.status != 'T' && !self.hunks.is_empty()))
             || !self.binary && (self.added.is_none() || self.deleted.is_none())
         {
             return Err(invalid("Invalid change-set file counts"));
@@ -176,8 +181,15 @@ pub(crate) fn audit(
     read_only: bool,
     include_untracked: bool,
 ) -> io::Result<AuditReport> {
+    let mut input = Vec::new();
+    source
+        .take((MAX_INPUT_BYTES + 1) as u64)
+        .read_to_end(&mut input)?;
+    if input.len() > MAX_INPUT_BYTES {
+        return Err(invalid("Change-set JSON exceeds 64 MiB"));
+    }
     let changes: ChangeSet =
-        serde_json::from_reader(source).map_err(|err| invalid(err.to_string()))?;
+        serde_json::from_slice(&input).map_err(|err| invalid(err.to_string()))?;
     changes.validate()?;
     let mut findings = Vec::new();
     for file in &changes.files {
