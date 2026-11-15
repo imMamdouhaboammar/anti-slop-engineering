@@ -122,7 +122,7 @@ class BashInstallerSafetyTests(unittest.TestCase):
             result = subprocess.run(["bash", "install.sh", "--project"], cwd=source,
                                     env=env, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertIn("No executable CLI target", result.stderr)
+            self.assertIn("cat .agents/skills/anti-slop-engineering/SKILL.md", result.stdout)
         local = source / ".agents/skills/anti-slop-engineering"
         self.assertEqual((local / "SKILL.md").read_text(), "fixture\n")
         self.assertFalse((local / ".agents").exists())
@@ -135,17 +135,23 @@ class BashInstallerSafetyTests(unittest.TestCase):
         shutil.copy2(REPO / "install.sh", source / "install.sh")
         shutil.copy2(REPO / "scripts/safe_install.py", source / "scripts/safe_install.py")
         (source / "SKILL.md").write_text("fixture\n", encoding="utf-8")
+        cli = source / "bin/cli.js"
+        cli.parent.mkdir()
+        cli.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        cli.chmod(0o755)
         home_dir = self.home / "home"
-        home_dir.mkdir(parents=True, exist_ok=True)
-        (home_dir / ".claude").mkdir(parents=True, exist_ok=True)
+        (home_dir / ".claude").mkdir(parents=True)
         env = {**os.environ, "HOME": str(home_dir), "PATH": SAFE_PATH}
-        result = subprocess.run(["bash", "install.sh", "--skills=core", "--local"], cwd=source,
-                                env=env, capture_output=True, text=True)
-        self.assertEqual(result.returncode, 0, result.stderr)
-        local = source / ".agents/skills/anti-slop-engineering"
-        self.assertTrue((local / "SKILL.md").exists())
-        self.assertFalse((home_dir / ".claude/skills").exists())
-        self.assertFalse((home_dir / ".agents").exists())
+        for args in (("--skills=core", "--local"), ("--local", "--skills=core"), ("--project",)):
+            with self.subTest(args=args):
+                result = subprocess.run(["bash", "install.sh", *args], cwd=source,
+                                        env=env, capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                local = source / ".agents/skills/anti-slop-engineering"
+                self.assertTrue((local / "SKILL.md").is_file())
+                self.assertTrue(os.access(local / "bin/cli.js", os.X_OK))
+                for target in (".agents", ".claude/skills", ".codex", ".gemini", ".local/bin"):
+                    self.assertFalse((home_dir / target).exists(), target)
 
     @unittest.skipUnless(HAS_NODE, "Node.js required for plugin catalog selection")
     def test_bundled_module_conflicts_are_printed_as_readable_paths(self):

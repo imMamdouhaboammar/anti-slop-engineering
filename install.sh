@@ -198,7 +198,7 @@ link_installed_cli() {
   done
 }
 
-if [ "$BASH_DRY_RUN" -eq 0 ]; then
+if [ "$BASH_DRY_RUN" -eq 0 ] && [ "$LOCAL_INSTALL" -eq 0 ]; then
   link_installed_cli
 fi
 
@@ -213,5 +213,9 @@ echo "  Optional modules: ${SELECTED_MODULES:-none}"
 echo ""
 echo "Quick Verifications:"
 echo "  • CLI triage:    npx anti-slop-engineering --base HEAD"
-echo "  • Python script: python3 ~/.agents/skills/${TARGET_NAME}/scripts/diff_guard.py --base HEAD"
-echo "  • Skill docs:    cat ~/.agents/skills/${TARGET_NAME}/SKILL.md"
+verification_root="~/.agents/skills/${TARGET_NAME}"
+if [ "$LOCAL_INSTALL" -eq 1 ]; then
+  verification_root=".agents/skills/${TARGET_NAME}"
+fi
+echo "  • Python script: python3 $verification_root/scripts/diff_guard.py --base HEAD"
+echo "  • Skill docs:    cat $verification_root/SKILL.md"
