@@ -221,6 +221,45 @@ func TestExecuteAuditCollectsUntrackedFileInNestedDir(t *testing.T) {
 	}
 }
 
+func TestExecuteAuditCollectsUntrackedFileEvenWhenDiffExists(t *testing.T) {
+	dir := initTempGitRepo(t)
+	t.Chdir(dir)
+
+	// 1. Modify tracked file main.go
+	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n\nfunc main() {\n\t// clean edit\n}\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	// 2. Create untracked bad file
+	untracked := filepath.Join(dir, "untracked_bad.go")
+	if err := os.WriteFile(untracked, []byte("package main\n\nfunc Bad() {\n\ttime.Sleep(5 * time.Second)\n}\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := executeAudit([]string{"--format", "json", "--base", "HEAD"}, &stdout, &stderr)
+	if code == 0 {
+		t.Fatalf("expected non-zero exit when untracked file contains blocker alongside diff, got 0")
+	}
+	var report model.AuditReport
+	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
+		t.Fatalf("invalid JSON output: %v\n%s", err, stdout.String())
+	}
+	if report.SLI.Status != "BLOCKED" {
+		t.Fatalf("expected BLOCKED status, got %+v", report)
+	}
+	foundSleep := false
+	for _, f := range report.Findings {
+		if f.Code == "SRE-SCALE-SLEEP" {
+			foundSleep = true
+			break
+		}
+	}
+	if !foundSleep {
+		t.Fatalf("expected SRE-SCALE-SLEEP finding from untracked file, got %+v", report.Findings)
+	}
+}
+
 func TestGoldenParityFixtures(t *testing.T) {
 	fixturesDir := filepath.Join("..", "..", "..", "..", "tests", "fixtures", "engine-parity")
 

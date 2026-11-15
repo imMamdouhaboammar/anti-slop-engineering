@@ -152,14 +152,34 @@ func collectGitDiffFiles(base string) (map[string]string, error) {
 		return nil, fmt.Errorf("invalid git base %q: %w: %s", base, revErr, strings.TrimSpace(string(revOut)))
 	}
 
+	fileMap := make(map[string]string)
 	out, err := runGitCommand("-c", "diff.noprefix=false", "-c", "diff.mnemonicPrefix=false", "diff", "--no-ext-diff", base, "--")
 	if err != nil {
 		return nil, fmt.Errorf("git diff %q failed: %w: %s", base, err, strings.TrimSpace(string(out)))
 	}
 	if len(out) > 0 {
-		return parseGitDiff(string(out))
+		diffMap, err := parseGitDiff(string(out))
+		if err != nil {
+			return nil, err
+		}
+		for k, v := range diffMap {
+			if content, err := os.ReadFile(k); err == nil && isAuditable(k) {
+				fileMap[k] = string(content)
+			} else {
+				fileMap[k] = v
+			}
+		}
 	}
-	return collectUntrackedAndModifiedStatusFiles()
+	statusMap, err := collectUntrackedAndModifiedStatusFiles()
+	if err != nil {
+		return nil, err
+	}
+	for k, v := range statusMap {
+		if _, exists := fileMap[k]; !exists {
+			fileMap[k] = v
+		}
+	}
+	return fileMap, nil
 }
 
 func collectUntrackedAndModifiedStatusFiles() (map[string]string, error) {
