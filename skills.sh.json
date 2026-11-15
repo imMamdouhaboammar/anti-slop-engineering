@@ -34,6 +34,7 @@
       "skills": [
         "paranoid-principal-architect",
         "safe-evolution-and-rollout-choreographer",
+        "chaos-and-degradation-choreographer",
         "zero-downtime-migration-gate",
         "privacy-and-data-lineage-gate",
         "observability-and-slo-architect",
