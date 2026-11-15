@@ -3,7 +3,11 @@
 
 import json
 import sys
-import repository_evidence
+from pathlib import Path
+if __package__ is None:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from scripts import repository_evidence  # noqa: E402
 
 
 def filled(value):

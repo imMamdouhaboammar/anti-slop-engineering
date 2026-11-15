@@ -4,9 +4,12 @@
 import json
 import subprocess
 import sys
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 
-import repository_evidence
+if __package__ is None:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from scripts import repository_evidence  # noqa: E402
 
 
 def filled(value, depth=0, max_depth=100):
