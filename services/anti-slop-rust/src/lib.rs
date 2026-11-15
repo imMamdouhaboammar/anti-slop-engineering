@@ -41,12 +41,14 @@ pub fn triage_diff(
     for line in diff_text.lines() {
         if line.starts_with("diff --git") {
             in_hunk = false;
-            current_file.clear();
+            current_file = path_utils::extract_target_file(line).unwrap_or_default();
             continue;
         }
-        if !in_hunk && line.starts_with("+++ b/") {
-            current_file = line[6..].trim().to_string();
-            continue;
+        if !in_hunk {
+            if let Some(f) = path_utils::extract_target_file(line) {
+                current_file = f;
+                continue;
+            }
         }
         if let Some(start) = shit_interceptor::extract_hunk_line(line) {
             in_hunk = true;

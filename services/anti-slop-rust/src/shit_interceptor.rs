@@ -1,5 +1,5 @@
 use crate::model::{Finding, Severity, ViolationCategory};
-use crate::path_utils::{is_doc_file, is_test_file};
+use crate::path_utils::{extract_target_file, is_doc_file, is_test_file};
 use regex::Regex;
 
 #[derive(Debug)]
@@ -161,16 +161,6 @@ impl ShitInterceptor {
     }
 }
 
-fn extract_target_file(line: &str) -> Option<String> {
-    if line.starts_with("diff --git") {
-        return line.split(" b/").nth(1).map(|t| t.trim().to_string());
-    }
-    if let Some(rest) = line.strip_prefix("+++ b/") {
-        return Some(rest.trim().to_string());
-    }
-    None
-}
-
 pub(crate) fn extract_hunk_line(line: &str) -> Option<usize> {
     let start = line.strip_prefix("@@")?.split('+').nth(1)?;
     start.split_whitespace().next()?.split(',').next()?.parse().ok()
@@ -204,8 +194,21 @@ fn check_scope_creep(
     is_change: bool,
 ) -> Option<Finding> {
     let allowed = allowed_files?;
-    if file.is_empty() || allowed.is_empty() || !is_change {
+    if allowed.is_empty() || !is_change {
         return None;
+    }
+    if file.is_empty() {
+        return Some(Finding {
+            file: "unknown".to_string(),
+            line: line_no,
+            category: ViolationCategory::ScopeCreep,
+            severity: Severity::Blocker,
+            code: "STS-S01".to_string(),
+            message: format!(
+                "Scope creep: modification attempted on unidentifiable file path outside allowed scope: {allowed:?}",
+            ),
+            suggestion: "Ensure diff headers contain valid, parseable file paths within designated scope.".to_string(),
+        });
     }
     let is_allowed = allowed.iter().any(|prefix| file.starts_with(prefix));
     if !is_allowed {
@@ -243,5 +246,26 @@ mod review_regression_tests {
         let findings = ShitInterceptor::new().audit_diff(diff, Some(&["src/"]), true);
         assert!(findings.iter().any(|f| f.code == "STS-I01"));
         assert!(findings.iter().any(|f| f.code == "STS-S01"));
+    }
+
+    #[test]
+    fn quoted_paths_are_unquoted_and_audited() {
+        let diff = "diff --git \"a/src/my file.rs\" \"b/src/my file.rs\"\n--- \"a/src/my file.rs\"\n+++ \"b/src/my file.rs\"\n@@ -1 +1,2 @@\n let a = 1;\n+let b = 2;\n";
+        let findings = ShitInterceptor::new().audit_diff(diff, Some(&["other/"]), false);
+        assert!(findings.iter().any(|f| f.code == "STS-S01" && f.file == "src/my file.rs"));
+    }
+
+    #[test]
+    fn quoted_escaped_octal_paths_are_unquoted_and_audited() {
+        let diff = "diff --git \"a/src/\\303\\251.rs\" \"b/src/\\303\\251.rs\"\n--- \"a/src/\\303\\251.rs\"\n+++ \"b/src/\\303\\251.rs\"\n@@ -1 +1,2 @@\n let a = 1;\n+let b = 2;\n";
+        let findings = ShitInterceptor::new().audit_diff(diff, Some(&["other/"]), false);
+        assert!(findings.iter().any(|f| f.code == "STS-S01" && f.file == "src/é.rs"));
+    }
+
+    #[test]
+    fn unparseable_path_with_allowed_scope_flags_scope_creep() {
+        let diff = "@@ -1 +1,2 @@\n+change\n";
+        let findings = ShitInterceptor::new().audit_diff(diff, Some(&["src/"]), false);
+        assert!(findings.iter().any(|f| f.code == "STS-S01" && f.file == "unknown"));
     }
 }
