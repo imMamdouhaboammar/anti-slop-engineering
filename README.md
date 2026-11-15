@@ -191,6 +191,27 @@ bunx anti-slop-engineering toil stream
 bunx anti-slop-engineering serve-go --port 9092
 ```
 
+
+The native audit can consume v1 Git evidence from a worktree snapshot and an
+index snapshot. In a checkout with `scripts/git_changeset.py` available, write
+the evidence outside the audited checkout. Use the same base and checkout for
+both snapshots and the audit:
+
+```bash
+python3 scripts/git_changeset.py --base HEAD --snapshot worktree > /path/to/worktree.json
+python3 scripts/git_changeset.py --base HEAD --snapshot index > /path/to/index.json
+bunx anti-slop-engineering toil audit --base HEAD --changeset /path/to/worktree.json --index-changeset /path/to/index.json
+```
+
+Both snapshots supply candidate paths. The audit reads current regular source
+files and checks candidate membership against tracked and non-ignored untracked
+paths. Snapshot data does not attest that the listed candidates are complete or
+that the worktree is unchanged. Use evidence generated for this audit and keep
+that checkout stable. Each snapshot can contain up to 10,000 entries and 8 MiB,
+the Git membership listing is capped at 8 MiB, and source reads are limited to
+2 MiB per file and 32 MiB in total. Direct path and default Git audits retain
+their existing inputs and limits.
+
 ### Package Installation and Native Builds
 
 The package ships the CLI, Python guards, skills, and Rust and Go source. Installation only prints a setup hint. Run `anti-slop-engineering setup` to copy bundled skills into an agent's skill directory. Use Node.js 22.23.4 or later, or Bun with Node.js available on PATH for setup. Skill setup and Python-backed commands require Python 3.9 or later.
