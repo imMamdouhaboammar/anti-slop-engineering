@@ -17,9 +17,10 @@ from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
 JS_EXTENSIONS = {".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts"}
 JS_TOKENS = re.compile(
     r"//[^\n]*|/\*[\s\S]*?\*/|"
-    r"""'(?:\\[\s\S]|[^'\\])*'|"(?:\\[\s\S]|[^"\\])*"|\x60(?:\\[\s\S]|[^\x60\\])*\x60|"""
-    r"[\w$]+|\S"
+    r"""'(?:\\[\s\S]|[^'\\])*'|"(?:\\[\s\S]|[^"\\])*"|"""
+    r"\.\.\.|[\w$]+|\S"
 )
+TEMPLATE_CONTROL = re.compile(r"\\[\s\S]|\x60|\$\{")
 BRACKETS = {"(": ")", "[": "]", "{": "}"}
 PYTHON_GENERATORS = {"randint", "random", "choice", "randrange", "sample", "shuffle"}
 PYTHON_RANDOM_RE = re.compile(
@@ -124,7 +125,7 @@ def _python_calls(node: ast.AST, scopes: List[List[ast.stmt]]) -> Iterator[ast.C
     pending = [node]
     while pending:
         current = pending.pop()
-        if isinstance(current, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+        if isinstance(current, (ast.FunctionDef, ast.AsyncFunctionDef)):
             scopes.append(current.body)
             body = set(current.body)
             pending.extend(child for child in ast.iter_child_nodes(current) if child not in body)
@@ -141,9 +142,15 @@ def _python_scope_has_unseeded_draw(
     statements: List[ast.stmt], scopes: List[List[ast.stmt]]
 ) -> bool:
     seeded = False
-    for statement in statements:
+    pending = list(reversed(statements))
+    while pending:
+        statement = pending.pop()
+        nodes = [statement]
+        if isinstance(statement, ast.ClassDef):
+            nodes = statement.decorator_list + statement.bases + statement.keywords
+            pending.extend(reversed(statement.body))
         calls = sorted(
-            _python_calls(statement, scopes),
+            (call for node in nodes for call in _python_calls(node, scopes)),
             key=lambda call: (call.end_lineno, call.end_col_offset),
         )
         for call in calls:
@@ -171,6 +178,41 @@ def _has_unseeded_python_draw(source: str) -> bool:
     return False
 
 
+def _js_tokens(source: str) -> Iterator[str]:
+    position = 0
+    template_depths: List[int] = []
+    in_text = False
+    while position < len(source):
+        pattern = TEMPLATE_CONTROL if in_text else JS_TOKENS
+        match = pattern.search(source, position)
+        if match is None:
+            return
+        token = match[0]
+        position = match.end()
+        if in_text:
+            if token == "`":
+                template_depths.pop()
+                in_text = False
+                yield ")"
+            elif token == "${":
+                in_text = False
+                yield "("
+        elif token == "`":
+            template_depths.append(0)
+            in_text = True
+            yield "("
+        elif not token.startswith(("//", "/*")):
+            if template_depths and token == "{":
+                template_depths[-1] += 1
+            elif template_depths and token == "}":
+                if template_depths[-1] == 0:
+                    in_text = True
+                    yield ")"
+                    continue
+                template_depths[-1] -= 1
+            yield token
+
+
 def _top_level_tokens(tokens: List[str], start: int) -> Iterator[int]:
     closing = []
     for index in range(start, len(tokens)):
@@ -193,24 +235,24 @@ def _fast_check_seed_option(tokens: List[str], start: int) -> bool:
     if argument_start is None or tokens[argument_start : argument_start + 1] != ["{"]:
         return False
 
+    seeded = False
     for index in _top_level_tokens(tokens, argument_start + 1):
         if tokens[index - 1] not in ("{", ","):
             continue
-        if tokens[index : index + 2] in (["seed", ","], ["seed", "}"]):
-            return True
-        if tokens[index] in ("seed", "'seed'", '"seed"') and tokens[index + 1 : index + 2] == [":"]:
-            return tokens[index + 2 : index + 3] not in (["undefined"], ["void"], [])
-    return False
+        if tokens[index] in ("...", "["):
+            seeded = False
+        elif tokens[index : index + 2] in (["seed", ","], ["seed", "}"]):
+            seeded = True
+        elif tokens[index] in ("seed", "'seed'", '"seed"') and tokens[index + 1 : index + 2] == [":"]:
+            seeded = tokens[index + 2 : index + 3] not in (["undefined"], ["void"], [])
+    return seeded
 
 
 def scan_source_for_unseeded_generators(source: str, file_path: str = "") -> List[Dict[str, Any]]:
     """Check direct module calls and inline fast-check option objects."""
     findings: List[Dict[str, Any]] = []
     suffix = Path(file_path).suffix.lower()
-    tokens = [
-        match[0] for match in JS_TOKENS.finditer(source)
-        if not match[0].startswith(("//", "/*"))
-    ] if suffix != ".py" else []
+    tokens = list(_js_tokens(source)) if suffix != ".py" else []
 
     for index, token in enumerate(tokens):
         if token == "Math" and tokens[index + 1 : index + 4] == [".", "random", "("]:

@@ -261,6 +261,41 @@ class PropertyTestGuardCLITests(unittest.TestCase):
                     ["UNSEEDED_FAST_CHECK_PROPERTY"],
                 )
 
+    def test_js_template_text_ignores_examples_and_scans_substitutions(self):
+        source = (
+            'const plain = `Math.random()`;\n'
+            'const quoted = `\\${Math.random()}`;\n'
+            'const simple = `id ${Math.random()}`;\n'
+            'const nested = `id ${`item ${Math.random()}`}`;\n'
+        )
+        findings = scan_source_for_unseeded_generators(source, "property.ts")
+        self.assertEqual([entry["code"] for entry in findings], ["UNSEEDED_MATH_RANDOM"] * 2)
+
+    def test_class_body_inherits_and_updates_enclosing_python_seed(self):
+        cases = (
+            ("import random\nrandom.seed(1)\nclass Sample:\n    value = random.random()\n", []),
+            ("import random\nrandom.seed(1)\nclass Reset:\n    random.seed(None)\nvalue = random.random()\n",
+             ["UNSEEDED_PYTHON_RANDOM"]),
+        )
+        for source, expected in cases:
+            with self.subTest(source=source):
+                findings = scan_source_for_unseeded_generators(source, "property.py")
+                self.assertEqual([entry["code"] for entry in findings], expected)
+
+    def test_fast_check_uses_effective_last_seed_option(self):
+        cases = (
+            ("{ seed: 42, seed: undefined }", ["UNSEEDED_FAST_CHECK_PROPERTY"]),
+            ("{ seed: 42, ...{ seed: undefined } }", ["UNSEEDED_FAST_CHECK_PROPERTY"]),
+            ("{ seed: 42, ...defaults }", ["UNSEEDED_FAST_CHECK_PROPERTY"]),
+            ("{ ...defaults, seed: 42 }", []),
+            ("{ seed: undefined, seed: 42 }", []),
+        )
+        for options, expected in cases:
+            with self.subTest(options=options):
+                source = "fc.assert(fc.property(fc.integer(), Number.isInteger), " + options + ");"
+                findings = scan_source_for_unseeded_generators(source, "property.ts")
+                self.assertEqual([entry["code"] for entry in findings], expected)
+
     def test_fast_check_seed_from_next_call_does_not_cover_previous_call(self):
         source = (
             "fc.assert(fc.property(fc.integer(), (n) => Number.isInteger(n)))\n"
