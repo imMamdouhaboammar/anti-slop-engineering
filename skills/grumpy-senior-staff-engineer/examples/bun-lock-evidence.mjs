@@ -4,10 +4,23 @@ import { join } from "node:path";
 
 const dependencyGroups = ["dependencies", "optionalDependencies", "devDependencies"];
 const versionCore = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/;
-const registryRange = /^([~^=]?)([^\s]+)$/;
+const registryRange = /^[~^=]?([^\s]+)$/;
+const identifier = /^[0-9A-Za-z-]+$/;
+const leadingZeroNumber = /^0\d+$/;
 
 function releaseVersion(value) {
-  return versionCore.test(value.split(/[-+]/, 1)[0]) && Bun.semver.satisfies(value, value);
+  const [release, build, extra] = value.split("+");
+  const separator = release.indexOf("-");
+  const core = separator < 0 ? release : release.slice(0, separator);
+  if (extra !== undefined || !versionCore.test(core)) {
+    return false;
+  }
+  if (build !== undefined && !build.split(".").every((part) => identifier.test(part))) {
+    return false;
+  }
+  return separator < 0 || release.slice(separator + 1).split(".").every(
+    (part) => identifier.test(part) && !leadingZeroNumber.test(part),
+  );
 }
 
 
@@ -44,7 +57,7 @@ export function inspectDirectDependency(manifestText, lockText, packageName) {
     return { status: "stale_lock", declared };
   }
   const request = declared.match(registryRange);
-  if (!request || !releaseVersion(request[2]) || Object.hasOwn(manifest.overrides ?? {}, packageName)) {
+  if (!request || !releaseVersion(request[1]) || Object.hasOwn(manifest.overrides ?? {}, packageName)) {
     return { status: "unsupported", declared };
   }
 

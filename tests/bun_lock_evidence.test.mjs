@@ -33,6 +33,10 @@ test("keeps stale declarations and transitive records from proving a direct depe
 });
 
 test("honors unsupported lock versions, malformed input, and unsupported resolutions", () => {
+  for (const version of ["2.1.0-", "2.1.0-!", "2.1.0-alpha+", "2.1.0-alpha.01", "2.1.0+meta+data"]) {
+    const corruptedLock = lock.replace("@demo/library@2.1.0", "@demo/library@" + version);
+    expect(inspectDirectDependency(manifest, corruptedLock, "@demo/library").status).toBe("unsupported");
+  }
   expect(inspectDirectDependency(manifest, lock.replace('"lockfileVersion": 2', '"lockfileVersion": 999'), "@demo/library").status).toBe("unsupported");
   expect(inspectDirectDependency(manifest, "{", "@demo/library").status).toBe("unreadable");
   expect(inspectDirectDependency(
