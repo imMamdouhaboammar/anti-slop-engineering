@@ -221,7 +221,7 @@ func readChangedSources(rootPath string, paths []string) (map[string]string, err
 			continue
 		}
 		info, err := root.Lstat(path)
-		if errors.Is(err, os.ErrNotExist) {
+		if missingAuditSource(err) {
 			continue
 		}
 		if err != nil {
@@ -231,6 +231,9 @@ func readChangedSources(rootPath string, paths []string) (map[string]string, err
 			continue
 		}
 		file, err := root.OpenFile(path, os.O_RDONLY|auditSourceOpenFlags, 0)
+		if missingAuditSource(err) {
+			continue
+		}
 		if err != nil {
 			return nil, fmt.Errorf("opening %q: %w", path, err)
 		}
@@ -244,6 +247,10 @@ func readChangedSources(rootPath string, paths []string) (map[string]string, err
 		}
 	}
 	return files, nil
+}
+
+func missingAuditSource(err error) bool {
+	return errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ENOTDIR)
 }
 
 func readRegularSource(file *os.File, expected os.FileInfo) ([]byte, error) {
