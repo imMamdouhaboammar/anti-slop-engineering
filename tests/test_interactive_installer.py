@@ -156,6 +156,120 @@ class InteractiveInstallerTests(unittest.TestCase):
         self.assertTrue((root / "decision-guard/SKILL.md").is_file())
         self.assertTrue((root / "reduction-guard/SKILL.md").is_file())
 
+    def test_explicit_selection_does_not_prompt_when_stdin_is_terminal(self):
+        import json
+        import pty
+
+        master, slave = pty.openpty()
+        try:
+            proc = subprocess.run(
+                [shutil.which("node"), str(REPO / "scripts/installer.mjs"), "--selection-only",
+                 "--agent=codex", "--skills=decision-guard"],
+                stdin=slave, stdout=subprocess.PIPE, stderr=slave, cwd=self.project,
+                env={**os.environ, "HOME": str(self.project), "CI": "", "NO_COLOR": "1"},
+                timeout=5,
+            )
+            self.assertEqual(proc.returncode, 0)
+            self.assertEqual(json.loads(proc.stdout)["skills"], ["anti-slop-engineering", "decision-guard"])
+            self.assertFalse((self.project / ".codex").exists())
+        finally:
+            os.close(slave)
+            os.close(master)
+
+    def test_piped_stdin_selection_only_reads_from_tty(self):
+        import fcntl
+        import json
+        import pty
+        import struct
+        import termios
+
+        master, slave = pty.openpty()
+        slave_name = os.ttyname(slave)
+        fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 24, 80, 0, 0))
+        proc = subprocess.Popen(
+            [shutil.which("node"), str(REPO / "scripts/installer.mjs"), "--selection-only", "--scope=project"],
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=slave, cwd=self.project,
+            env={**os.environ, "HOME": str(self.project), "CI": "", "NO_COLOR": "1", "ANTI_SLOP_TTY_PATH": slave_name},
+        )
+        os.close(slave)
+        try:
+            output = bytearray()
+            deadline = time.monotonic() + 8
+            while time.monotonic() < deadline:
+                r, _, _ = select.select([master], [], [], 0.2)
+                if r:
+                    chunk = os.read(master, 1024)
+                    if not chunk:
+                        break
+                    output.extend(chunk)
+                    if b"Choose installation" in output:
+                        break
+            self.assertIn(b"Choose installation", output)
+            os.write(master, b"1\n")
+            deadline = time.monotonic() + 8
+            while time.monotonic() < deadline:
+                r, _, _ = select.select([master], [], [], 0.2)
+                if r:
+                    chunk = os.read(master, 1024)
+                    if not chunk:
+                        break
+                    output.extend(chunk)
+                    if b"Confirm installation" in output:
+                        break
+            self.assertIn(b"Confirm installation", output)
+            os.write(master, b"y\n")
+            stdout_data, _ = proc.communicate(timeout=8)
+            self.assertEqual(proc.returncode, 0)
+            data = json.loads(stdout_data.decode())
+            self.assertEqual(data["skills"], ["anti-slop-engineering"])
+        finally:
+            os.close(master)
+
+    def test_piped_stdin_selection_only_cancel_exits_130(self):
+        import fcntl
+        import pty
+        import struct
+        import termios
+
+        master, slave = pty.openpty()
+        slave_name = os.ttyname(slave)
+        fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 24, 80, 0, 0))
+        proc = subprocess.Popen(
+            [shutil.which("node"), str(REPO / "scripts/installer.mjs"), "--selection-only", "--scope=project"],
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=slave, cwd=self.project,
+            env={**os.environ, "HOME": str(self.project), "CI": "", "NO_COLOR": "1", "ANTI_SLOP_TTY_PATH": slave_name},
+        )
+        os.close(slave)
+        try:
+            output = bytearray()
+            deadline = time.monotonic() + 8
+            while time.monotonic() < deadline:
+                r, _, _ = select.select([master], [], [], 0.2)
+                if r:
+                    chunk = os.read(master, 1024)
+                    if not chunk:
+                        break
+                    output.extend(chunk)
+                    if b"Choose installation" in output:
+                        break
+            os.write(master, b"q\n")
+            proc.communicate(timeout=8)
+            self.assertEqual(proc.returncode, 130)
+        finally:
+            os.close(master)
+
+    def test_headless_selection_only_defaults_without_tty(self):
+        import json
+        proc = subprocess.run(
+            [shutil.which("node"), str(REPO / "scripts/installer.mjs"), "--selection-only", "--scope=project"],
+            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=self.project,
+            env={**os.environ, "HOME": str(self.project), "CI": "", "NO_COLOR": "1"},
+            timeout=5,
+        )
+        self.assertEqual(proc.returncode, 0)
+        data = json.loads(proc.stdout.decode())
+        self.assertEqual(data["skills"], ["anti-slop-engineering"])
+
 
 @unittest.skipUnless(os.name == "posix" and shutil.which("node"), "Node is required")
 class PresetInstallerTests(unittest.TestCase):

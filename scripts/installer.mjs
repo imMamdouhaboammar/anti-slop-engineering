@@ -5,6 +5,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
+import tty from 'node:tty'
 import { spawnSync } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
 import readline from 'node:readline'
@@ -760,19 +761,42 @@ Options:
   let resolvedScope = scopeArg
 
   const promptOutput = selectionOnly ? process.stderr : process.stdout
-  const interactive = !dryRun && !jsonMode && !process.env.CI && !args.includes('--no-interactive')
-    && skillsArg == null && presetArg == null && !args.includes('--all') && process.stdin.isTTY && promptOutput.isTTY
-  if (interactive) {
-    const response = await promptForSkills(listAvailableModules(), targets, process.stdin, promptOutput,
-      { scope: resolvedScope, agents: selectedAgents, allowTargetChange: !selectionOnly })
-    if (response == null) {
-      console.error('Setup cancelled; no installation files were changed')
-      return 130
+  const canPrompt = !dryRun && !jsonMode && !process.env.CI && !args.includes('--no-interactive')
+    && skillsArg == null && presetArg == null && promptOutput.isTTY
+  let terminalInput
+  if (canPrompt && !process.stdin.isTTY && process.platform !== 'win32') {
+    const ttyPath = process.env.ANTI_SLOP_TTY_PATH || '/dev/tty'
+    let fd
+    try {
+      fd = fs.openSync(ttyPath, 'r')
+      if (tty.isatty(fd)) {
+        terminalInput = new tty.ReadStream(fd)
+        fd = undefined
+      }
+    } catch (error) {
+      if (!['EACCES', 'ENXIO', 'ENODEV', 'ENOENT', 'ENOTTY'].includes(error.code)) throw error
+    } finally {
+      if (fd !== undefined) fs.closeSync(fd)
     }
-    selectedSkills = response.skills
-    targets = response.targets
-    resolvedScope = response.scope
-    selectedAgents = response.agents
+  }
+
+  const interactiveInput = canPrompt && (terminalInput || (process.stdin.isTTY && process.stdin))
+  const interactive = Boolean(interactiveInput)
+  if (interactive) {
+    try {
+      const response = await promptForSkills(listAvailableModules(), targets, interactiveInput, promptOutput,
+        { scope: resolvedScope, agents: selectedAgents, allowTargetChange: !selectionOnly })
+      if (response == null) {
+        console.error('Setup cancelled; no installation files were changed')
+        return 130
+      }
+      selectedSkills = response.skills
+      targets = response.targets
+      resolvedScope = response.scope
+      selectedAgents = response.agents
+    } finally {
+      terminalInput?.destroy()
+    }
   }
 
   if (selectionOnly) {
@@ -819,7 +843,7 @@ Options:
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
   runInstallerCLI().then((code) => {
-    if (code !== 0) process.exitCode = code
+    process.exitCode = code ?? 0
   }).catch((err) => {
     console.error(`Installer error: ${err.message}`)
     process.exitCode = 1
