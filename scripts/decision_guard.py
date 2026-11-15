@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """Check decision-record completeness; never certify the truth of its evidence."""
 
-import argparse
 import json
 import sys
-from pathlib import Path
+import repository_evidence
 
 
 def filled(value):
@@ -175,10 +174,7 @@ def audit(packet):
 
 def main():
     """Parse command-line arguments and run the decision-record audit."""
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=["audit"])
-    parser.add_argument("record", type=Path)
-    parser.add_argument("--json", action="store_true")
+    parser = repository_evidence.audit_parser(__doc__)
     args = parser.parse_args()
     try:
         packet = json.loads(args.record.read_text(encoding="utf-8"))
@@ -189,6 +185,8 @@ def main():
         print("Invalid JSON: decision record must be an object", file=sys.stderr)
         return 1
     result = audit(packet)
+    if args.verify_evidence:
+        repository_evidence.attach_evidence(result, packet, args.repo)
     if args.json:
         print(json.dumps(result, indent=2))
     else:
@@ -196,7 +194,7 @@ def main():
         for finding in result["findings"]:
             print(f"  {finding['code']}: {finding['message']}")
         print("Structural check only; sources and reasoning require independent verification.")
-    return 2 if result["findings"] else 0
+    return repository_evidence.exit_code(result, 2 if result["findings"] else 0, args.json)
 
 
 if __name__ == "__main__":

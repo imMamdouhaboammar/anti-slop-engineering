@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Audit root-cause ownership records and optionally inspect a Git change surface."""
 
-import argparse
 import json
 import subprocess
 import sys
-from pathlib import Path, PurePosixPath
+from pathlib import PurePosixPath
+
+import repository_evidence
 
 
 def filled(value, depth=0, max_depth=100):
@@ -168,12 +169,8 @@ def attach_git_diff(result, planned, changed):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=["audit"])
-    parser.add_argument("record", type=Path)
-    parser.add_argument("--repo", type=Path, default=Path.cwd())
+    parser = repository_evidence.audit_parser(__doc__)
     parser.add_argument("--base")
-    parser.add_argument("--json", action="store_true")
     args = parser.parse_args()
     try:
         record = json.loads(args.record.read_text(encoding="utf-8"))
@@ -185,6 +182,8 @@ def main():
     except (OSError, UnicodeError, ValueError) as error:
         print("Invalid input or Git inspection: %s" % error, file=sys.stderr)
         return 1
+    if args.verify_evidence:
+        repository_evidence.attach_evidence(result, record, args.repo)
     if args.json:
         print(json.dumps(result, indent=2))
     else:
@@ -192,7 +191,7 @@ def main():
         for finding in result["findings"]:
             print("  [%s] %s: %s" % (finding["severity"], finding["code"], finding["message"]))
         print("Structural and change-surface review only; ownership and authority need independent proof.")
-    return 2 if result["record_status"] == "incomplete" else 0
+    return repository_evidence.exit_code(result, 2 if result["record_status"] == "incomplete" else 0, args.json)
 
 
 if __name__ == "__main__":
