@@ -17,10 +17,17 @@ import datetime
 import json
 import os
 import re
+import shutil
+import stat
 import subprocess
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+
+if __package__:
+    from .rule_registry import finding_metadata
+else:
+    from rule_registry import finding_metadata
 
 GLOBAL_CONFIG_DIR = Path.home() / ".config" / "anti-slop-engineering"
 GLOBAL_SETTINGS_FILE = GLOBAL_CONFIG_DIR / "settings.json"
@@ -80,6 +87,7 @@ GUARD_REGISTRY: Dict[str, Dict[str, Any]] = {
         "description": "Audits test suites for 8 Mandela leakage patterns, tautologies, and circular mocks.",
     },
     "tagore_guard": {
+        "installed_skill": "tagore-guard",
         "title": "Tagore Discourse & Substance Guard",
         "script": "tagore_guard.py",
         "input_type": "git_diff",
@@ -160,6 +168,7 @@ GUARD_REGISTRY: Dict[str, Dict[str, Any]] = {
         "description": "Enforces physical Gate 0 commit-sheet and agent reflex habit breaking.",
     },
     "re0_handoff_guard": {
+        "installed_skill": "re0-handoff-guard",
         "title": "Re0 State-Note Guard",
         "script": "re0_handoff_guard.py",
         "input_type": "ledger_record",
@@ -168,6 +177,7 @@ GUARD_REGISTRY: Dict[str, Dict[str, Any]] = {
         "description": "Audits 1500-token RSI context reset and cold-read Shower Test.",
     },
     "reduction_guard": {
+        "installed_skill": "reduction-guard",
         "title": "Musk Reduction & Add-Back Governor",
         "script": "reduction_guard.py",
         "input_type": "ledger_record",
@@ -438,9 +448,14 @@ CLI_COMMAND_TO_GUARD_MAP: Dict[str, str] = {
 EXCLUDED_CLI_COMMANDS: Dict[str, str] = {
     "serve-rust": "Daemon lifecycle command for background Rust HTTP microservice (:9091)",
     "serve-go": "Daemon lifecycle command for background Go HTTP microservice (:9092)",
+    "explain": "Catalog entry and remediation lookup",
     "build": "Build orchestration compiling native Rust and Go microservice binaries",
     "audit": "Unified multi-guard orchestrator entrypoint (invokes canonical registry)",
     "mode": "Execution mode governor setting active inline vs post-hoc audit behavior",
+    "check-engines": "Polyglot engine requirements validator checking toolchains (cargo, go, node, bun)",
+    "check-engine": "Single engine toolchain validator with graceful degradation notices",
+    "run-engine": "Engine execution wrapper providing graceful degradation for optional toolchains",
+    "check-changed": "Run contributor checks for paths changed from a Git revision",
     "install": "Skills installation across AI coding agent configurations",
     "setup": "Alias for install command",
     "update": "Skills update and pointer block synchronization across AI coding agents",
@@ -476,6 +491,178 @@ RECORD_FLAG_TO_GUARD_MAP: Dict[str, str] = {
     "observability_record": "observability_guard",
     "motion_record": "motion_runtime_guard",
 }
+
+ENGINE_REGISTRY: Dict[str, Dict[str, str]] = {
+    "cargo": {
+        "name": "Rust (Cargo)",
+        "binary": "cargo",
+        "install_url": "https://rustup.rs",
+        "hint": "Install rustup from https://rustup.rs for Rust native engine verification.",
+    },
+    "go": {
+        "name": "Go (Go toolchain)",
+        "binary": "go",
+        "install_url": "https://golang.org/dl/",
+        "hint": "Install Go from https://golang.org/dl/ for Go SRE engine verification.",
+    },
+    "node": {
+        "name": "Node.js runtime",
+        "binary": "node",
+        "install_url": "https://nodejs.org/",
+        "hint": "Install Node.js from https://nodejs.org/ for JavaScript/TypeScript tooling.",
+    },
+    "bun": {
+        "name": "Bun runtime",
+        "binary": "bun",
+        "install_url": "https://bun.sh",
+        "hint": "Install Bun from https://bun.sh for fast TypeScript and security test execution.",
+    },
+}
+
+ENGINE_ALIASES: Dict[str, str] = {
+    "rust": "cargo",
+    "golang": "go",
+    "js": "node",
+    "javascript": "node",
+    "ts": "node",
+    "typescript": "node",
+}
+
+
+def is_strict_engine_mode() -> bool:
+    """Return True if strict engine requirements are enforced (CI or STRICT_ENGINE_CHECK)."""
+    ci_val = os.environ.get("CI", "").strip().lower()
+    gh_val = os.environ.get("GITHUB_ACTIONS", "").strip().lower()
+    strict_val = os.environ.get("STRICT_ENGINE_CHECK", "").strip().lower()
+    return ci_val in ("true", "1", "yes") or gh_val in ("true", "1", "yes") or strict_val in ("true", "1", "yes")
+
+
+def check_engine(engine: str, strict: Optional[bool] = None) -> Tuple[bool, str]:
+    """Check availability of a polyglot engine toolchain.
+
+    Returns:
+        (is_available, message)
+    """
+    key = engine.strip().lower()
+    canonical = ENGINE_ALIASES.get(key, key)
+    if canonical not in ENGINE_REGISTRY:
+        return False, f"Unknown engine requirement: {engine}"
+
+    if strict is None:
+        strict = is_strict_engine_mode()
+
+    spec = ENGINE_REGISTRY[canonical]
+    bin_name = spec["binary"]
+    bin_path = shutil.which(bin_name)
+
+    if bin_path:
+        return True, f"{spec['name']} is available ({bin_path})"
+
+    if strict:
+        return (
+            False,
+            f"Error: Required engine '{canonical}' ({spec['name']}) not found on PATH. "
+            f"In CI or strict mode, all polyglot engines are mandatory. {spec['hint']}",
+        )
+    return (
+        False,
+        f"[NOTICE] Optional engine '{canonical}' ({spec['name']}) not found. "
+        f"Skipping engine run. {spec['hint']}",
+    )
+
+
+def check_engines(
+    engines: Optional[List[str]] = None,
+    strict: Optional[bool] = None,
+) -> Dict[str, Tuple[bool, str]]:
+    """Check multiple engines, returning mapping of canonical engine name to (available, message)."""
+    target_engines = engines or list(ENGINE_REGISTRY.keys())
+    return {eng: check_engine(eng, strict=strict) for eng in target_engines}
+
+
+def _emit_engine_message(msg: str, strict: Optional[bool]) -> int:
+    """Print engine notice/error and return exit code based on strict mode."""
+    if msg.startswith("Unknown engine requirement:"):
+        print(msg, file=sys.stderr)
+        return 2
+    if strict if strict is not None else is_strict_engine_mode():
+        print(msg, file=sys.stderr)
+        return 1
+    print(msg)
+    return 0
+
+
+def run_engine_command(
+    engine: str,
+    command: List[str],
+    strict: Optional[bool] = None,
+    title: Optional[str] = None,
+    cwd: Optional[str] = None,
+) -> int:
+    """Run a command guarded by an engine toolchain check.
+
+    If the engine is available:
+        Executes the command and returns the process exit code.
+    If the engine is absent and strict:
+        Prints error to stderr and returns 1.
+    If the engine is absent and non-strict:
+        Prints informative notice to stdout and returns 0 (gracefully skipped).
+    """
+    available, msg = check_engine(engine, strict=strict)
+    if not available:
+        return _emit_engine_message(msg, strict=strict)
+
+    if title:
+        print(f"=== {title} ===")
+    res = subprocess.run(command, cwd=cwd)
+    return res.returncode
+
+
+def changed_check_targets(base: str, root: str = ".") -> List[str]:
+    commands = (
+        ["diff", "--name-only", "--no-renames", "-z", "--end-of-options", base, "HEAD", "--"],
+        ["diff", "--name-only", "--no-renames", "-z", "--cached", "--"],
+        ["diff", "--name-only", "--no-renames", "-z", "--"],
+        ["ls-files", "-z", "--others", "--exclude-standard"],
+    )
+    paths = set()
+    for args in commands:
+        result = subprocess.run(["git", *args], cwd=root, check=True, stdout=subprocess.PIPE)
+        paths.update(os.fsdecode(path) for path in result.stdout.split(b"\0") if path)
+
+    selected = set()
+    for path in paths:
+        if path in {"Makefile", "AGENTS.md", "SKILL.md"} or path.startswith(".github/workflows/"):
+            return ["check-all"]
+        if path.endswith(".py") or path in {"pyproject.toml", "ruff.toml", "install.sh"}:
+            selected.add("check")
+        if path.startswith("services/anti-slop-rust/"):
+            selected.update(("test-rust", "clippy"))
+        if path.startswith("services/toil-guard-go/"):
+            selected.add("test-go")
+        if path.endswith((".js", ".mjs", ".cjs", ".ts", ".tsx")) or path in {
+            "package.json", "bun.lock", "bun.lockb", ".oxlintrc.json", "skills.sh.json",
+        }:
+            selected.update(("oxlint", "test-security", "test-node"))
+
+    order = ("check", "oxlint", "test-security", "test-node", "test-rust", "clippy", "test-go")
+    return [target for target in order if target in selected]
+
+
+def handle_check_changed(args: List[str]) -> int:
+    parser = argparse.ArgumentParser(description="Run checks for paths changed against a Git revision")
+    parser.add_argument("--base", default="HEAD")
+    parser.add_argument("--make", default="make")
+    options = parser.parse_args(args)
+    try:
+        targets = changed_check_targets(options.base)
+    except subprocess.CalledProcessError as exc:
+        return exc.returncode
+    if not targets:
+        print("No runtime checks selected for changed paths.")
+        return 0
+    print("Selected checks: " + ", ".join(targets), flush=True)
+    return subprocess.run([options.make, *targets]).returncode
 
 
 def get_settings_file(max_depth: int = 5) -> Path:
@@ -672,6 +859,8 @@ def normalize_finding(name: str, finding: Dict[str, Any], report: Dict[str, Any]
         or finding.get("evidence")
         or finding.get("description")
         or finding.get("detail")
+        or finding.get("title")
+        or finding.get("impact")
         or ""
     )
     if name == "contrast_guard" and finding.get("fg") and finding.get("bg"):
@@ -685,6 +874,7 @@ def normalize_finding(name: str, finding: Dict[str, Any], report: Dict[str, Any]
         or finding.get("recommendation")
         or finding.get("independence_fix")
         or finding.get("suggested_replacement")
+        or finding.get("remedy")
     )
     if not remediation and isinstance(report.get("remediation"), dict):
         remediation = report["remediation"].get("guidance") or report["remediation"].get("action")
@@ -704,6 +894,7 @@ def normalize_finding(name: str, finding: Dict[str, Any], report: Dict[str, Any]
     return {
         "guard": name,
         "rule": str(rule),
+        **finding_metadata(str(rule), name),
         "severity": level,
         "file": str(finding.get("file") or default_targets.get(name, "")),
         "line": finding.get("line", 1 if name in default_targets else 0),
@@ -912,10 +1103,48 @@ def evaluate_guard(
     return result, findings
 
 
+def read_installed_skills(manifest: Path) -> set[str]:
+    if manifest.name != ".anti-slop-selection.json" or manifest.is_symlink():
+        raise ValueError("Expected a regular .anti-slop-selection.json installer manifest")
+    flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_NOFOLLOW", 0)
+    descriptor = os.open(manifest, flags)
+    try:
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            raise ValueError("The installer selection must be a regular file")
+        with open(descriptor, encoding="utf-8", closefd=False) as source:
+            state = json.load(source)
+    finally:
+        os.close(descriptor)
+    if (
+        not isinstance(state, dict)
+        or type(state.get("format")) is not int
+        or state["format"] != 1
+        or state.get("scope") not in ("project", "global")
+        or not isinstance(state.get("version"), str)
+        or not isinstance(state.get("agents"), list)
+    ):
+        raise ValueError("Expected an installer selection in format 1")
+    skills = state.get("skills")
+    if (
+        not isinstance(skills, list)
+        or "anti-slop-engineering" not in skills
+        or any(not isinstance(skill, str) or not re.fullmatch(r"[a-z0-9][a-z0-9-]*", skill) for skill in skills)
+    ):
+        raise ValueError("Expected explicit skill IDs including anti-slop-engineering")
+    installed = {
+        skill for skill in skills
+        if (manifest.parent / skill / "SKILL.md").is_file()
+    }
+    if "anti-slop-engineering" not in installed:
+        raise ValueError("Required core skill is absent beside the installer manifest")
+    return installed
+
+
 def collect_audit_findings(
     base: str = "HEAD", pr_title: str = "", pr_body_file: str = "",
     template_file: str = "", canary_token: str = "",
     records: Optional[Dict[str, str]] = None,
+    installed_skills: Optional[set[str]] = None,
     **extra_records: Any,
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Dict[str, Any]]]:
     records_map: Dict[str, str] = {}
@@ -937,6 +1166,11 @@ def collect_audit_findings(
         if spec.get("excluded_from_audit"):
             reason = spec.get("exclusion_reason", "Excluded from static audit runner")
             guards[name] = _make_inactive_guard_entry(spec, "not-applicable", reason)
+            continue
+
+        skill = spec.get("installed_skill")
+        if skill and installed_skills is not None and skill not in installed_skills and not spec.get("mandatory"):
+            guards[name] = _make_inactive_guard_entry(spec, "not-selected", f"Skill not installed: {skill}")
             continue
 
         record_path: Optional[str] = None
@@ -1154,6 +1388,10 @@ def _render_detailed_dossiers(
             f"- **Target:** `{target}`",
             f"- **Severity:** {f['severity']}",
             f"- **Guard:** `{f['guard']}`",
+        ])
+        if f.get("catalog_id"):
+            lines.append(f"- **Catalog:** `{f['catalog_id']}` · `{f['skill_path']}`")
+        lines.extend([
             "",
             "```text",
             f.get("snippet", "(no snippet available)").strip(),
@@ -1220,18 +1458,25 @@ def run_audit(
     base: str = "HEAD", json_output: bool = False, pr_title: str = "",
     pr_body_file: str = "", template_file: str = "", canary_token: str = "",
     mode: Optional[str] = None, records: Optional[Dict[str, str]] = None,
+    installed_selection: Optional[Path] = None,
     **extra_records: Any,
 ) -> int:
+    installed_skills = None
+    audit_error = None
+    if installed_selection is not None:
+        try:
+            installed_skills = read_installed_skills(installed_selection)
+        except (OSError, ValueError) as exc:
+            audit_error = f"Unable to read installed skill selection: {exc}"
     findings, guards = collect_audit_findings(
         base, pr_title=pr_title, pr_body_file=pr_body_file,
         template_file=template_file, canary_token=canary_token,
-        records=records, **extra_records
+        records=records, installed_skills=installed_skills, **extra_records
     )
     blockers = sum(1 for finding in findings if finding["severity"] == "BLOCKER")
     has_error = any(result.get("status") == "ERROR" or result.get("error") for result in guards.values())
-    status = "ERROR" if has_error else ("BLOCKED" if blockers else "PASS")
+    status = "ERROR" if has_error or audit_error else ("BLOCKED" if blockers else "PASS")
     audit_file = None
-    audit_error = None
     effective_mode = mode if mode is not None else load_settings().get("mode", "during")
     try:
         audit_file = get_next_audit_file()
@@ -1277,6 +1522,108 @@ def run_audit(
     return {"PASS": 0, "BLOCKED": 1, "ERROR": 2}[status]
 
 
+def handle_audit(args: List[str]) -> int:
+    parser = argparse.ArgumentParser(description="Run the unified Anti-Slop audit")
+    parser.add_argument("--base", default="HEAD")
+    parser.add_argument("--json", action="store_true")
+    parser.add_argument("--installed-selection", type=Path,
+                        help="Opt in to installed optional review skills using a format-1 selection manifest")
+    parser.add_argument("--pr-title", default="")
+    parser.add_argument("--pr-body-file", default="")
+    parser.add_argument("--template-file", default="")
+    parser.add_argument("--canary-token", default="")
+    parser.add_argument("--mode", default=None, choices=["during", "after", "ask"],
+                        help="Override audit execution mode (during, after, ask)")
+    parser.add_argument("--decision-record", default="", help="Path to Decision Guard JSON record")
+    parser.add_argument("--root-fix-record", default="", help="Path to Root-Fix Gate JSON record")
+    parser.add_argument("--future-scale-record", default="", help="Path to Future-Scale Gate JSON record")
+    parser.add_argument("--paranoid-record", default="", help="Path to Paranoid Architect JSON record")
+    parser.add_argument("--perf-record", default="", help="Path to Mechanical Sympathy JSON record")
+    parser.add_argument("--rollout-record", default="", help="Path to Rollout Choreographer JSON record")
+    parser.add_argument("--simulation-record", default="", help="Path to Deterministic Simulation JSON record")
+    parser.add_argument("--privacy-record", default="", help="Path to Privacy & Data Lineage JSON record")
+    parser.add_argument("--contract-record", default="", help="Path to API Contract JSON record")
+    parser.add_argument("--apple-craft-record", default="", help="Path to Apple Craft JSON record")
+    parser.add_argument("--observability-record", default="", help="Path to Observability & SLO JSON record")
+    parser.add_argument("--motion-record", default="", help="Path to Runtime Motion profile JSON record")
+    options = parser.parse_args(args)
+    return run_audit(
+        options.base, options.json, options.pr_title,
+        options.pr_body_file, options.template_file, options.canary_token,
+        mode=options.mode,
+        installed_selection=options.installed_selection,
+        decision_record=options.decision_record,
+        root_fix_record=options.root_fix_record,
+        future_scale_record=options.future_scale_record,
+        paranoid_record=options.paranoid_record,
+        perf_record=options.perf_record,
+        rollout_record=options.rollout_record,
+        simulation_record=options.simulation_record,
+        privacy_record=options.privacy_record,
+        contract_record=options.contract_record,
+        apple_craft_record=options.apple_craft_record,
+        observability_record=options.observability_record,
+        motion_record=options.motion_record,
+    )
+
+
+def handle_check_engines(args: List[str]) -> int:
+    """Parse check-engines options and display polyglot engine status."""
+    parser = argparse.ArgumentParser(description="Check polyglot engine toolchains")
+    parser.add_argument("--engine", default="", help="Specific engine to check (cargo, go, node, bun)")
+    parser.add_argument("--strict", action="store_const", const=True, default=None, help="Enforce strict requirements (exit non-zero if missing)")
+    parser.add_argument("--no-strict", dest="strict", action="store_const", const=False, help="Disable strict requirements")
+    options = parser.parse_args(args)
+    if options.engine:
+        avail, msg = check_engine(options.engine, strict=options.strict)
+        if avail:
+            print(f"✓ {msg}")
+            return 0
+        return _emit_engine_message(msg, strict=options.strict)
+    results = check_engines(strict=options.strict)
+    any_missing = False
+    print("Polyglot Engine Requirements Status:")
+    for eng, (avail, msg) in results.items():
+        if avail:
+            print(f"  ✓ {msg}")
+        else:
+            any_missing = True
+            print(f"  ✗ {msg}")
+    if any_missing and (options.strict if options.strict is not None else is_strict_engine_mode()):
+        return 1
+    return 0
+
+
+def handle_run_engine(args: List[str]) -> int:
+    """Parse run-engine options and execute command guarded by engine check."""
+    if "--" in args:
+        idx = args.index("--")
+        opt_args = args[:idx]
+        cmd_args = args[idx + 1:]
+    else:
+        opt_args = args
+        cmd_args = []
+    parser = argparse.ArgumentParser(description="Run command guarded by engine toolchain check")
+    parser.add_argument("--engine", required=True, help="Engine name (cargo, go, node, bun)")
+    parser.add_argument("--strict", action="store_const", const=True, default=None, help="Enforce strict check")
+    parser.add_argument("--no-strict", dest="strict", action="store_const", const=False, help="Disable strict check")
+    parser.add_argument("--title", default="", help="Optional title displayed before command execution")
+    parser.add_argument("--cwd", default=None, help="Working directory for command execution")
+    parser.add_argument("cmd", nargs="*", help="Command to run")
+    options = parser.parse_args(opt_args)
+    final_cmd = cmd_args if cmd_args else options.cmd
+    if not final_cmd:
+        print("Error: No command provided to run-engine after --", file=sys.stderr)
+        return 2
+    return run_engine_command(
+        engine=options.engine,
+        command=final_cmd,
+        strict=options.strict,
+        title=options.title,
+        cwd=options.cwd,
+    )
+
+
 def main() -> int:
     args = sys.argv[1:]
     if not args or args[0] in ("-h", "--help"):
@@ -1287,45 +1634,13 @@ def main() -> int:
     if command == "mode":
         return handle_mode(args[1:])
     elif command in ("audit", "run"):
-        parser = argparse.ArgumentParser(description="Run the unified Anti-Slop audit")
-        parser.add_argument("--base", default="HEAD")
-        parser.add_argument("--json", action="store_true")
-        parser.add_argument("--pr-title", default="")
-        parser.add_argument("--pr-body-file", default="")
-        parser.add_argument("--template-file", default="")
-        parser.add_argument("--canary-token", default="")
-        parser.add_argument("--mode", default=None, choices=["during", "after", "ask"],
-                            help="Override audit execution mode (during, after, ask)")
-        parser.add_argument("--decision-record", default="", help="Path to Decision Guard JSON record")
-        parser.add_argument("--root-fix-record", default="", help="Path to Root-Fix Gate JSON record")
-        parser.add_argument("--future-scale-record", default="", help="Path to Future-Scale Gate JSON record")
-        parser.add_argument("--paranoid-record", default="", help="Path to Paranoid Architect JSON record")
-        parser.add_argument("--perf-record", default="", help="Path to Mechanical Sympathy JSON record")
-        parser.add_argument("--rollout-record", default="", help="Path to Rollout Choreographer JSON record")
-        parser.add_argument("--simulation-record", default="", help="Path to Deterministic Simulation JSON record")
-        parser.add_argument("--privacy-record", default="", help="Path to Privacy & Data Lineage JSON record")
-        parser.add_argument("--contract-record", default="", help="Path to API Contract JSON record")
-        parser.add_argument("--apple-craft-record", default="", help="Path to Apple Craft JSON record")
-        parser.add_argument("--observability-record", default="", help="Path to Observability & SLO JSON record")
-        parser.add_argument("--motion-record", default="", help="Path to Runtime Motion profile JSON record")
-        options = parser.parse_args(args[1:])
-        return run_audit(
-            options.base, options.json, options.pr_title,
-            options.pr_body_file, options.template_file, options.canary_token,
-            mode=options.mode,
-            decision_record=options.decision_record,
-            root_fix_record=options.root_fix_record,
-            future_scale_record=options.future_scale_record,
-            paranoid_record=options.paranoid_record,
-            perf_record=options.perf_record,
-            rollout_record=options.rollout_record,
-            simulation_record=options.simulation_record,
-            privacy_record=options.privacy_record,
-            contract_record=options.contract_record,
-            apple_craft_record=options.apple_craft_record,
-            observability_record=options.observability_record,
-            motion_record=options.motion_record,
-        )
+        return handle_audit(args[1:])
+    elif command in ("check-engines", "check-engine"):
+        return handle_check_engines(args[1:])
+    elif command == "check-changed":
+        return handle_check_changed(args[1:])
+    elif command == "run-engine":
+        return handle_run_engine(args[1:])
     elif command == "fix":
         print(
             "Error: 'fix' command is not supported. Anti-slop engineering requires "

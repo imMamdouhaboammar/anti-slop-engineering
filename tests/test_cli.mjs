@@ -45,6 +45,19 @@ test("Rust triage fallback reports an invalid base instead of silently auditing 
   assert.match(result.stdout + result.stderr, /ERROR:/);
 });
 
+test("explain resolves catalog IDs and raw engine codes through one command", () => {
+  const catalog = invoke("anti-slop-engineering", ["explain", "OPS-01", "--json"]);
+  const native = invoke("anti-slop-engineering", ["explain", "STS-H02", "--json"]);
+  assert.equal(catalog.status, 0, catalog.stderr);
+  assert.equal(native.status, 0, native.stderr);
+  const catalogEntry = JSON.parse(catalog.stdout);
+  const nativeEntry = JSON.parse(native.stdout);
+  assert.equal(nativeEntry.engine_code, "STS-H02");
+  assert.equal(nativeEntry.catalog_id, catalogEntry.catalog_id);
+  assert.equal(nativeEntry.remediation, catalogEntry.remediation);
+  assert.ok(existsSync(resolve(nativeEntry.skill_path)));
+});
+
 test("decision audit command routes to the stdlib decision guard", () => {
   const example = resolve("skills/decision-guard/examples/architecture-record.json");
   const result = invoke("anti-slop-engineering", ["decision", "audit", example, "--json"]);
@@ -162,7 +175,10 @@ test("bump command routes to the automated version bumper in dry-run mode", () =
   assert.equal(result.status, 0, result.stderr);
   const output = JSON.parse(result.stdout);
   assert.equal(output.dry_run, true);
-  assert.equal(output.updated_files.length, 13);
+  assert.equal(output.updated_files.length, 15);
+  for (const file of ["CITATION.cff", "submission/listing.json", "submission/reviewer-packet.json"]) {
+    assert.ok(output.updated_files.includes(file), "Missing release target: " + file);
+  }
 });
 
 test("hunter command routes to the zero-trust forensic bug hunter", () => {
@@ -483,4 +499,23 @@ test("verification contract: check/diff exits 0 on clean diff while audit catche
   } finally {
     rmSync(tmpDir, { recursive: true, force: true });
   }
+});
+
+test("CLI: help banner contains the release version and zero dev-notes leakage", () => {
+  const result = invoke("anti-slop-engineering", ["--help"]);
+  assert.equal(result.status, 0);
+  const helpText = result.stdout;
+  assert.doesNotMatch(helpText, /\b(todo|fixme|dev[- ]note|developer[- ]note|agent[- ]note|mock data)\b/i);
+  assert.match(helpText, /Anti-Slop Engineering CLI \(v\d+\.\d+\.\d+\)/);
+});
+
+test("CLI: contribute command output is clean and free of internal dev-notes", () => {
+  const result = invoke("anti-slop-engineering", ["contribute"]);
+  assert.equal(result.status, 0);
+  const text = result.stdout;
+  assert.doesNotMatch(text, /\b(todo|fixme|dev[- ]note|developer[- ]note|agent[- ]note|mock data)\b/i);
+  assert.match(text, /Contributing to Anti-Slop Engineering/);
+  assert.match(text, /Reporting Slop/);
+  assert.match(text, /Submitting Contributions/);
+  assert.match(text, /Optional: Add a heuristic/);
 });

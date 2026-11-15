@@ -10,8 +10,12 @@ import json
 import pathlib
 import re
 import sre_compile
-import subprocess
 import sys
+
+if not __package__:
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+
+from scripts.git_changeset import collect_changes, repository_root
 
 __version__ = '1.8.0'
 
@@ -60,22 +64,14 @@ META_PREAMBLE_AND_AFFORDANCE_NARRATION = sre_compile.compile(
 )
 
 
-def git(repo, *args):
-    p = subprocess.run(['git', '-C', str(repo), *args], capture_output=True)
-    if p.returncode:
-        raise RuntimeError(p.stderr.decode('utf-8', 'replace').strip() or f'git {args[0]} failed')
-    return p.stdout
-
-
-def audit_file_metadata(repo, base, file_counts, untracked, max_lines):
+def audit_file_metadata(file_counts, untracked, max_lines):
     """Audit diff metadata: test modifications, speculative docs, and line thresholds."""
     findings = []
     changed_test = []
     new_test = [p for p in untracked if TEST_PATH.search(p)]
 
-    for path in file_counts:
+    for path, _, _, exists in file_counts:
         if TEST_PATH.search(path):
-            exists = subprocess.run(['git', '-C', str(repo), 'cat-file', '-e', f'{base}:{path}'], capture_output=True).returncode == 0
             if exists:
                 changed_test.append(path)
                 findings.append({'id': 'TEST_CHANGE_REVIEW', 'severity': 'review', 'file': path,
@@ -84,14 +80,13 @@ def audit_file_metadata(repo, base, file_counts, untracked, max_lines):
             else:
                 new_test.append(path)
         if SPECULATIVE_DOC_PATH.search(path):
-            exists = subprocess.run(['git', '-C', str(repo), 'cat-file', '-e', f'{base}:{path}'], capture_output=True).returncode == 0
             if not exists:
                 findings.append({'id': 'SPECULATIVE_DOC_CANDIDATE', 'severity': 'review', 'file': path,
                                  'evidence': f'New speculative submission dossier or platform guide: {path}',
                                  'action': 'Verify whether this documentation file was explicitly authorized; avoid unprompted submission dossiers.'})
 
-    added_total = sum(a for a, _ in file_counts.values())
-    deleted_total = sum(d for _, d in file_counts.values())
+    added_total = sum(added for _, added, _, _ in file_counts)
+    deleted_total = sum(deleted for _, _, deleted, _ in file_counts)
     if added_total > max_lines:
         findings.append({'id': 'LARGE_DIFF_REVIEW', 'severity': 'review', 'file': None,
                          'evidence': f'{added_total} added lines > configurable review prompt {max_lines}.',
@@ -100,30 +95,19 @@ def audit_file_metadata(repo, base, file_counts, untracked, max_lines):
     return findings, changed_test, new_test, added_total, deleted_total
 
 
-def audit_patch_lines(patch):
-    """Audit unified diff patch lines against heuristic patterns."""
+def audit_patch_lines(added_lines):
+    """Audit added source lines against heuristic patterns."""
     findings = []
-    path = None
-    new_line = None
     seen = set()
 
-    for line in patch.splitlines():
-        if line.startswith('+++ b/'):
-            path = line[6:]
-            new_line = None
+    for raw_path, new_line, raw_line in added_lines:
+        try:
+            path = raw_path.decode("utf-8")
+        except UnicodeDecodeError:
             continue
-        if line.startswith('@@'):
-            match = re.search(r'\+(\d+)', line)
-            new_line = int(match.group(1)) if match else None
+        if GENERATED_PATH.search(path):
             continue
-        if not line.startswith('+') or line.startswith('+++'):
-            continue
-        if not path or GENERATED_PATH.search(path):
-            if new_line is not None:
-                new_line += 1
-            continue
-
-        code_line = line[1:]
+        code_line = raw_line.decode("utf-8", "replace").removesuffix("\r")
         if not TEST_PATH.search(path) and not re.search(r'(?i)(?:^|/)references/', path) and HALLUCINATED_DOC_URL.search(code_line):
             if ('HALLUCINATED_DOC_URL', path, new_line) not in seen:
                 seen.add(('HALLUCINATED_DOC_URL', path, new_line))
@@ -138,8 +122,6 @@ def audit_patch_lines(patch):
                     findings.append({'id': 'META_PREAMBLE_AND_AFFORDANCE_NARRATION', 'severity': 'review', 'file': path, 'line': new_line,
                                      'evidence': code_line.strip()[:180],
                                      'action': 'Violation of Direct Payload Invariant: remove conversational preambles, affordance narration (explaining how to click/play/expand/copy), mechanical hand-holding, or bilingual title-stacking.'})
-            if new_line is not None:
-                new_line += 1
             continue
 
         for key, level, pattern in COMPILED:
@@ -158,42 +140,43 @@ def audit_patch_lines(patch):
                                  'evidence': code_line.strip()[:180],
                                  'action': 'Inspect context and justify or fix; regex match is not proof of a defect.'})
 
-        if new_line is not None:
-            new_line += 1
-
     return findings
 
 
 def scan(repo, base, max_lines=400):
-    git(repo, 'rev-parse', '--verify', f'{base}^{{commit}}')
-    diff_info = git(repo, 'diff', '--no-ext-diff', '--no-renames', '--numstat', '-z', base, '--')
-    file_counts = {}
-    for record in diff_info.split(b'\0'):
-        if not record:
-            continue
-        bits = record.split(b'\t', 2)
-        if len(bits) == 3:
-            a, d, name = bits
-            file_counts[name.decode('utf-8', 'replace')] = (int(a) if a.isdigit() else 0, int(d) if d.isdigit() else 0)
+    root = repository_root(repo)
+    added_lines = []
+    evidence = collect_changes(root, base, added_lines=added_lines, detect_renames=False)
+    file_counts = []
+    undecodable = 0
+    for change in evidence["files"]:
+        path = change["new_path"] or change["old_path"]
+        name = path["text"]
+        if name is None:
+            undecodable += 1
+            name = bytes.fromhex(path["raw_hex"]).decode("utf-8", "replace")
+        file_counts.append((name, change["added"] or 0, change["deleted"] or 0, change["old_path"] is not None))
 
-    untracked = [p.decode('utf-8', 'replace') for p in git(repo, 'ls-files', '--others', '--exclude-standard', '-z').split(b'\0') if p]
+    untracked = [path["text"] for path in evidence["untracked"] if path["text"] is not None]
     limitations = ['Heuristic review hints only; no semantic or runtime validation performed.']
-    if untracked:
-        limitations.append(f'Untracked files ({len(untracked)}) are excluded from diff scanning; stage them for complete analysis.')
+    if evidence["untracked"]:
+        limitations.append(
+            f'Untracked files ({len(evidence["untracked"])}) are excluded from diff scanning; stage them for complete analysis.'
+        )
+    if undecodable:
+        limitations.append(f"Added-line scanning omitted {undecodable} non-UTF-8 Git path(s).")
 
     meta_findings, changed_test, new_test, added_total, deleted_total = audit_file_metadata(
-        repo, base, file_counts, untracked, max_lines
+        file_counts, untracked, max_lines
     )
-
-    patch = git(repo, 'diff', '--no-ext-diff', '--no-renames', '--unified=0', base, '--').decode('utf-8', 'replace')
-    patch_findings = audit_patch_lines(patch)
+    patch_findings = audit_patch_lines(added_lines)
     findings = meta_findings + patch_findings
 
     return {
         'base': base,
-        'summary': {'changed_files': len(file_counts), 'added_lines': added_total, 'deleted_lines': deleted_total,
+        'summary': {'changed_files': len(evidence["files"]), 'added_lines': added_total, 'deleted_lines': deleted_total,
                     'changed_test_files': len(changed_test), 'new_test_files': len(new_test),
-                    'untracked_files_not_scanned': len(untracked)},
+                    'untracked_files_not_scanned': len(evidence["untracked"])},
         'findings': findings,
         'limitations': limitations,
         'status': 'review-required' if findings else 'no-heuristic-findings'

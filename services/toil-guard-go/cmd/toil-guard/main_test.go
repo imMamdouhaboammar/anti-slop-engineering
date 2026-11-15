@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -188,12 +189,6 @@ func TestExecuteAuditRejectsMissingAndUnreadableExplicitPaths(t *testing.T) {
 	}
 }
 
-func TestParseGitDiffRejectsMalformedNonEmptyOutput(t *testing.T) {
-	if _, err := parseGitDiff("not a valid git diff\n+added line\n"); err == nil {
-		t.Fatal("expected error for malformed diff without diff header")
-	}
-}
-
 func TestExecuteAuditCollectsUntrackedFileInNestedDir(t *testing.T) {
 	dir := initTempGitRepo(t)
 	t.Chdir(dir)
@@ -221,82 +216,257 @@ func TestExecuteAuditCollectsUntrackedFileInNestedDir(t *testing.T) {
 	}
 }
 
-func TestGoldenParityFixtures(t *testing.T) {
-	fixturesDir := filepath.Join("..", "..", "..", "..", "tests", "fixtures", "engine-parity")
+func TestExecuteAuditCollectsUntrackedFileEvenWhenDiffExists(t *testing.T) {
+	dir := initTempGitRepo(t)
+	t.Chdir(dir)
 
-	cleanBytes, err := os.ReadFile(filepath.Join(fixturesDir, "clean.diff"))
-	if err != nil {
-		t.Fatalf("read clean.diff: %v", err)
-	}
-	cleanFiles, err := parseGitDiff(string(cleanBytes))
-	if err != nil || len(cleanFiles) != 0 {
-		t.Fatalf("expected empty map for clean.diff, got files=%v err=%v", cleanFiles, err)
+	// 1. Modify tracked file main.go
+	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n\nfunc main() {\n\t// clean edit\n}\n"), 0600); err != nil {
+		t.Fatal(err)
 	}
 
-	blockerBytes, err := os.ReadFile(filepath.Join(fixturesDir, "blocker_error_swallow.diff"))
-	if err != nil {
-		t.Fatalf("read blocker_error_swallow.diff: %v", err)
+	// 2. Create untracked bad file
+	untracked := filepath.Join(dir, "untracked_bad.go")
+	if err := os.WriteFile(untracked, []byte("package main\n\nfunc Bad() {\n\ttime.Sleep(5 * time.Second)\n}\n"), 0600); err != nil {
+		t.Fatal(err)
 	}
-	blockerFiles, err := parseGitDiff(string(blockerBytes))
-	if err != nil {
-		t.Fatalf("parse blocker diff: %v", err)
+
+	var stdout, stderr bytes.Buffer
+	code := executeAudit([]string{"--format", "json", "--base", "HEAD"}, &stdout, &stderr)
+	if code == 0 {
+		t.Fatalf("expected non-zero exit when untracked file contains blocker alongside diff, got 0")
 	}
-	findings, sli := sre.AuditFiles(blockerFiles)
-	if sli.Status != "BLOCKED" {
-		t.Fatalf("expected BLOCKED status for blocker fixture, got %+v", sli)
+	var report model.AuditReport
+	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
+		t.Fatalf("invalid JSON output: %v\n%s", err, stdout.String())
 	}
-	foundSwallow := false
-	for _, f := range findings {
-		if f.Code == "SRE-SCALE-SWALLOW" && f.Severity == model.SeverityBlocker {
-			foundSwallow = true
+	if report.SLI.Status != "BLOCKED" {
+		t.Fatalf("expected BLOCKED status, got %+v", report)
+	}
+	foundSleep := false
+	for _, f := range report.Findings {
+		if f.Code == "SRE-SCALE-SLEEP" {
+			foundSleep = true
 			break
 		}
 	}
-	if !foundSwallow {
-		t.Fatalf("expected SRE-SCALE-SWALLOW blocker finding, got %+v", findings)
+	if !foundSleep {
+		t.Fatalf("expected SRE-SCALE-SLEEP finding from untracked file, got %+v", report.Findings)
+	}
+}
+
+func TestCollectAuditFilesEnumeratesGitPathsFromNestedDirectory(t *testing.T) {
+	dir := initTempGitRepo(t)
+	nested := filepath.Join(dir, "src")
+	if err := os.Mkdir(nested, 0750); err != nil {
+		t.Fatal(err)
 	}
 
-	for _, name := range []string{"deletion_only.diff", "renamed_file.diff", "whitespace_path.diff", "non_ascii_path.diff"} {
-		raw, readErr := os.ReadFile(filepath.Join(fixturesDir, name))
-		if readErr != nil {
-			t.Fatalf("read %s: %v", name, readErr)
+	write := func(path, body string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, path), []byte(body), 0600); err != nil {
+			t.Fatal(err)
 		}
-		files, parseErr := parseGitDiff(string(raw))
-		if parseErr != nil {
-			t.Fatalf("parse %s failed: %v", name, parseErr)
-		}
-		_, fixtureSLI := sre.AuditFiles(files)
-		if fixtureSLI.Status == "BLOCKED" {
-			t.Fatalf("unexpected BLOCKED status for %s: %+v", name, fixtureSLI)
+	}
+	const renamedSource = "package src\n\nfunc Worker() {}\n"
+	write("src/old worker.go", renamedSource)
+	write("deleted.go", "package main\n")
+	write("reverted.go", "package main\n")
+	write(".gitignore", "ignored.go\n")
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "commit", "-m", "add tracked fixtures")
+
+	const renamed = "src/café worker.go"
+	const untracked = "src/ spaced\tworker.go"
+	write("main.go", "package main\n\nfunc main() { /* edited */ }\n")
+	write("staged.go", "package main\n\nfunc Added() {}\n")
+	write(untracked, "package src\n\nfunc Untracked() {}\n")
+	write("ignored.go", "package main\n")
+	runGit(t, dir, "mv", "src/old worker.go", renamed)
+	runGit(t, dir, "rm", "deleted.go")
+	runGit(t, dir, "add", "staged.go")
+	write("reverted.go", "package main\n// staged edit\n")
+	runGit(t, dir, "add", "reverted.go")
+	write("reverted.go", "package main\n")
+	write("staged then removed.go", "package main\n")
+	runGit(t, dir, "add", "staged then removed.go")
+	if err := os.Remove(filepath.Join(dir, "staged then removed.go")); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, dir, "config", "diff.relative", "true")
+
+	t.Chdir(nested)
+	files, err := collectAuditFiles(nil, "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{
+		"main.go":     "package main\n\nfunc main() { /* edited */ }\n",
+		"reverted.go": "package main\n",
+		"staged.go":   "package main\n\nfunc Added() {}\n",
+		renamed:       renamedSource,
+		untracked:     "package src\n\nfunc Untracked() {}\n",
+	}
+	if len(files) != len(want) {
+		t.Fatalf("expected %d candidate files, got %d: %v", len(want), len(files), files)
+	}
+	for name, content := range want {
+		if got := files[name]; got != content {
+			t.Errorf("%q: got %q, want %q", name, got, content)
 		}
 	}
 }
 
-func TestParseGitDiffDeterministicFuzzAndConcurrentAuditRace(t *testing.T) {
-	fragments := []string{
-		"diff --git a/src/my file.go b/src/my file.go\n",
-		"diff --git \"a/src/caf\\303\\251.go\" \"b/src/caf\\303\\251.go\"\n",
-		"+++ b/src/my file.go\n",
-		"+++ /dev/null\n",
-		"@@ -1 +0,0 @@\n",
-		"+func ok() {}\r\n",
-		"+if err != nil {}\n",
-		"+++not a header\n",
+func TestExecuteAuditUsesFullSourceAcrossCommittedHunks(t *testing.T) {
+	dir := initTempGitRepo(t)
+	const path = "café worker.go"
+	sourcePath := filepath.Join(dir, path)
+	before := "package main\r\n\r\nfunc First() {\r\n\twork()\r\n}\r\n" +
+		strings.Repeat("\n", 10) + "func Second() {\n\twork()\n}\n"
+	after := strings.ReplaceAll(before, "work()", "time.Sleep(5 * time.Second)")
+	if err := os.WriteFile(sourcePath, []byte(before), 0600); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, dir, "add", path)
+	runGit(t, dir, "commit", "-m", "add mixed line ending fixture")
+	if err := os.WriteFile(sourcePath, []byte(after), 0600); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, dir, "add", path)
+	runGit(t, dir, "commit", "-m", "edit two separated functions")
+	t.Chdir(dir)
+
+	files, err := collectAuditFiles(nil, "HEAD~1")
+	if err != nil || len(files) != 1 || files[path] != after {
+		t.Fatalf("expected full current source for %q, got files=%v err=%v", path, files, err)
 	}
 
+	var stdout, stderr bytes.Buffer
+	code := executeAudit([]string{"--format", "json", "--base", "HEAD~1"}, &stdout, &stderr)
+	var report model.AuditReport
+	if code != 1 || stderr.Len() != 0 {
+		t.Fatalf("expected a blocker report, got exit=%d stderr=%q", code, stderr.String())
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
+		t.Fatal(err)
+	}
+	var lines []int
+	for _, finding := range report.Findings {
+		if finding.Code == "SRE-SCALE-SLEEP" && finding.File == path {
+			lines = append(lines, finding.Line)
+		}
+	}
+	if len(lines) != 2 || lines[0] != 4 || lines[1] != 17 {
+		t.Fatalf("expected findings at source lines 4 and 17, got %v", lines)
+	}
+}
+
+func TestParseGitPathsRejectsMalformedNonEmptyOutput(t *testing.T) {
+	for _, output := range []string{"missing terminator", "src/worker.go\x00\x00"} {
+		if _, err := parseGitPaths(output); err == nil {
+			t.Errorf("expected error for malformed path list %q", output)
+		}
+	}
+}
+
+func TestGoldenParityFixtures(t *testing.T) {
+	fixturesDir, err := filepath.Abs(filepath.Join("..", "..", "..", "..", "tests", "fixtures", "engine-parity"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixtures := []struct {
+		name    string
+		path    string
+		before  string
+		audited int
+		blocked bool
+	}{
+		{name: "clean"},
+		{
+			name: "blocker_error_swallow", path: "src/worker.py", audited: 1, blocked: true,
+			before: "def process_job(job):\n    return job.run()\n",
+		},
+		{
+			name: "deletion_only", path: "src/legacy.py",
+			before: "def deprecated():\n    return True\n\n",
+		},
+		{
+			name: "renamed_file", path: "src/old_worker.py", audited: 1,
+			before: "def run_task():\n    return 42\n",
+		},
+		{
+			name: "whitespace_path", path: "src/my helper.py", audited: 1,
+			before: "def greet():\n    pass\n",
+		},
+		{
+			name: "non_ascii_path", path: "src/café_über.py", audited: 1,
+			before: "def status():\n    pass\n",
+		},
+	}
+	for _, fixture := range fixtures {
+		t.Run(fixture.name, func(t *testing.T) {
+			dir := initTempGitRepo(t)
+			t.Chdir(dir)
+			if fixture.path != "" {
+				source := filepath.Join(dir, fixture.path)
+				if err := os.MkdirAll(filepath.Dir(source), 0750); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(source, []byte(fixture.before), 0600); err != nil {
+					t.Fatal(err)
+				}
+				runGit(t, dir, "add", "--", fixture.path)
+				runGit(t, dir, "commit", "-m", "add parity fixture")
+				runGit(t, dir, "apply", "--recount", "--", filepath.Join(fixturesDir, fixture.name+".diff"))
+			}
+			files, err := collectAuditFiles(nil, "HEAD")
+			if err != nil || len(files) != fixture.audited {
+				t.Fatalf("expected %d audited files, got files=%v err=%v", fixture.audited, files, err)
+			}
+			findings, sli := sre.AuditFiles(files)
+			if (sli.Status == "BLOCKED") != fixture.blocked {
+				t.Fatalf("unexpected SLI status %s with findings %v", sli.Status, findings)
+			}
+			if fixture.blocked {
+				for _, finding := range findings {
+					if finding.Code == "SRE-SCALE-SWALLOW" && finding.Severity == model.SeverityBlocker {
+						return
+					}
+				}
+				t.Fatalf("expected SRE-SCALE-SWALLOW blocker finding, got %+v", findings)
+			}
+		})
+	}
+}
+
+func TestParseGitPathsDeterministicGeneratedInputs(t *testing.T) {
+	paths := []string{
+		"src/my file.go",
+		"src/café.go",
+		"src/tab\tworker.go",
+		"src/line\nworker.go",
+		"src/quote\"worker.go",
+		"src/arrow -> worker.go",
+	}
 	var seed uint64 = 0x5EEDC0DE2026
-	for i := 0; i < 64; i++ {
-		var sb strings.Builder
-		for step := 0; step < 8; step++ {
+	for range 1000 {
+		var want []string
+		for range 8 {
 			seed = seed*6364136223846793005 + 1
-			sb.WriteString(fragments[(seed>>32)%uint64(len(fragments))])
+			want = append(want, paths[(seed>>32)%uint64(len(paths))])
 		}
-		files, err := parseGitDiff(sb.String())
-		if err == nil {
-			_, _ = sre.AuditFiles(files)
+		stream := strings.Join(want, "\x00")
+		got, err := parseGitPaths(stream + "\x00")
+		if err != nil || !slices.Equal(got, want) {
+			t.Fatalf("path framing changed values: got=%q want=%q err=%v", got, want, err)
+		}
+		if _, err := parseGitPaths(stream); err == nil {
+			t.Fatalf("expected error for unterminated path stream %q", stream)
 		}
 	}
+}
 
+func TestConcurrentAuditRace(t *testing.T) {
 	sample := map[string]string{
 		"a.go": "package a\nfunc A() { if err != nil {} }\n",
 		"b.go": "package b\nfunc B() {}\n",
@@ -315,4 +485,47 @@ func TestParseGitDiffDeterministicFuzzAndConcurrentAuditRace(t *testing.T) {
 		}()
 	}
 	wg.Wait()
+}
+
+func TestExecuteAuditSkipsStagedChildUnderWorktreeFile(t *testing.T) {
+	dir := initTempGitRepo(t)
+	nested := filepath.Join(dir, "replaced")
+	if err := os.Mkdir(nested, 0750); err != nil {
+		t.Fatal(err)
+	}
+	child := filepath.Join(nested, "staged.go")
+	if err := os.WriteFile(child, []byte("package sample\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, dir, "add", "replaced/staged.go")
+	if err := os.Remove(child); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(nested); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(nested, []byte("replacement worktree file\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n\nfunc Work() {\n\ttime.Sleep(5 * time.Second)\n}\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(dir)
+
+	var stdout, stderr bytes.Buffer
+	code := executeAudit([]string{"--format", "json"}, &stdout, &stderr)
+	if code != 1 || stderr.Len() != 0 {
+		t.Fatalf("expected an audit finding, got exit=%d stdout=%q stderr=%q", code, &stdout, &stderr)
+	}
+	var report model.AuditReport
+	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
+		t.Fatal(err)
+	}
+	if report.SLI.TotalFiles != 1 || len(report.Findings) != 1 {
+		t.Fatalf("expected one source and finding, got %+v", report)
+	}
+	item := report.Findings[0]
+	if item.File != "main.go" || item.Line != 4 || item.Code != "SRE-SCALE-SLEEP" {
+		t.Fatalf("unexpected finding: %+v", item)
+	}
 }

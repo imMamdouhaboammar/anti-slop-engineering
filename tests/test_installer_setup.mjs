@@ -26,6 +26,49 @@ function inDisposableProject(args) {
   }
 }
 
+test('Setup: version fallback is limited to a missing package manifest', () => {
+  const fixture = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'anti-slop-installer-version-')))
+  const launch = path.join(fixture, 'scripts', 'installer.mjs')
+  const manifest = path.join(fixture, 'package.json')
+  const locked = path.join(fixture, 'locked')
+  try {
+    fs.mkdirSync(path.dirname(launch))
+    fs.copyFileSync(installer, launch)
+    const help = () => spawnSync(process.execPath, [launch, '--help'], { encoding: 'utf8' })
+    const missing = help()
+    assert.equal(missing.status, 0, missing.stderr)
+    assert.match(missing.stdout, /v1\.6\.0/)
+    fs.writeFileSync(manifest, '{"version":"2.3.4"}')
+    const present = help()
+    assert.equal(present.status, 0, present.stderr)
+    assert.match(present.stdout, /v2\.3\.4/)
+    fs.writeFileSync(manifest, 'malformed')
+    assert.notEqual(help().status, 0)
+
+    if (process.platform !== 'win32' && process.getuid?.() !== 0) {
+      fs.unlinkSync(manifest)
+      fs.mkdirSync(locked)
+      fs.writeFileSync(path.join(locked, 'metadata.json'), '{"version":"3.0.0"}')
+      fs.symlinkSync(path.join(locked, 'metadata.json'), manifest)
+      fs.chmodSync(locked, 0o000)
+      const unreadable = help()
+      assert.notEqual(unreadable.status, 0, unreadable.stdout)
+      assert.match(unreadable.stderr, /EACCES/)
+    }
+  } finally {
+    if (fs.existsSync(locked)) fs.chmodSync(locked, 0o700)
+    fs.rmSync(fixture, { recursive: true, force: true })
+  }
+})
+
+test('Setup: explicitly empty presets fail before installing', () => {
+  for (const arg of ['--preset=', '--pack=']) {
+    const result = inDisposableProject([arg, '--agent=codex', '--json'])
+    assert.equal(result.status, 1)
+    assert.match(result.stderr, /Preset name cannot be empty/)
+  }
+})
+
 test('Setup: non-interactive default installs mandatory core only', () => {
   const result = inDisposableProject(['--agent=codex', '--dry-run', '--json'])
   assert.equal(result.status, 0, result.stderr)
@@ -54,6 +97,72 @@ test('Setup: both help entrypoints describe the required core and optional plugi
   assert.match(general.stdout, /required core/i)
   assert.match(installerHelp.stdout, /core is required/i)
   assert.match(installerHelp.stdout, /optional skill/i)
+  assert.doesNotMatch(installerHelp.stdout, /\b(todo|fixme|dev[- ]note|developer[- ]note|agent[- ]note|mock data)\b/i)
+})
+
+test('Setup: role preset backend selects backend and sre skills', () => {
+  const result = inDisposableProject(['--agent=codex', '--preset=backend', '--dry-run', '--json'])
+  assert.equal(result.status, 0, result.stderr)
+  const skills = JSON.parse(result.stdout).skills
+  assert.ok(skills.includes('anti-slop-engineering'))
+  assert.ok(skills.includes('decision-guard'))
+  assert.ok(skills.includes('paranoid-principal-architect'))
+  assert.ok(skills.includes('observability-and-slo-architect'))
+  assert.equal(skills.includes('apple-craft-and-interaction-physics'), false)
+})
+
+test('Setup: role preset frontend selects frontend and UI craft skills', () => {
+  const result = inDisposableProject(['--agent=codex', '--preset=frontend', '--dry-run', '--json'])
+  assert.equal(result.status, 0, result.stderr)
+  const skills = JSON.parse(result.stdout).skills
+  assert.ok(skills.includes('anti-slop-engineering'))
+  assert.ok(skills.includes('ui-and-copy-discipline'))
+  assert.ok(skills.includes('apple-craft-and-interaction-physics'))
+  assert.ok(skills.includes('styleseed-guard'))
+  assert.equal(skills.includes('zero-downtime-migration-gate'), false)
+})
+
+test('Setup: role preset lead selects lead and governance skills', () => {
+  const result = inDisposableProject(['--agent=codex', '--preset=lead', '--dry-run', '--json'])
+  assert.equal(result.status, 0, result.stderr)
+  const skills = JSON.parse(result.stdout).skills
+  assert.ok(skills.includes('anti-slop-engineering'))
+  assert.ok(skills.includes('decision-guard'))
+  assert.ok(skills.includes('root-fix-gate'))
+  assert.ok(skills.includes('grumpy-senior-staff-engineer'))
+  assert.ok(skills.includes('pr-boundary-guard'))
+})
+
+test('Setup: domain pack core-decisions selects domain pack skills', () => {
+  const result = inDisposableProject(['--agent=codex', '--preset=core-decisions', '--dry-run', '--json'])
+  assert.equal(result.status, 0, result.stderr)
+  const skills = JSON.parse(result.stdout).skills
+  assert.ok(skills.includes('anti-slop-engineering'))
+  assert.ok(skills.includes('decision-guard'))
+  assert.ok(skills.includes('reduction-guard'))
+})
+
+test('Setup: a packaged domain manifest controls membership and reports missing modules', () => {
+  const fixture = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'anti-slop-preset-manifest-')))
+  try {
+    const launcher = path.join(fixture, 'scripts', 'installer.mjs')
+    fs.mkdirSync(path.dirname(launcher), { recursive: true })
+    fs.copyFileSync(installer, launcher)
+    fs.writeFileSync(path.join(fixture, 'skills.sh.json'), JSON.stringify({
+      groupings: [{ title: 'Core & Decisions', skills: ['anti-slop-engineering', 'added-module', 'missing-module'] }],
+    }))
+    const modulePath = path.join(fixture, 'skills', 'added-module')
+    fs.mkdirSync(modulePath, { recursive: true })
+    fs.writeFileSync(path.join(modulePath, 'SKILL.md'), '---\nname: added-module\n---\n')
+    const result = spawnSync(process.execPath, [
+      launcher, '--selection-only', '--preset=core-decisions', '--skills=added-module',
+    ], { cwd: fixture, encoding: 'utf8', env: { ...process.env, HOME: fixture, CI: 'true' } })
+    assert.equal(result.status, 0, result.stderr)
+    assert.deepEqual(JSON.parse(result.stdout).skills, ['anti-slop-engineering', 'added-module'])
+    assert.match(result.stderr, /missing-module/)
+  } finally {
+    fs.rmSync(fixture, { recursive: true, force: true })
+  }
 })
 
 test('Setup: a checkout uses its shipped core instead of a local agent copy', () => {
@@ -351,4 +460,68 @@ test('Setup: updateAll scopes instruction pointer updates to installed project s
   } finally {
     fs.rmSync(project, { recursive: true, force: true })
   }
+})
+
+const claudeSettings = '.claude/settings.local.json'
+
+function inClaudeWorkspace(callback) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ase-hook-plan-'))
+  try {
+    callback(dir)
+  } finally {
+    fs.rmSync(dir, {recursive: true, force: true})
+  }
+}
+
+function runClaudePreview(dir, args) {
+  return spawnSync(process.execPath, [installer, ...args], {
+    cwd: dir, encoding: 'utf8', env: {...process.env, HOME: dir, CI: 'true'},
+  })
+}
+
+test('default project skill setup leaves Claude hook settings untouched', () => {
+  inClaudeWorkspace((dir) => {
+    const result = runClaudePreview(dir, ['--agent=claude', '--skills=core', '--json'])
+    assert.equal(result.status, 0, result.stderr)
+    assert.equal(fs.existsSync(path.join(dir, claudeSettings)), false)
+    assert.equal(Object.hasOwn(JSON.parse(result.stdout), 'hookPlan'), false)
+  })
+})
+
+test('explicit project selection previews real Claude settings without writing', { skip: process.platform === 'win32' }, () => {
+  inClaudeWorkspace((dir) => {
+    const result = runClaudePreview(dir, ['--agent=claude,cursor', '--claude-hooks', '--dry-run', '--json'])
+    assert.equal(result.status, 0, result.stderr)
+    const {hookPlan} = JSON.parse(result.stdout)
+    assert.equal(hookPlan.status, 'would_change')
+    assert.equal(hookPlan.settings, fs.realpathSync(dir) + '/' + claudeSettings)
+    assert.deepEqual(hookPlan.tools, ['Read', 'Edit', 'Write'])
+    assert.equal(fs.existsSync(path.join(dir, '.claude')), false)
+  })
+})
+
+test('hook preview requires dry run and cannot be used to modify project settings', () => {
+  inClaudeWorkspace((dir) => {
+    const result = runClaudePreview(dir, ['--agent=claude', '--skills=core', '--claude-hooks', '--json'])
+    assert.notEqual(result.status, 0, result.stderr)
+    assert.match(result.stderr, /standalone Claude adapter/)
+    assert.equal(fs.existsSync(path.join(dir, '.claude')), false)
+  })
+})
+
+test('unsupported scope and invalid settings fail before installation writes', () => {
+  inClaudeWorkspace((dir) => {
+    for (const args of [['--agent=cursor', '--claude-hooks', '--dry-run'], ['--scope=global', '--agent=claude', '--claude-hooks', '--dry-run']]) {
+      const result = runClaudePreview(dir, args)
+      assert.notEqual(result.status, 0, result.stderr)
+      assert.equal(fs.existsSync(path.join(dir, '.claude')), false)
+      assert.equal(fs.existsSync(path.join(dir, '.cursor')), false)
+    }
+    fs.mkdirSync(path.join(dir, '.claude'))
+    fs.writeFileSync(path.join(dir, claudeSettings), 'fixture invalid JSON')
+    const result = runClaudePreview(dir, ['--agent=claude', '--skills=core', '--claude-hooks', '--dry-run', '--json'])
+    assert.notEqual(result.status, 0)
+    assert.equal(fs.existsSync(path.join(dir, '.claude/skills')), false)
+    assert.equal(fs.readFileSync(path.join(dir, claudeSettings), 'utf8'), 'fixture invalid JSON')
+  })
 })

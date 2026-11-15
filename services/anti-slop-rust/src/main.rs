@@ -1,3 +1,5 @@
+mod change_check;
+
 use anti_slop_rust::ladder_auditor::LadderAuditor;
 use anti_slop_rust::model::AuditReport;
 use anti_slop_rust::server;
@@ -23,13 +25,36 @@ enum Commands {
         #[arg(short, long)]
         diff: Option<String>,
 
-        /// Allowed file prefixes to check against scope creep (comma-separated)
+        /// Allowed repository-relative paths or directory prefixes (comma-separated)
         #[arg(short, long)]
         allowed: Option<String>,
 
         /// Flag if the current agent intent is strictly read-only / review
         #[arg(long)]
         read_only: bool,
+
+        /// Output format: text or json
+        #[arg(short, long, default_value = "text")]
+        format: String,
+    },
+
+    /// Apply file-level intent and scope checks to a normalized Git change set
+    ChangeCheck {
+        /// Change-set JSON path (omit to read stdin)
+        #[arg(long)]
+        changeset: Option<String>,
+
+        /// Allowed repository-relative paths or directory prefixes (comma-separated)
+        #[arg(long)]
+        allowed: Option<String>,
+
+        /// Flag recorded changes in read-only intent
+        #[arg(long)]
+        read_only: bool,
+
+        /// Include separately listed worktree untracked paths
+        #[arg(long)]
+        include_untracked: bool,
 
         /// Output format: text or json
         #[arg(short, long, default_value = "text")]
@@ -82,6 +107,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             format,
         } => run_shit_check(diff, allowed, read_only, &format)?,
 
+        Commands::ChangeCheck {
+            changeset,
+            allowed,
+            read_only,
+            include_untracked,
+            format,
+        } => {
+            let allowed_files: Option<Vec<&str>> = allowed
+                .as_deref()
+                .map(|scope| scope.split(',').map(str::trim).collect());
+            let report = match changeset {
+                Some(path) => change_check::audit(
+                    fs::File::open(path)?,
+                    allowed_files.as_deref(),
+                    read_only,
+                    include_untracked,
+                ),
+                None => change_check::audit(
+                    io::stdin().lock(),
+                    allowed_files.as_deref(),
+                    read_only,
+                    include_untracked,
+                ),
+            }?;
+            finish_with_report(&report, &format);
+        }
+
         Commands::LadderAudit { paths, format } => run_ladder_audit(paths, &format)?,
 
         Commands::Triage {
@@ -130,9 +182,8 @@ fn run_ladder_audit(paths: Vec<String>, format: &str) -> io::Result<()> {
     let mut all_findings = Vec::new();
 
     for path in paths {
-        let content = fs::read_to_string(&path).map_err(|e| {
-            io::Error::new(e.kind(), format!("Cannot read '{path}': {e}"))
-        })?;
+        let content = fs::read_to_string(&path)
+            .map_err(|e| io::Error::new(e.kind(), format!("Cannot read '{path}': {e}")))?;
         let mut findings = auditor.audit_code(&path, &content);
         all_findings.append(&mut findings);
     }
