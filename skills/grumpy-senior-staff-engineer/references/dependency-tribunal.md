@@ -78,3 +78,17 @@ When a dependency *does* survive the tribunal, document the decision:
 ```
 
 A dependency added without this record is a dependency that will be forgotten until it fails.
+
+## Lockfile-first evidence for Bun
+
+For an existing dependency, capture the declared range from `package.json` and the exact release from `bun.lock` before proposing changes. Then inspect the matching installed package manifest and its exported definitions if the task depends on an API. An absent installation or mismatched version leaves local API availability unverified.
+
+The [offline Bun example](../examples/bun-lock-evidence.mjs) reads text lockfile version 2. It identifies a direct root dependency and distinguishes stable from prerelease selections. It reports mismatched declarations, missing records, and unsupported lockfile formats, tagged or local resolutions, aliases, direct overrides, and ambiguous dependency groups. For a workspace or non-registry resolution, inspect the corresponding manifest and lockfile entry before making a recommendation.
+
+```bash
+bun <skill-directory>/examples/bun-lock-evidence.mjs <project-root> <package-name>
+```
+
+A `locked` result reflects the selected lockfile record. Confirm installation separately even if a Bun package listing prints an installed count. Use the project-supported Bun version when inspecting the lockfile with package-manager commands. Keep an existing pin unless the requested change needs a release outside it. If a release decision needs registry data, record the package, registry, release channel, compatibility constraints, and lookup date. A missing or offline registry leaves availability, deprecation, and current release status unknown.
+
+Bun documentation for [text lockfiles](https://bun.com/docs/pm/lockfile) and [JSONC parsing](https://bun.com/reference/globals/bun/JSONC/parse)
