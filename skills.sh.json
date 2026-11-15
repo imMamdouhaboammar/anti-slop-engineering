@@ -36,6 +36,7 @@
         "safe-evolution-and-rollout-choreographer",
         "zero-downtime-migration-gate",
         "privacy-and-data-lineage-gate",
+        "cryptographic-agility-and-secret-lifecycle-gate",
         "observability-and-slo-architect",
         "observability-and-slo-gate"
       ]
