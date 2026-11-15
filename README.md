@@ -125,6 +125,20 @@ bunx anti-slop-engineering --base HEAD --json
 bunx anti-slop-engineering --base HEAD --fail-on-blocker
 ```
 
+### Optional diff lifecycle hooks
+
+```bash
+bunx anti-slop-engineering diff --base HEAD --hooks-dir /absolute/path/to/trusted-hooks
+```
+
+Supply a caller-owned, canonical directory outside the scanned checkout. Its optional `pre_scan.py` and
+`post_scan.py` each receive a JSON event on stdin. Both receive `event_type`,
+`repo`, `base`, and `payload`. The pre-scan payload contains `review_lines` and
+the post-scan payload contains the report `summary`. A hook runs from its trusted
+directory with user permissions. The scan waits up to 5 seconds for each hook
+process and returns exit code 1 on timeout or a nonzero exit. Plain diff and
+unified audit invocations run without hooks.
+
 ### SRE Guard — Google SRE principles enforced statically
 
 Implements the four Google SRE engineering mandates (KISS, DRY, YAGNI, Fix Issues at Scale) as a static analysis pass over your diff or source files. Zero external dependencies — pure Python 3.9+ stdlib.

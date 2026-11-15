@@ -15,6 +15,7 @@ import sys
 if not __package__:
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
+from scripts.diff_lifecycle import load_hooks, run_hook
 from scripts.git_changeset import collect_changes, repository_root
 
 __version__ = '1.8.0'
@@ -143,8 +144,10 @@ def audit_patch_lines(added_lines):
     return findings
 
 
-def scan(repo, base, max_lines=400):
+def scan(repo, base, max_lines=400, *, hooks_dir=None):
     root = repository_root(repo)
+    hooks = load_hooks(hooks_dir, root) if hooks_dir is not None else {}
+    run_hook(hooks.get("pre_scan"), "pre_scan", root, base, {"review_lines": max_lines})
     added_lines = []
     evidence = collect_changes(root, base, added_lines=added_lines, detect_renames=False)
     file_counts = []
@@ -172,7 +175,7 @@ def scan(repo, base, max_lines=400):
     patch_findings = audit_patch_lines(added_lines)
     findings = meta_findings + patch_findings
 
-    return {
+    report = {
         'base': base,
         'summary': {'changed_files': len(evidence["files"]), 'added_lines': added_total, 'deleted_lines': deleted_total,
                     'changed_test_files': len(changed_test), 'new_test_files': len(new_test),
@@ -181,6 +184,8 @@ def scan(repo, base, max_lines=400):
         'limitations': limitations,
         'status': 'review-required' if findings else 'no-heuristic-findings'
     }
+    run_hook(hooks.get("post_scan"), "post_scan", root, base, {"summary": report["summary"]})
+    return report
 
 
 def main():
@@ -191,9 +196,13 @@ def main():
     p.add_argument('--json', action='store_true', help='Machine-readable JSON output')
     p.add_argument('--review-lines', type=int, default=400, help='Added-line count prompting scope review, not failure')
     p.add_argument('--fail-on-blocker', action='store_true', help='Exit 2 for candidate test-disable patterns pending review')
+    p.add_argument(
+        '--hooks-dir', type=pathlib.Path, metavar='ABSOLUTE_DIR',
+        help='Run trusted pre_scan.py and/or post_scan.py once from an external directory.',
+    )
     a = p.parse_args()
     try:
-        report = scan(pathlib.Path(a.repo).resolve(), a.base, a.review_lines)
+        report = scan(pathlib.Path(a.repo).resolve(), a.base, a.review_lines, hooks_dir=a.hooks_dir)
     except (RuntimeError, ValueError) as exc:
         print(json.dumps({'error': str(exc)}) if a.json else f'ERROR: {exc}')
         return 1
