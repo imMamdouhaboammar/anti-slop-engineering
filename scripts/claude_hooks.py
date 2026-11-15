@@ -9,7 +9,16 @@ import sys
 import tempfile
 from pathlib import Path
 
-from exec_guard import SessionStateManager, evaluate_hook_event, read_hook_object, validate_hook_event
+if not __package__:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from scripts.exec_guard import (
+    SessionStateManager,
+    _load_hook_policy,
+    evaluate_hook_event,
+    read_hook_object,
+    validate_hook_event,
+)
 
 PHASES = {"PreToolUse": "pre_tool", "PostToolUse": "post_tool"}
 TOOLS = {"Read": "read", "Edit": "write", "Write": "write"}
@@ -60,8 +69,6 @@ def translate_policy(result, phase):
 
 
 def evaluate(project, phase):
-    from exec_guard import _load_hook_policy
-
     try:
         event = normalize_event(read_hook_object(sys.stdin.buffer), phase, project)
         result = {} if event is None else translate_policy(
