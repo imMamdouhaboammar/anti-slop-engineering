@@ -4,6 +4,7 @@
 """Deterministic seed control and source scanner for property tests and fuzzers."""
 
 import argparse
+import ast
 import json
 import os
 import re
@@ -11,24 +12,18 @@ import shlex
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
 
-MATH_RANDOM_RE = re.compile(r"\bMath\.random\s*\(")
-FC_ASSERT_RE = re.compile(r"\bfc\.assert\s*\(")
-
-PYTHON_RANDOM_PATTERNS = (
-    "random.randint(",
-    "random.randint (",
-    "random.random(",
-    "random.random (",
-    "random.choice(",
-    "random.choice (",
-    "random.randrange(",
-    "random.randrange (",
-    "random.sample(",
-    "random.sample (",
-    "random.shuffle(",
-    "random.shuffle (",
+JS_EXTENSIONS = {".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts"}
+JS_TOKENS = re.compile(
+    r"//[^\n]*|/\*[\s\S]*?\*/|"
+    r"""'(?:\\[\s\S]|[^'\\])*'|"(?:\\[\s\S]|[^"\\])*"|\x60(?:\\[\s\S]|[^\x60\\])*\x60|"""
+    r"[\w$]+|\S"
+)
+BRACKETS = {"(": ")", "[": "]", "{": "}"}
+PYTHON_GENERATORS = {"randint", "random", "choice", "randrange", "sample", "shuffle"}
+PYTHON_RANDOM_RE = re.compile(
+    r"\brandom\s*\.\s*(?:" + "|".join(sorted(PYTHON_GENERATORS)) + r")\s*\("
 )
 
 
@@ -107,45 +102,142 @@ class SeedContext:
             os.environ["ANTI_SLOP_SEED"] = self.prev_seed
 
 
-def _check_fc_assert_seeded(source: str, match_pos: int) -> bool:
-    """Inspect fc.assert block starting at match_pos to verify seed option."""
-    window = source[match_pos : match_pos + 500]
-    semi_idx = window.find(";")
-    if semi_idx != -1:
-        window = window[:semi_idx]
-    return bool(re.search(r"\bseed\b", window))
+def _python_call_name(call: ast.Call) -> str:
+    target = call.func
+    if isinstance(target, ast.Attribute) and isinstance(target.value, ast.Name):
+        if target.value.id == "random":
+            return target.attr
+    return ""
+
+
+def _explicit_python_seed(call: ast.Call) -> bool:
+    argument = next(
+        iter(call.args),
+        next((option.value for option in call.keywords if option.arg == "a"), None),
+    )
+    return argument is not None and not (
+        isinstance(argument, ast.Constant) and argument.value is None
+    ) and not isinstance(argument, ast.Starred)
+
+
+def _python_calls(node: ast.AST, scopes: List[List[ast.stmt]]) -> Iterator[ast.Call]:
+    pending = [node]
+    while pending:
+        current = pending.pop()
+        if isinstance(current, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            scopes.append(current.body)
+            body = set(current.body)
+            pending.extend(child for child in ast.iter_child_nodes(current) if child not in body)
+        elif isinstance(current, ast.Lambda):
+            scopes.append([ast.Expr(value=current.body)])
+            pending.append(current.args)
+        else:
+            if isinstance(current, ast.Call):
+                yield current
+            pending.extend(ast.iter_child_nodes(current))
+
+
+def _python_scope_has_unseeded_draw(
+    statements: List[ast.stmt], scopes: List[List[ast.stmt]]
+) -> bool:
+    seeded = False
+    for statement in statements:
+        calls = sorted(
+            _python_calls(statement, scopes),
+            key=lambda call: (call.end_lineno, call.end_col_offset),
+        )
+        for call in calls:
+            name = _python_call_name(call)
+            if name == "seed":
+                if not _explicit_python_seed(call):
+                    seeded = False
+                elif isinstance(statement, ast.Expr) and statement.value is call:
+                    seeded = True
+            if name in PYTHON_GENERATORS and not seeded:
+                return True
+    return False
+
+
+def _has_unseeded_python_draw(source: str) -> bool:
+    try:
+        module = ast.parse(source)
+    except (SyntaxError, RecursionError):
+        return bool(PYTHON_RANDOM_RE.search(source))
+
+    scopes = [module.body]
+    while scopes:
+        if _python_scope_has_unseeded_draw(scopes.pop(), scopes):
+            return True
+    return False
+
+
+def _top_level_tokens(tokens: List[str], start: int) -> Iterator[int]:
+    closing = []
+    for index in range(start, len(tokens)):
+        token = tokens[index]
+        if not closing:
+            if token in BRACKETS.values():
+                return
+            yield index
+        if token in BRACKETS:
+            closing.append(BRACKETS[token])
+        elif closing and token == closing[-1]:
+            closing.pop()
+
+
+def _fast_check_seed_option(tokens: List[str], start: int) -> bool:
+    argument_start = next(
+        (index + 1 for index in _top_level_tokens(tokens, start) if tokens[index] == ","),
+        None,
+    )
+    if argument_start is None or tokens[argument_start : argument_start + 1] != ["{"]:
+        return False
+
+    for index in _top_level_tokens(tokens, argument_start + 1):
+        if tokens[index - 1] not in ("{", ","):
+            continue
+        if tokens[index : index + 2] in (["seed", ","], ["seed", "}"]):
+            return True
+        if tokens[index] in ("seed", "'seed'", '"seed"') and tokens[index + 1 : index + 2] == [":"]:
+            return tokens[index + 2 : index + 3] not in (["undefined"], ["void"], [])
+    return False
 
 
 def scan_source_for_unseeded_generators(source: str, file_path: str = "") -> List[Dict[str, Any]]:
-    """Scan source code for unseeded random generators or unconfigured PBT runners."""
+    """Check direct module calls and inline fast-check option objects."""
     findings: List[Dict[str, Any]] = []
+    suffix = Path(file_path).suffix.lower()
+    tokens = [
+        match[0] for match in JS_TOKENS.finditer(source)
+        if not match[0].startswith(("//", "/*"))
+    ] if suffix != ".py" else []
 
-    for match in MATH_RANDOM_RE.finditer(source):
+    for index, token in enumerate(tokens):
+        if token == "Math" and tokens[index + 1 : index + 4] == [".", "random", "("]:
+            findings.append({
+                "code": "UNSEEDED_MATH_RANDOM",
+                "file": file_path,
+                "severity": "block",
+                "message": "Math.random() call found without deterministic PRNG seed.",
+            })
+
+    if suffix not in JS_EXTENSIONS and _has_unseeded_python_draw(source):
         findings.append({
-            "code": "UNSEEDED_MATH_RANDOM",
+            "code": "UNSEEDED_PYTHON_RANDOM",
             "file": file_path,
             "severity": "block",
-            "message": "Math.random() call found without deterministic PRNG seed.",
+            "message": "Python random module generator found without explicit deterministic seed.",
         })
 
-    for pat in PYTHON_RANDOM_PATTERNS:
-        if pat in source:
-            findings.append({
-                "code": "UNSEEDED_PYTHON_RANDOM",
-                "file": file_path,
-                "severity": "block",
-                "message": "Python random module generator found without explicit deterministic seed.",
-            })
-            break
-
-    for match in FC_ASSERT_RE.finditer(source):
-        if not _check_fc_assert_seeded(source, match.start()):
-            findings.append({
-                "code": "UNSEEDED_FAST_CHECK_PROPERTY",
-                "file": file_path,
-                "severity": "block",
-                "message": "fast-check fc.assert(...) without explicit seed configuration.",
-            })
+    for index, token in enumerate(tokens):
+        if token == "fc" and tokens[index + 1 : index + 4] == [".", "assert", "("]:
+            if not _fast_check_seed_option(tokens, index + 4):
+                findings.append({
+                    "code": "UNSEEDED_FAST_CHECK_PROPERTY",
+                    "file": file_path,
+                    "severity": "block",
+                    "message": "fast-check fc.assert(...) without explicit seed configuration.",
+                })
 
     return findings
 
@@ -179,9 +271,16 @@ def _handle_scan(source_path: str, as_json: bool) -> int:
     return 2 if findings else 0
 
 
-def _handle_run(seed_val: str, command: str) -> int:
+def _cli_seed_context(value: str) -> SeedContext:
+    try:
+        return SeedContext(value)
+    except ValueError as err:
+        raise argparse.ArgumentTypeError(str(err)) from err
+
+
+def _handle_run(seed: SeedContext, command: str) -> int:
     cmd_parts = shlex.split(command)
-    with SeedContext(seed_val):
+    with seed:
         proc = subprocess.run(cmd_parts)
         return proc.returncode
 
@@ -198,7 +297,7 @@ def main() -> int:
     scan_p.add_argument("--json", action="store_true", help="Output as JSON")
 
     run_p = subparsers.add_parser("run")
-    run_p.add_argument("--seed", required=True, help="Seed integer or hex")
+    run_p.add_argument("--seed", required=True, type=_cli_seed_context, help="Seed integer or hex")
     run_p.add_argument("--command", required=True, help="Command to execute")
 
     args = parser.parse_args()

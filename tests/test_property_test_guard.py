@@ -144,6 +144,162 @@ class PropertyTestGuardCLITests(unittest.TestCase):
             data_good = json.loads(res_good.stdout)
             self.assertEqual(len(data_good["findings"]), 0)
 
+    def test_cli_scan_accepts_explicit_python_seed(self):
+        with tempfile.TemporaryDirectory() as td:
+            source = pathlib.Path(td) / "property.py"
+            source.write_text(
+                "import random\n"
+                "random.seed(42)\n"
+                "assert 0 <= random.randrange(10) < 10\n"
+            )
+            res = subprocess.run(
+                [sys.executable, str(SCRIPT_PATH), "scan", "--source", str(source), "--json"],
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+            self.assertEqual(json.loads(res.stdout)["findings"], [])
+
+    def test_cli_scan_flags_python_seed_after_first_draw_or_seeded_from_entropy(self):
+        for seed_call in ["random.seed(42)", "random.seed()", "random.seed(None)"]:
+            with self.subTest(seed_call=seed_call), tempfile.TemporaryDirectory() as td:
+                source = pathlib.Path(td) / "property.py"
+                source.write_text(f"import random\nrandom.randrange(10)\n{seed_call}\n")
+                if seed_call != "random.seed(42)":
+                    source.write_text(f"import random\n{seed_call}\nrandom.randrange(10)\n")
+                res = subprocess.run(
+                    [sys.executable, str(SCRIPT_PATH), "scan", "--source", str(source), "--json"],
+                    capture_output=True,
+                    text=True,
+                )
+                self.assertEqual(res.returncode, 2, res.stdout + res.stderr)
+                self.assertEqual(
+                    [entry["code"] for entry in json.loads(res.stdout)["findings"]],
+                    ["UNSEEDED_PYTHON_RANDOM"],
+                )
+
+    def test_cli_scan_requires_seed_in_fast_check_options(self):
+        examples = (
+            "fc.assert(fc.property(fc.string(), (seed) => seed.length >= 0));",
+            "fc.assert(fc.property(fc.string(), (value) => value.length >= 0), "
+            "{ reporter: () => { const seed = 42; } });",
+            "fc.assert(fc.property(fc.string(), (value) => value.length >= 0), "
+            "{ /* seed: 42 */ numRuns: 2 });",
+        )
+        for snippet in examples:
+            with self.subTest(snippet=snippet), tempfile.TemporaryDirectory() as td:
+                source = pathlib.Path(td) / "property.ts"
+                source.write_text(snippet)
+                res = subprocess.run(
+                    [sys.executable, str(SCRIPT_PATH), "scan", "--source", str(source), "--json"],
+                    capture_output=True,
+                    text=True,
+                )
+                self.assertEqual(res.returncode, 2, res.stdout + res.stderr)
+                self.assertEqual(
+                    [entry["code"] for entry in json.loads(res.stdout)["findings"]],
+                    ["UNSEEDED_FAST_CHECK_PROPERTY"],
+                )
+
+    def test_source_examples_in_strings_and_comments_do_not_report_draws(self):
+        for suffix, snippet in (
+            (".py", '# random.randrange(10)\nexample = "random.random()"\n'),
+            (".ts", '// fc.assert(fc.property(example))\nconst example = "Math.random()";'),
+        ):
+            with self.subTest(suffix=suffix):
+                self.assertEqual(scan_source_for_unseeded_generators(snippet, "example" + suffix), [])
+
+    def test_deep_python_expression_finishes_source_scan(self):
+        with tempfile.TemporaryDirectory() as td:
+            source = pathlib.Path(td) / "property.py"
+            source.write_text(
+                "import random\n"
+                "random.seed(1)\n"
+                + "+".join(["random.random()", *["1"] * 1500])
+                + "\n"
+            )
+            res = subprocess.run(
+                [sys.executable, str(SCRIPT_PATH), "scan", "--source", str(source), "--json"],
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+            self.assertEqual(json.loads(res.stdout)["findings"], [])
+
+    def test_python_draw_in_deferred_function_requires_its_own_provable_seed(self):
+        source = (
+            "import random\n"
+            "random.seed(1)\n"
+            "def draw():\n"
+            "    return random.random()\n"
+            "random.seed(None)\n"
+            "draw()\n"
+        )
+        findings = scan_source_for_unseeded_generators(source, "property.py")
+        self.assertEqual([entry["code"] for entry in findings], ["UNSEEDED_PYTHON_RANDOM"])
+
+    def test_python_draw_with_explicit_seed_in_same_function_is_accepted(self):
+        source = (
+            "import random\n"
+            "def draw():\n"
+            "    random.seed(1)\n"
+            "    return random.random()\n"
+            "draw()\n"
+        )
+        self.assertEqual(scan_source_for_unseeded_generators(source, "property.py"), [])
+
+    def test_explicit_entropy_values_do_not_supply_a_fast_check_seed(self):
+        for entropy in ("undefined", "void 0"):
+            with self.subTest(entropy=entropy):
+                source = (
+                    "fc.assert(fc.property(fc.integer(), Number.isInteger), "
+                    f"{{ seed: {entropy} }});"
+                )
+                findings = scan_source_for_unseeded_generators(source, "property.ts")
+                self.assertEqual(
+                    [entry["code"] for entry in findings],
+                    ["UNSEEDED_FAST_CHECK_PROPERTY"],
+                )
+
+    def test_fast_check_seed_from_next_call_does_not_cover_previous_call(self):
+        source = (
+            "fc.assert(fc.property(fc.integer(), (n) => Number.isInteger(n)))\n"
+            "fc.assert(fc.property(fc.integer(), (n) => Number.isInteger(n)), { seed: 42 })"
+        )
+        findings = scan_source_for_unseeded_generators(source, "property.ts")
+        self.assertEqual([entry["code"] for entry in findings], ["UNSEEDED_FAST_CHECK_PROPERTY"])
+
+    def test_cli_scan_accepts_seed_option_after_callback_with_statements(self):
+        with tempfile.TemporaryDirectory() as td:
+            source = pathlib.Path(td) / "property.ts"
+            source.write_text(
+                "fc.assert(fc.property(fc.integer(), (n) => {\n"
+                "  const square = n * n;\n"
+                "  return square >= 0;\n"
+                "}), { numRuns: 100, 'seed': 42 });\n"
+            )
+            res = subprocess.run(
+                [sys.executable, str(SCRIPT_PATH), "scan", "--source", str(source), "--json"],
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+            self.assertEqual(json.loads(res.stdout)["findings"], [])
+
+    def test_cli_reports_invalid_seed_as_usage_error_without_launching_command(self):
+        res = subprocess.run(
+            [
+                sys.executable, str(SCRIPT_PATH), "run", "--seed", "not_a_seed",
+                "--command", f'{sys.executable} -c "print(42)"',
+            ],
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(res.returncode, 2, res.stdout + res.stderr)
+        self.assertIn("Invalid seed", res.stderr)
+        self.assertNotIn("Traceback", res.stderr)
+        self.assertEqual(res.stdout, "")
+
     def test_cli_run_command_with_seed_injection(self):
         cmd = f'{sys.executable} -c "import os; print(os.environ.get(\'ANTI_SLOP_SEED\'))"'
         res = subprocess.run(
