@@ -50,6 +50,7 @@ const motionRuntimeGuardScript = resolve(rootDir, "scripts", "motion_runtime_gua
 const assetProvenanceGuardScript = resolve(rootDir, "scripts", "asset_provenance_guard.py");
 const styleseedGuardScript = resolve(rootDir, "scripts", "styleseed_guard.py");
 const tagoreGuardScript = resolve(rootDir, "scripts", "tagore_guard.py");
+const catalogLookupScript = resolve(rootDir, "scripts", "catalog_lookup.py");
 const auditRunnerScript = resolve(rootDir, "scripts", "audit_runner.py");
 const installerScript = resolve(rootDir, "scripts", "installer.mjs");
 const installOxlintScript = resolve(rootDir, "skills", "install-anti-slop", "scripts", "install.mjs");
@@ -247,6 +248,7 @@ Commands:
   install-oxlint         Install bundled Oxlint anti-slop plugin into target repo
   update-oxlint          Reconcile and update vendored Oxlint anti-slop rules preserving local edits
   bump [part]            Bump version across all 13 manifests (patch, minor, major, or explicit)
+  catalog, explain [id]  Search and inspect anti-pattern catalog entries on demand (--search <query>)
   test                   Run unit test suite
   contribute             Print guidelines on reporting noted slop or opening PRs
 
@@ -482,6 +484,8 @@ if (cmd === "build") {
   runPythonScript(styleseedGuardScript, args.slice(1), "styleseed_guard");
 } else if (cmd === "tagore" || cmd === "tagore-guard" || cmd === "discourse" || cmd === "deslop-prose" || cmd === "humanize" || cmd === "prose") {
   runPythonScript(tagoreGuardScript, args.slice(1), "tagore_guard");
+} else if (cmd === "catalog" || cmd === "explain") {
+  runPythonScript(catalogLookupScript, args.slice(1), "catalog_lookup");
 } else if (cmd === "audit") {
   runPythonScript(auditRunnerScript, ["audit", ...args.slice(1)], "audit_runner");
 } else if (cmd === "mode") {

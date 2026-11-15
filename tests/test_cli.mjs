@@ -208,6 +208,30 @@ test("update-oxlint command performs dry-run reconciliation on existing target",
   }
 });
 
+test("catalog command routes to catalog_lookup for exact ID and JSON output", () => {
+  const result = invoke("anti-slop-engineering", ["catalog", "SIM-08", "--json"]);
+  assert.equal(result.status, 0, result.stderr);
+  const data = JSON.parse(result.stdout);
+  assert.equal(data.id, "SIM-08");
+  assert.equal(data.found, true);
+  assert.equal(data.skill, "anti-slop-engineering");
+});
+
+test("explain command alias routes to catalog lookup with text formatting", () => {
+  const result = invoke("anti-slop-engineering", ["explain", "REQ-01"]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /Pattern:\s+REQ-01/);
+  assert.match(result.stdout, /anti-slop-engineering/);
+});
+
+test("catalog command routes search query with keyword results", () => {
+  const result = invoke("anti-slop-engineering", ["catalog", "--search", "injection", "--json"]);
+  assert.equal(result.status, 0, result.stderr);
+  const data = JSON.parse(result.stdout);
+  assert.ok(data.count > 0);
+  assert.ok(data.results.some((r) => r.id === "SEC-05"));
+});
+
 test("cases command runs the 16 declarative evaluation cases cleanly", () => {
   const result = invoke("anti-slop-engineering", ["cases"]);
   assert.equal(result.status, 0, result.stderr);

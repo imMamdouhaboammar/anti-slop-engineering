@@ -457,6 +457,8 @@ EXCLUDED_CLI_COMMANDS: Dict[str, str] = {
     "check": "Development test runner executing test and verification gates",
     "check-all": "Development test runner executing all test suites across polyglot engines",
     "contribute": "Interactive guidelines printer for community slop reporting and PRs",
+    "catalog": "Search and inspect anti-pattern catalog entries on demand",
+    "explain": "Alias for catalog command",
     "version": "CLI version display",
     "--version": "CLI version flag",
     "-v": "CLI version flag shorthand",
@@ -1326,6 +1328,10 @@ def main() -> int:
             observability_record=options.observability_record,
             motion_record=options.motion_record,
         )
+    elif command in ("catalog", "explain"):
+        import catalog_lookup
+
+        return catalog_lookup.main(args[1:])
     elif command == "fix":
         print(
             "Error: 'fix' command is not supported. Anti-slop engineering requires "
