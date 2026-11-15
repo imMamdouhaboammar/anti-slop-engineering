@@ -86,6 +86,10 @@ jobs:
       - name: Verify Python syntax
         run: python -m py_compile scripts/diff_guard.py scripts/sre_guard.py scripts/decision_guard.py scripts/root_fix_guard.py scripts/future_scale_guard.py scripts/bump_version.py tests/test_diff_guard.py tests/test_sre_guard.py tests/test_decision_guard.py tests/test_root_fix_guard.py tests/test_future_scale_guard.py tests/test_bump_version.py
 
+      - name: Verify release metadata and tracked platform junk
+        if: matrix.python-version == '3.12'
+        run: python scripts/bump_version.py --check
+
       - name: Run unit test suite
         run: python -m unittest discover -s tests -v
 
