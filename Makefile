@@ -1,7 +1,8 @@
-.PHONY: test test-verbose test-cases diff guard sre lint ruff ruff-fix oxlint clippy lint-rust install-clippy check help build-rust build-go build-services test-security test-rust test-go test-all check-all
+.PHONY: test test-verbose test-cases diff guard sre lint ruff ruff-fix oxlint clippy lint-rust install-clippy check help build-rust build-go build-services test-security test-rust test-go test-all check-all check-engines check-changed test-node
 
 PYTHON ?= python3
 BUN ?= bun
+BASE ?= HEAD
 
 help:
 	@echo "Available targets:"
@@ -14,6 +15,8 @@ help:
 	@echo "  make build-rust      Compile release binary for Rust engine"
 	@echo "  make build-go        Compile binary for Go SRE engine"
 	@echo "  make build-services  Compile both Rust and Go microservices"
+	@echo "  make check-changed  Run checks selected from staged, unstaged and untracked paths"
+	@echo "  make check-engines   Verify availability of polyglot engine toolchains (cargo, go, node, bun)"
 	@echo "  make diff            Alias for make guard (run diff_guard against HEAD)"
 	@echo "  make guard           Run diff_guard against HEAD"
 	@echo "  make sre             Run sre_guard against HEAD"
@@ -25,7 +28,13 @@ help:
 	@echo "  make lint-rust       Alias for make clippy"
 	@echo "  make install-clippy  Install or verify Clippy component via rustup"
 	@echo "  make check           Run developer quality checks: lint + test-verbose + guard + sre"
-	@echo "  make check-all       Run full repository suite: check + test-rust + test-go + clippy"
+	@echo "  make check-all       Run full repository suite: check + test-security + test-node + oxlint + test-rust + test-go + clippy"
+
+check-engines:
+	@$(PYTHON) scripts/audit_runner.py check-engines
+
+check-changed:
+	+@$(PYTHON) scripts/audit_runner.py check-changed --base "$(BASE)" --make "$(MAKE)"
 
 test:
 	$(PYTHON) -m unittest discover -s tests
@@ -39,19 +48,22 @@ test-cases:
 	$(PYTHON) scripts/run_cases.py
 
 test-security:
-	$(BUN) test test/security/redteam-healed.test.ts
+	@$(PYTHON) scripts/audit_runner.py run-engine --engine bun --title "Bun security regression suite" -- $(BUN) test test/security/redteam-healed.test.ts
+
+test-node:
+	@$(PYTHON) scripts/audit_runner.py run-engine --engine node -- node --test tests/test_cli.mjs tests/test_installer.mjs tests/test_installer_setup.mjs tests/test_package_install.mjs
 
 test-rust:
-	cd services/anti-slop-rust && cargo test
+	@$(PYTHON) scripts/audit_runner.py run-engine --engine cargo --title "Rust engine test suite" --cwd services/anti-slop-rust -- cargo test
 
 test-go:
-	cd services/toil-guard-go && go test -v ./...
+	@$(PYTHON) scripts/audit_runner.py run-engine --engine go --title "Go SRE engine test suite" --cwd services/toil-guard-go -- go test -v ./...
 
 build-rust:
-	cd services/anti-slop-rust && cargo build --release
+	@$(PYTHON) scripts/audit_runner.py run-engine --engine cargo --title "Rust engine release build" --cwd services/anti-slop-rust -- cargo build --release
 
 build-go:
-	cd services/toil-guard-go && go build -o bin/toil-guard ./cmd/toil-guard
+	@$(PYTHON) scripts/audit_runner.py run-engine --engine go --title "Go SRE engine build" --cwd services/toil-guard-go -- go build -o bin/toil-guard ./cmd/toil-guard
 
 build-services: build-rust build-go
 
@@ -67,10 +79,10 @@ ruff-fix:
 	ruff check --fix .
 
 oxlint:
-	bunx oxlint
+	@$(PYTHON) scripts/audit_runner.py run-engine --engine bun --title "Oxlint AST linter" -- bunx oxlint
 
 clippy:
-	cd services/anti-slop-rust && cargo clippy --all-targets --all-features -- -D warnings
+	@$(PYTHON) scripts/audit_runner.py run-engine --engine cargo --title "Cargo Clippy linter" --cwd services/anti-slop-rust -- cargo clippy --all-targets --all-features -- -D warnings
 
 lint-rust: clippy
 
@@ -104,4 +116,5 @@ bump:
 
 check: lint test-verbose guard sre
 
-check-all: check test-rust test-go clippy
+check-all: export STRICT_ENGINE_CHECK = true
+check-all: check test-security test-node oxlint test-rust test-go clippy

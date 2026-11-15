@@ -136,3 +136,18 @@ Update the pattern count in `README.md` and add an entry under `[Unreleased]` or
 - Use conventional commits: `feat: add UI-17 pattern for unescaped template tags`.
 - Include links to relevant issues or real-world example URLs in your PR description.
 - Use the pull request template provided in [`.github/PULL_REQUEST_TEMPLATE.md`](.github/PULL_REQUEST_TEMPLATE.md).
+
+
+## Local contributor checks
+
+| Changed paths | Selected Make targets | Toolchain |
+| --- | --- | --- |
+| Python, `pyproject.toml`, `install.sh` | `check` | Python 3.9+, Ruff |
+| JS/TS, `package.json`, `bun.lock` | `oxlint`, `test-security`, `test-node` | Bun, Node |
+| `services/anti-slop-rust/` | `test-rust`, `clippy` | Cargo, Clippy |
+| `services/toil-guard-go/` | `test-go` | Go |
+| `Makefile`, `.github/workflows/`, root guidance | `check-all` | Python, Ruff, Bun, Node, Cargo, Go |
+
+- Python-only verification uses `python3 -m unittest discover -s tests -v`.
+- `make check-changed` compares staged, unstaged, and untracked paths with `HEAD`. `make check-changed BASE=origin/main` also includes committed branch changes.
+- `make check-engines` reports missing runtimes. A selected local target can opt out when its runtime is absent. `make check-all` and CI fail when a required runtime is missing.
