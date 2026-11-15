@@ -578,6 +578,14 @@ npx skills add imMamdouhaboammar/anti-slop-engineering
 
 Package installation does not automatically download skills or build native executables. Run `bunx anti-slop-engineering setup` in a terminal to choose **Core only**, **Select plugins**, or **Install everything** before confirming. The core skill is always included; optional selections are the skill directories in this distribution, not separately loaded guard executables. In CI or piped input, setup defaults to core only; use `--skills=all` or `--plugins=decision-guard,root-fix-gate` to choose explicitly. Existing managed files are updated without overwriting local modifications, and `update` keeps your previously installed skill selection.
 
+To use the installed skill selection for optional review checks, pass the manifest from the actual agent destination:
+
+```bash
+bunx anti-slop-engineering audit --base HEAD --installed-selection .codex/skills/.anti-slop-selection.json --json
+```
+
+This option applies to the Tagore prose review, Re0 handoff review, and reduction review. The audit reports absent skills as `SKIPPED` with `skip_type: not-selected`. Mandatory and security checks retain their normal behavior. An ordinary audit runs the full applicable set. An invalid explicit manifest produces an error and the audit still runs the full applicable set.
+
 ---
 
 ## Anti-pattern catalog (217 patterns)
