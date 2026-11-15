@@ -211,6 +211,31 @@ class EngineParityContractTests(unittest.TestCase):
             self.assertEqual(proc.returncode, exit_code, proc.stderr)
             self.assertIn(rule_id, [entry["id"] for entry in json.loads(proc.stdout)["findings"]])
 
+    def test_blind_sleep_shared_contract_matches_native_severity(self):
+        shared = self.contracts["fixtures"]["blind_sleep"]["shared"]
+        repo_dir, _ = self._create_repo({"worker.py": "import time\n"})
+        source = repo_dir / "worker.py"
+        for line, expected in (("time.sleep(5)", True), ("schedule_work()", False)):
+            source.write_text(f"import time\n{line}\n", encoding="utf-8")
+            runs = [
+                (self._run_diff_guard(repo_dir), "diff_guard_id", "id"),
+                (self._run_sre_guard(repo_dir), "sre_guard_id", "id"),
+            ]
+            if self.go_bin or self.require_native:
+                runs.append((self._run_go_audit(repo_dir), "go_code", "code"))
+            for run, fixture_key, report_key in runs:
+                expected_exit = shared[fixture_key + "_exit"] if expected else 0
+                self.assertEqual(run.returncode, expected_exit, run.stderr)
+                entries = [
+                    entry for entry in json.loads(run.stdout)["findings"]
+                    if entry[report_key] == shared[fixture_key]
+                ]
+                if expected:
+                    self.assertEqual([entry["severity"].lower() for entry in entries],
+                                     [shared[fixture_key + "_severity"]])
+                else:
+                    self.assertEqual(entries, [])
+
     def test_clean_repo_shared_contract(self):
         expected = self.contracts["fixtures"]["clean"]["shared"]
         repo_dir, _ = self._create_repo()

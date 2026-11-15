@@ -11,7 +11,7 @@
 
 [Tested capability and rule fixture](contracts.json)
 
-The fixture identifies one canonical owner for the observed shared error-swallow rule, and records alternate implementations with their actual IDs and severities. Different decisions are preserved by parity tests during migration. New shared-rule records must link to a fixture, declare one owner, and register each engine and emitted identifier once. Overlaps without independent evidence remain listed as current behavior in this matrix.
+The fixture identifies one canonical owner for the observed error-swallow and blind-sleep rules, and records alternate implementations with their actual IDs and severities. Different decisions are preserved by parity tests during migration. New shared-rule records must link to a fixture, declare one owner, and register each engine and emitted identifier once. Overlaps without independent evidence remain listed as current behavior in this matrix.
 
 ## `anti-slop-rust triage` ↔ `scripts/diff_guard.py`
 
