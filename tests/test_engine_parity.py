@@ -176,6 +176,68 @@ class EngineParityContractTests(unittest.TestCase):
             check=False,
         )
 
+    def test_capability_registry_declares_one_owner_for_shared_rules(self):
+        capabilities = self.contracts["capabilities"]
+        self.assertEqual({entry["runtime"] for entry in capabilities}, {"node", "python", "rust", "go"})
+        identifiers = set()
+        covered_fixtures = set()
+        for rule in self.contracts["shared_rules"]:
+            self.assertTrue(rule["owner"]["engine"])
+            self.assertIn(rule["fixture"], self.contracts["fixtures"])
+            covered_fixtures.add(rule["fixture"])
+            evidence = self.contracts["fixtures"][rule["fixture"]]["shared"]
+            for entry in [rule["owner"], *rule["fallbacks"]]:
+                identity = (entry["engine"], entry["id"])
+                self.assertNotIn(identity, identifiers)
+                identifiers.add(identity)
+                self.assertEqual(entry["id"], evidence[entry["fixture_key"]])
+                self.assertIn(entry["severity"], {"blocker", "review"})
+        self.assertIn("blocker_error_swallow", covered_fixtures)
+
+    def test_python_core_retains_required_git_checks_without_native_binaries(self):
+        expected = self.contracts["fixtures"]["blocker_error_swallow"]["shared"]
+        repo_dir, _ = self._create_repo({"worker.py": "def work():\n    return job.run()\n"})
+        (repo_dir / "worker.py").write_text(
+            "def work():\n    try:\n        return job.run()\n    except Exception: pass\n", encoding="utf-8"
+        )
+        for guard, exit_code, rule_id in (
+            (DIFF_GUARD, expected["diff_guard_exit"], expected["diff_guard_id"]),
+            (SRE_GUARD, expected["sre_guard_exit"], expected["sre_guard_id"]),
+        ):
+            strict = "--strict" if guard == SRE_GUARD else "--fail-on-blocker"
+            proc = subprocess.run(
+                [sys.executable, "-S", str(guard), "--repo", str(repo_dir), "--base", "HEAD", "--json", strict],
+                capture_output=True, text=True, check=False,
+                env=dict(os.environ, ANTI_SLOP_DISABLE_NATIVE="1"),
+            )
+            self.assertEqual(proc.returncode, exit_code, proc.stderr)
+            self.assertIn(rule_id, [entry["id"] for entry in json.loads(proc.stdout)["findings"]])
+
+    def test_blind_sleep_shared_contract_matches_native_severity(self):
+        shared = self.contracts["fixtures"]["blind_sleep"]["shared"]
+        repo_dir, _ = self._create_repo({"worker.py": "import time\n"})
+        source = repo_dir / "worker.py"
+        for line, expected in (("time.sleep(5)", True), ("schedule_work()", False)):
+            source.write_text(f"import time\n{line}\n", encoding="utf-8")
+            runs = [
+                (self._run_diff_guard(repo_dir), "diff_guard_id", "id"),
+                (self._run_sre_guard(repo_dir), "sre_guard_id", "id"),
+            ]
+            if self.go_bin or self.require_native:
+                runs.append((self._run_go_audit(repo_dir), "go_code", "code"))
+            for run, fixture_key, report_key in runs:
+                expected_exit = shared[fixture_key + "_exit"] if expected else 0
+                self.assertEqual(run.returncode, expected_exit, run.stderr)
+                entries = [
+                    entry for entry in json.loads(run.stdout)["findings"]
+                    if entry[report_key] == shared[fixture_key]
+                ]
+                if expected:
+                    self.assertEqual([entry["severity"].lower() for entry in entries],
+                                     [shared[fixture_key + "_severity"]])
+                else:
+                    self.assertEqual(entries, [])
+
     def test_clean_repo_shared_contract(self):
         expected = self.contracts["fixtures"]["clean"]["shared"]
         repo_dir, _ = self._create_repo()
