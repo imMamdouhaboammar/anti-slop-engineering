@@ -1,6 +1,9 @@
 package sre
 
 import (
+	"bytes"
+	"go/scanner"
+	"go/token"
 	"regexp"
 	"strings"
 	"unicode"
@@ -30,7 +33,7 @@ func makeToilFinding(file string, lineNo int, cat model.ViolationCategory, sev m
 	}
 }
 
-func auditLineToil(file string, lineNo int, line string, allLines []string) []model.Finding {
+func auditLineToil(file string, lineNo int, line string, allLines, swallowLines []string) []model.Finding {
 	var findings []model.Finding
 	trimmed := strings.TrimSpace(line)
 
@@ -50,7 +53,7 @@ func auditLineToil(file string, lineNo int, line string, allLines []string) []mo
 		))
 	}
 
-	if isSwallowedError(file, lineNo-1, trimmed, allLines) {
+	if isSwallowedError(lineNo-1, strings.TrimSpace(swallowLines[lineNo-1]), swallowLines) {
 		findings = append(findings, makeToilFinding(
 			file, lineNo, model.CategoryScale, model.SeverityBlocker, "SRE-SCALE-SWALLOW",
 			"Silent error swallowing turns failure modes into operational diagnostic toil.",
@@ -131,7 +134,7 @@ func isInsideStringLiteral(line string, idx int) bool {
 	return inDouble || inSingle || inBacktick
 }
 
-func isSwallowedError(file string, currentIdx int, trimmed string, allLines []string) bool {
+func isSwallowedError(currentIdx int, trimmed string, allLines []string) bool {
 	if isCommentOrDocLine(trimmed) {
 		return false
 	}
@@ -142,15 +145,15 @@ func isSwallowedError(file string, currentIdx int, trimmed string, allLines []st
 		}
 	}
 
-	if reGoIfErrNil.MatchString(trimmed) && !isInsideStringLiteral(trimmed, 0) {
+	if reGoIfErrNil.MatchString(trimmed) {
 		return isSwallowedBraceBlock(currentIdx, allLines)
 	}
 
-	if reCatchBlock.MatchString(trimmed) && !isInsideStringLiteral(trimmed, 0) {
+	if reCatchBlock.MatchString(trimmed) {
 		return isSwallowedBraceBlock(currentIdx, allLines)
 	}
 
-	if rePyExcept.MatchString(trimmed) && !isInsideStringLiteral(trimmed, 0) {
+	if rePyExcept.MatchString(trimmed) {
 		return isSwallowedPythonExcept(currentIdx, allLines)
 	}
 
@@ -172,12 +175,16 @@ func isSwallowedBraceBlock(startIdx int, lines []string) bool {
 	for j := startIdx; j < limit; j++ {
 		line := strings.TrimSpace(lines[j])
 		if depth == 0 {
-			_, afterOpen, found := strings.Cut(line, "{")
-			if !found {
+			code, comment, _ := strings.Cut(line, "//")
+			if hasDocumentedReason(comment) {
+				return false
+			}
+			open := strings.LastIndexByte(code, '{')
+			if open < 0 {
 				continue
 			}
 			depth = 1
-			if afterOpen = strings.TrimSpace(afterOpen); afterOpen != "" {
+			if afterOpen := strings.TrimSpace(code[open+1:]); afterOpen != "" {
 				return strings.HasPrefix(afterOpen, "}")
 			}
 			continue
@@ -261,6 +268,63 @@ func hasBackoffLookahead(currentIdx int, lines []string) bool {
 	return false
 }
 
+// goSwallowLines preserves Go token positions while removing comments and literal content.
+func goSwallowLines(content string) []string {
+	file := token.NewFileSet().AddFile("", -1, len(content))
+	var tokens scanner.Scanner
+	tokens.Init(file, []byte(content), func(token.Position, string) {}, scanner.ScanComments)
+	source := []byte(content)
+	for {
+		pos, tok, lit := tokens.Scan()
+		if tok == token.EOF {
+			break
+		}
+		if tok != token.STRING && tok != token.CHAR && tok != token.COMMENT {
+			continue
+		}
+		start := file.Offset(pos)
+		end := start + len(lit)
+		mask := byte('~')
+		if content[start] == 96 {
+			// The scanner's raw-string literal omits CRs. Use source offsets.
+			end = len(content)
+			if close := strings.IndexByte(content[start+1:], 96); close >= 0 {
+				end = start + close + 2
+			}
+		}
+		if tok == token.COMMENT {
+			if strings.HasPrefix(content[start:], "/*") {
+				end = len(content)
+				if close := strings.Index(content[start+2:], "*/"); close >= 0 {
+					end = start + close + 4
+				}
+			} else if newline := strings.IndexByte(content[start:], '\n'); newline < 0 {
+				end = len(content)
+			} else {
+				end = start + newline
+			}
+			if hasDocumentedReason(lit) {
+				// Keep the comment's location and a reason marker, preserving CRLF.
+				firstLine := bytes.IndexByte(source[start:end], '\n')
+				if firstLine < 0 {
+					firstLine = end - start
+				}
+				if firstLine >= len("// expected") {
+					copy(source[start:start+firstLine], "// expected")
+					start += len("// expected")
+				}
+			}
+			mask = ' '
+		}
+		for i := start; i < end; i++ {
+			if source[i] != '\n' && source[i] != '\r' {
+				source[i] = mask
+			}
+		}
+	}
+	return strings.Split(string(source), "\n")
+}
+
 // CheckToilAndScale audits code for Google SRE Scale and Operational Toil violations
 func CheckToilAndScale(filePath string, content string) []model.Finding {
 	if IsTestFile(filePath) {
@@ -268,6 +332,10 @@ func CheckToilAndScale(filePath string, content string) []model.Finding {
 	}
 
 	lines := strings.Split(content, "\n")
+	swallowLines := lines
+	if strings.HasSuffix(filePath, ".go") {
+		swallowLines = goSwallowLines(content)
+	}
 	var findings []model.Finding
 	inBlockComment := false
 
@@ -286,7 +354,7 @@ func CheckToilAndScale(filePath string, content string) []model.Finding {
 			continue
 		}
 
-		lineFindings := auditLineToil(filePath, i+1, line, lines)
+		lineFindings := auditLineToil(filePath, i+1, line, lines, swallowLines)
 		findings = append(findings, lineFindings...)
 	}
 

@@ -209,3 +209,22 @@ func TestCheckToilAndScale_EmptyCatchBeforeFinallyIsReported(t *testing.T) {
 	}
 	t.Fatal("expected the empty catch at line 3")
 }
+
+func TestCheckToilAndScale_SwallowerIgnoresGoLiteralAndCommentSpans(t *testing.T) {
+	code := "package worker\nvar example = " + string(rune(96)) + "\nif err != nil {\n}\n" + string(rune(96)) + "\n" +
+		"func work() {\n    run() /* documentation\nif err != nil {\n}\n*/\n    run() // if err != nil {}\n}"
+	for _, finding := range CheckToilAndScale("worker.go", code) {
+		if finding.Code == "SRE-SCALE-SWALLOW" {
+			t.Errorf("unexpected finding in non-code span at line %d", finding.Line)
+		}
+	}
+}
+
+func TestCheckToilAndScale_SwallowerHandlesGoInlineReason(t *testing.T) {
+	code := "package worker\nfunc work() {\n    if err != nil { // expected: connection already closed\n    }\n}"
+	for _, finding := range CheckToilAndScale("worker.go", code) {
+		if finding.Code == "SRE-SCALE-SWALLOW" {
+			t.Errorf("unexpected finding for documented benign error at line %d", finding.Line)
+		}
+	}
+}

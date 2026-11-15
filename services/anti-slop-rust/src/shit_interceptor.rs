@@ -55,32 +55,52 @@ impl ShitInterceptor {
         let mut in_hunk = false;
         let mut hunk_lines: Vec<(usize, char, String)> = Vec::new();
 
-        let process_file_hunks = |file: &str, h_lines: &[(usize, char, String)]| -> Vec<Finding> {
+        let process_file_hunks = |file: &str, lines: &[(usize, char, String)]| -> Vec<Finding> {
             if file.is_empty() || is_doc_file(file) || is_test_file(file) {
                 return Vec::new();
             }
-            let mut f_findings = Vec::new();
-            for i in 0..h_lines.len() {
-                let (l_no, prefix, ref line_text) = h_lines[i];
-                if prefix != '+' {
+            let mut lexical = HunkLexicalContext::default();
+            let code: Vec<_> = lines
+                .iter()
+                .map(|(_, prefix, raw)| {
+                    if *prefix == '-' {
+                        ""
+                    } else {
+                        lexical.source_before_comment(raw, file)
+                    }
+                })
+                .collect();
+            let mut findings = Vec::new();
+            for (i, &(line, prefix, ref raw)) in lines.iter().enumerate() {
+                if prefix == '-' {
                     continue;
                 }
-                let code_content = line_text.trim();
-                let mut line_findings = self.audit_added_code(file, l_no, code_content);
-                if !line_findings.iter().any(|f| f.code == "STS-H02")
-                    && self.is_multiline_swallowed_error(i, h_lines)
-                {
-                    line_findings.push(Self::hardening_blocker(
+                let added = prefix == '+';
+                if added {
+                    findings.extend(self.audit_added_code(file, line, raw.trim()));
+                }
+                let single_line = added
+                    && !has_ignore_reason(raw, code[i])
+                    && self
+                        .re_swallow_error
+                        .find(code[i].trim())
+                        .is_some_and(|matched| {
+                            !is_inside_string_literal(code[i].trim(), matched.start())
+                        });
+                let end = self.empty_handler_end(i, lines, &code);
+                let changed_handler = end
+                    .is_some_and(|end| lines[i..=end].iter().any(|(_, prefix, _)| *prefix != ' '));
+                if single_line || changed_handler {
+                    findings.push(Self::hardening_blocker(
                         file,
-                        l_no,
+                        line,
                         "STS-H02",
                         "Hypothetical hardening: swallowing error without logging or structured recovery.",
                         "Handle errors explicitly or propagate them with actionable context.",
                     ));
                 }
-                f_findings.append(&mut line_findings);
             }
-            f_findings
+            findings
         };
 
         for line in diff_text.lines() {
@@ -121,9 +141,7 @@ impl ShitInterceptor {
                 findings.push(f);
             }
 
-            let is_hunk_content = (line.starts_with('+') && !line.starts_with("+++"))
-                || (line.starts_with('-') && !line.starts_with("---"))
-                || line.starts_with(' ');
+            let is_hunk_content = line.starts_with(['+', '-', ' ']);
 
             if is_hunk_content {
                 let prefix = line.chars().next().unwrap_or(' ');
@@ -141,111 +159,95 @@ impl ShitInterceptor {
         findings
     }
 
-    fn is_multiline_swallowed_error(
+    fn empty_handler_end(
         &self,
-        start_idx: usize,
+        start: usize,
         lines: &[(usize, char, String)],
-    ) -> bool {
-        let (_, _, ref first_text) = lines[start_idx];
-        let code = first_text.trim();
-
-        if is_comment_or_doc_line(code) || is_inside_string_literal(code, 0) {
-            return false;
+        code: &[&str],
+    ) -> Option<usize> {
+        let header = code[start].trim();
+        if self.re_go_if_err_nil.is_match(header) || self.re_catch_block.is_match(header) {
+            return Self::empty_brace_block_end(start, lines, code);
         }
-
-        if self.re_go_if_err_nil.is_match(code) || self.re_catch_block.is_match(code) {
-            return self.is_swallowed_brace_block(start_idx, lines);
-        }
-
-        if self.re_py_except.is_match(code) {
-            return self.is_swallowed_python_except(start_idx, lines);
-        }
-
-        false
+        self.re_py_except
+            .is_match(header)
+            .then(|| Self::empty_python_suite_end(start, lines, code))
+            .flatten()
     }
 
-    fn is_swallowed_brace_block(&self, start_idx: usize, lines: &[(usize, char, String)]) -> bool {
-        let limit = (start_idx + 25).min(lines.len());
-        let mut depth = 0;
-        let mut has_documented = false;
-
-        for j in start_idx..limit {
-            let Some((_, line)) = get_active_hunk_line(lines, j) else {
+    fn empty_brace_block_end(
+        start: usize,
+        lines: &[(usize, char, String)],
+        code: &[&str],
+    ) -> Option<usize> {
+        let mut opened = false;
+        for i in start..(start + 25).min(lines.len()) {
+            let (_, prefix, ref raw) = lines[i];
+            if prefix == '-' || (i > start && code[i].trim().is_empty() && !opened) {
                 continue;
-            };
-            if depth == 0 {
-                let Some((_, after_open)) = line.split_once('{') else {
+            }
+            let body = code[i].trim();
+            if has_ignore_reason(raw, code[i]) {
+                return None;
+            }
+            if !opened {
+                if i > start && !body.starts_with('{') {
+                    return None;
+                }
+                let Some((_, after_open)) = body.rsplit_once('{') else {
                     continue;
                 };
-                depth = 1;
+                opened = true;
+                if after_open.trim_start().starts_with('}') {
+                    return Some(i);
+                }
                 if !after_open.trim().is_empty() {
-                    return after_open.trim_start().starts_with('}');
+                    return None;
                 }
-                continue;
-            }
-
-            let (is_comment, is_doc) = check_comment_doc(line);
-            if is_comment {
-                has_documented |= is_doc;
-                continue;
-            }
-
-            for c in line.chars() {
-                match c {
-                    '{' => depth += 1,
-                    '}' => {
-                        depth -= 1;
-                        if depth == 0 {
-                            return !has_documented;
-                        }
-                    }
-                    c if c.is_whitespace() => (),
-                    _ => return false,
-                }
+            } else if body.starts_with('}') {
+                return Some(i);
+            } else if !body.is_empty() {
+                return None;
             }
         }
-        false
+        None
     }
 
-    fn is_swallowed_python_except(
-        &self,
-        start_idx: usize,
+    fn empty_python_suite_end(
+        start: usize,
         lines: &[(usize, char, String)],
-    ) -> bool {
-        let limit = (start_idx + 20).min(lines.len());
-        let mut has_statements = false;
-        let mut has_documented = false;
-        let mut only_pass_or_ellipsis = false;
-
-        let (_, _, ref base_text) = lines[start_idx];
-        let base_indent = base_text.len() - base_text.trim_start().len();
-
-        for j in (start_idx + 1)..limit {
-            let Some((raw, line)) = get_active_hunk_line(lines, j) else {
-                continue;
-            };
-
+        code: &[&str],
+    ) -> Option<usize> {
+        let initial_indent = code[start].len() - code[start].trim_start().len();
+        let mut found_noop = false;
+        let mut end = start;
+        for i in (start + 1)..(start + 20).min(lines.len()) {
+            let (_, prefix, ref raw) = lines[i];
             let indent = raw.len() - raw.trim_start().len();
-            if indent <= base_indent {
-                break;
-            }
-
-            let (is_comment, is_doc) = check_comment_doc(line);
-            if is_comment {
-                if is_doc {
-                    has_documented = true;
+            if prefix == '-' {
+                if indent > initial_indent && !raw.trim().is_empty() {
+                    end = i;
                 }
                 continue;
             }
 
-            if line == "pass" || line == "..." {
-                only_pass_or_ellipsis = true;
-            } else {
-                has_statements = true;
+            let body = code[i].trim();
+            if indent <= initial_indent && !body.is_empty() {
+                return found_noop.then_some(end);
+            }
+            if indent > initial_indent && has_ignore_reason(raw, code[i]) {
+                return None;
+            }
+            match body {
+                "pass" | "..." => {
+                    found_noop = true;
+                    end = i;
+                }
+                "" => (),
+                _ => return None,
             }
         }
-
-        only_pass_or_ellipsis && !has_statements && !has_documented
+        None
     }
 
     fn audit_added_code(&self, file: &str, line_no: usize, code: &str) -> Vec<Finding> {
@@ -261,18 +263,6 @@ impl ShitInterceptor {
                 "Hypothetical hardening: companion hash/checksum generated without verified downstream consumer.",
                 "Remove speculative checksum generation unless explicitly required by publishing contracts.",
             ));
-        }
-
-        if let Some(loc) = self.re_swallow_error.find(code) {
-            if !is_comment_or_doc_line(code) && !is_inside_string_literal(code, loc.start()) {
-                findings.push(Self::hardening_blocker(
-                    file,
-                    line_no,
-                    "STS-H02",
-                    "Hypothetical hardening: swallowing error without logging or structured recovery.",
-                    "Handle errors explicitly or propagate them with actionable context.",
-                ));
-            }
         }
 
         if self.re_hypothetical_wrapper.is_match(code) {
@@ -335,33 +325,100 @@ fn compile_regex(pat: &str) -> Regex {
     }
 }
 
-fn get_active_hunk_line(lines: &[(usize, char, String)], idx: usize) -> Option<(&str, &str)> {
-    let (_, prefix, ref text) = lines[idx];
-    if prefix == '-' {
-        return None;
-    }
-    let trimmed = text.trim();
-    if trimmed.is_empty() {
-        return None;
-    }
-    Some((text.as_str(), trimmed))
+#[derive(Clone, Copy)]
+enum LexicalSpan {
+    BlockComment,
+    String(&'static str),
 }
 
-fn check_comment_doc(line: &str) -> (bool, bool) {
-    if is_comment_or_doc_line(line) {
-        return (true, has_documented_reason(line));
-    }
-    (false, false)
+#[derive(Default)]
+struct HunkLexicalContext {
+    span: Option<LexicalSpan>,
 }
 
-fn is_comment_or_doc_line(line: &str) -> bool {
-    let t = line.trim_start();
-    t.starts_with("//")
-        || t.starts_with("/*")
-        || t.starts_with('*')
-        || t.starts_with('#')
-        || t.starts_with("\"\"\"")
-        || t.starts_with("'''")
+impl HunkLexicalContext {
+    fn source_before_comment<'a>(&mut self, line: &'a str, file: &str) -> &'a str {
+        let mut pos = 0;
+        let mut output_start = 0;
+        if let Some(active) = self.span {
+            let delimiter = match active {
+                LexicalSpan::BlockComment => "*/",
+                LexicalSpan::String(delimiter) => delimiter,
+            };
+            let Some(end) = line.find(delimiter) else {
+                return "";
+            };
+            pos = end + delimiter.len();
+            output_start = pos;
+            self.span = None;
+        }
+
+        let python = file.ends_with(".py");
+        let go = file.ends_with(".go");
+        let mut short_quote = None;
+        let mut chars = line[pos..].char_indices();
+        while let Some((i, c)) = chars.next() {
+            if let Some(quote) = short_quote {
+                if c == '\\' {
+                    chars.next();
+                } else if c == quote {
+                    short_quote = None;
+                }
+                continue;
+            }
+
+            let remaining = &line[pos + i..];
+            if (python && c == '#') || (!python && remaining.starts_with("//")) {
+                return &line[output_start..pos + i];
+            }
+
+            let (active, open, close) = if python && remaining.starts_with("\"\"\"") {
+                (LexicalSpan::String("\"\"\""), 3, "\"\"\"")
+            } else if python && remaining.starts_with("'''") {
+                (LexicalSpan::String("'''"), 3, "'''")
+            } else if go && c == '\x60' {
+                (LexicalSpan::String("\x60"), 1, "\x60")
+            } else if !python && remaining.starts_with("/*") {
+                (LexicalSpan::BlockComment, 2, "*/")
+            } else {
+                if matches!(c, '"' | '\'' | '\x60') {
+                    short_quote = Some(c);
+                }
+                continue;
+            };
+            if let Some(end) = remaining[open..].find(close) {
+                let after = i + open + end + close.len();
+                if matches!(active, LexicalSpan::BlockComment) {
+                    if line[output_start..pos + i].trim().is_empty() {
+                        output_start = pos + after;
+                    } else if line[pos + after..].trim().is_empty() {
+                        return &line[output_start..pos + i];
+                    }
+                }
+                while chars.clone().next().is_some_and(|(next, _)| next < after) {
+                    chars.next();
+                }
+            } else {
+                self.span = Some(active);
+                return match active {
+                    LexicalSpan::BlockComment => &line[output_start..pos + i],
+                    LexicalSpan::String(_) => &line[output_start..],
+                };
+            }
+        }
+        &line[output_start..]
+    }
+}
+
+fn has_ignore_reason(raw: &str, code: &str) -> bool {
+    if !raw.starts_with(code) {
+        return false;
+    }
+    let comment = raw[code.len()..].trim_start();
+    ["//", "/*", "#"]
+        .iter()
+        .any(|marker| comment.starts_with(marker))
+        && has_documented_reason(comment)
 }
 
 fn has_documented_reason(text: &str) -> bool {

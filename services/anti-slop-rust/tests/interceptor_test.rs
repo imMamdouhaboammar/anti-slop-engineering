@@ -100,11 +100,12 @@ fn test_multiline_python_error_swallowing() {
 diff --git a/job.py b/job.py
 --- a/job.py
 +++ b/job.py
-@@ -1,4 +1,6 @@
+@@ -1 +1,5 @@
 +try:
 +    run()
 +except Exception:
 +    pass
+ finish()
 "#;
     let findings = interceptor.audit_diff(diff, None, false);
     assert!(findings.iter().any(|f| f.code == "STS-H02"));
@@ -244,4 +245,75 @@ diff --git a/worker.ts b/worker.ts
 "#;
     let findings = ShitInterceptor::new().audit_diff(diff, None, false);
     assert!(findings.iter().any(|f| f.code == "STS-H02" && f.line == 10));
+}
+
+#[test]
+fn test_multiline_handler_detects_body_removal_under_unchanged_header() {
+    let diff = "diff --git a/worker.go b/worker.go\n--- a/worker.go\n+++ b/worker.go\n@@ -10,5 +10,4 @@\n func apply() {\n     if err != nil {\n-        report(err)\n     }\n }\n";
+    let findings = ShitInterceptor::new().audit_diff(diff, None, false);
+    let matches: Vec<_> = findings.iter().filter(|f| f.code == "STS-H02").collect();
+    assert_eq!(matches.len(), 1);
+    assert_eq!(matches[0].line, 11);
+    assert_eq!(matches[0].file, "worker.go");
+}
+
+#[test]
+fn test_multiline_handler_detects_python_replacement_under_unchanged_header() {
+    let diff = "diff --git a/worker.py b/worker.py\n--- a/worker.py\n+++ b/worker.py\n@@ -8,4 +8,4 @@\n     except RuntimeError:\n-        report()\n+        pass\n     finish()\n \n";
+    let findings = ShitInterceptor::new().audit_diff(diff, None, false);
+    assert!(findings.iter().any(|f| f.code == "STS-H02" && f.line == 8));
+}
+
+#[test]
+fn test_multiline_handler_ignores_change_at_python_dedent() {
+    let diff = "diff --git a/worker.py b/worker.py\n--- a/worker.py\n+++ b/worker.py\n@@ -8,4 +8,4 @@\n     except RuntimeError:\n         pass\n-    old_finish()\n+    finish()\n \n";
+    let findings = ShitInterceptor::new().audit_diff(diff, None, false);
+    assert!(!findings.iter().any(|f| f.code == "STS-H02"));
+}
+
+#[test]
+fn test_multiline_handler_needs_python_suite_boundary() {
+    let diff = "diff --git a/worker.py b/worker.py\n--- a/worker.py\n+++ b/worker.py\n@@ -8,1 +8,3 @@\n     try:\n+    except RuntimeError:\n+        pass\n";
+    let findings = ShitInterceptor::new().audit_diff(diff, None, false);
+    assert!(!findings.iter().any(|f| f.code == "STS-H02"));
+}
+
+#[test]
+fn test_multiline_handler_suppresses_proven_non_code_spans() {
+    let fixtures = [
+        (
+            "worker.go",
+            " var description = \x60\n+if err != nil {\n+}\n \x60\n",
+        ),
+        ("worker.ts", " /* demo\n+catch (err) {\n+}\n */\n"),
+        (
+            "worker.py",
+            " message = \"\"\"\n+except RuntimeError: pass\n \"\"\"\n",
+        ),
+        ("worker.ts", "+run(); // catch (err) {}\n"),
+    ];
+    for (path, hunk) in fixtures {
+        let diff = format!(
+            "diff --git a/{path} b/{path}\n--- a/{path}\n+++ b/{path}\n@@ -8,2 +8,4 @@\n{hunk}"
+        );
+        let findings = ShitInterceptor::new().audit_diff(&diff, None, false);
+        assert!(
+            !findings.iter().any(|f| f.code == "STS-H02"),
+            "{path}: {hunk}"
+        );
+    }
+}
+
+#[test]
+fn test_multiline_handler_recognizes_following_code_after_inline_comment() {
+    let diff = "diff --git a/worker.ts b/worker.ts\n--- a/worker.ts\n+++ b/worker.ts\n@@ -8,1 +8,4 @@\n try {\n+} catch (error) {\n+    /* no explanatory reason */\n+} finally { finish(); }\n";
+    let findings = ShitInterceptor::new().audit_diff(diff, None, false);
+    assert!(findings.iter().any(|f| f.code == "STS-H02" && f.line == 9));
+}
+
+#[test]
+fn test_multiline_handler_keeps_triple_quoted_expression_as_code() {
+    let diff = "diff --git a/worker.py b/worker.py\n--- a/worker.py\n+++ b/worker.py\n@@ -8,1 +8,6 @@\n+except RuntimeError:\n+    \"\"\"diagnostic text\n+    continued\n+    \"\"\"\n+    pass\n finish()\n";
+    let findings = ShitInterceptor::new().audit_diff(diff, None, false);
+    assert!(!findings.iter().any(|f| f.code == "STS-H02"));
 }
