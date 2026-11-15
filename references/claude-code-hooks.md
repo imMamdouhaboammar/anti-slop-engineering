@@ -33,3 +33,11 @@ python3 /path/to/anti-slop/scripts/claude_hooks.py uninstall --project /path/to/
 Uninstall removes the exact installed hook entries. If you modified them locally, review and remove those entries yourself to preserve your changes.
 
 [Claude Code hook semantics](https://code.claude.com/docs/en/hooks) · [Claude Code settings scopes](https://code.claude.com/docs/en/settings)
+
+## Preview from setup
+
+From a durable POSIX checkout, run setup in the project with the checkout's CLI:
+
+    node /path/to/anti-slop-engineering/bin/cli.js setup --agent=claude --claude-hooks --dry-run
+
+This preview reports the exact local settings path and covered actions without modifying skills or settings. Use the standalone adapter in that durable checkout to apply or remove the hooks. Registration stores the adapter's absolute path, so do not install from a transient package-manager cache. The standard installer and Bash installation continue to install skills without registering hooks.

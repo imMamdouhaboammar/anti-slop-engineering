@@ -669,6 +669,27 @@ export async function promptForSkills(modules, targets, input = process.stdin, o
   }
 }
 
+function previewClaudeHooks(scope, agents) {
+  if (scope !== 'project' || !agents.includes('claude')) {
+    throw new Error('Claude hook preview requires project scope and the Claude Code agent')
+  }
+  if (process.platform === 'win32' || !fs.existsSync(path.join(rootDir, '.git'))) {
+    throw new Error('Claude hook preview requires a durable POSIX checkout; see references/claude-code-hooks.md')
+  }
+  const adapter = path.join(rootDir, 'scripts', 'claude_hooks.py')
+  const preview = spawnSync('python3', [adapter, 'install', '--dry-run'], {
+    encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'pipe'],
+  })
+  if (preview.error || preview.status !== 0) {
+    throw new Error(preview.stderr?.trim() || preview.error?.message || 'Claude hook preview failed')
+  }
+  return {
+    ...JSON.parse(preview.stdout),
+    stages: ['PreToolUse policy', 'PostToolUse feedback'],
+    requires: 'Claude Code 2.1.295 or later and a durable adapter checkout',
+  }
+}
+
 export async function runInstallerCLI(args = process.argv.slice(2)) {
   if (args.includes('--help') || args.includes('-h')) {
     console.log(`
@@ -691,6 +712,7 @@ Options:
   --all               Select every available optional skill
   --overwrite         Refresh managed files, preserving local edits and conflicts
   --dry-run           Simulate installation without writing files
+  --claude-hooks      With --dry-run, preview local Claude hooks from this checkout
   --json              Output JSON result
   --no-interactive    Skip terminal selection (defaults to core only)
   --help, -h          Show this help menu
@@ -699,6 +721,10 @@ Options:
   }
 
   const isUpdate = args.includes('--update') || args[0] === 'update'
+  const previewHooks = args.includes('--claude-hooks')
+  if (previewHooks && (!args.includes('--dry-run') || args.includes('--selection-only') || isUpdate)) {
+    throw new Error('--claude-hooks previews setup only; use --dry-run and the standalone Claude adapter to apply')
+  }
   if (isUpdate) {
     const { results, pointers } = updateAll()
     if (args.includes('--json')) {
@@ -811,6 +837,7 @@ Options:
   if (dryRun) {
     const operations = installSkills({ skills: selectedSkills, targets, overwrite, dryRun: true })
     const plan = { scope: resolvedScope, agents: selectedAgents, skills: selectedSkills, targets: targets.map((t) => t.path), operations }
+    if (previewHooks) plan.hookPlan = previewClaudeHooks(resolvedScope, selectedAgents)
     if (jsonMode) console.log(JSON.stringify(plan, null, 2))
     else console.log('Dry-run installation plan:', plan)
     return 0
