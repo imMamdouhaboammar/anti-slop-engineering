@@ -329,11 +329,41 @@ fn compile_regex(pat: &str) -> Regex {
 enum LexicalSpan {
     BlockComment,
     String(&'static str),
+    Template,
+}
+
+impl LexicalSpan {
+    fn end_in(self, text: &str) -> Option<(usize, bool)> {
+        match self {
+            Self::BlockComment => text.find("*/").map(|offset| (offset + 2, false)),
+            Self::String("\x60") => text.find('\x60').map(|offset| (offset + 1, false)),
+            Self::String(delimiter) => unescaped_boundary(text, delimiter, false),
+            Self::Template => unescaped_boundary(text, "\x60", true),
+        }
+    }
+}
+
+fn unescaped_boundary(text: &str, delimiter: &str, template: bool) -> Option<(usize, bool)> {
+    let mut chars = text.char_indices();
+    while let Some((offset, c)) = chars.next() {
+        if c == '\\' {
+            chars.next();
+            continue;
+        }
+        if text[offset..].starts_with(delimiter) {
+            return Some((offset + delimiter.len(), false));
+        }
+        if template && text[offset..].starts_with("\x24{") {
+            return Some((offset + 2, true));
+        }
+    }
+    None
 }
 
 #[derive(Default)]
 struct HunkLexicalContext {
     span: Option<LexicalSpan>,
+    template_interpolation_seen: bool,
 }
 
 impl HunkLexicalContext {
@@ -341,20 +371,20 @@ impl HunkLexicalContext {
         let mut pos = 0;
         let mut output_start = 0;
         if let Some(active) = self.span {
-            let delimiter = match active {
-                LexicalSpan::BlockComment => "*/",
-                LexicalSpan::String(delimiter) => delimiter,
-            };
-            let Some(end) = line.find(delimiter) else {
+            let Some((end, interpolation)) = active.end_in(line) else {
                 return "";
             };
-            pos = end + delimiter.len();
+            pos = end;
             output_start = pos;
             self.span = None;
+            self.template_interpolation_seen |= interpolation;
         }
 
         let python = file.ends_with(".py");
         let go = file.ends_with(".go");
+        let javascript = [".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".mts", ".cts"]
+            .iter()
+            .any(|extension| file.ends_with(extension));
         let mut short_quote = None;
         let mut chars = line[pos..].char_indices();
         while let Some((i, c)) = chars.next() {
@@ -372,22 +402,27 @@ impl HunkLexicalContext {
                 return &line[output_start..pos + i];
             }
 
-            let (active, open, close) = if python && remaining.starts_with("\"\"\"") {
-                (LexicalSpan::String("\"\"\""), 3, "\"\"\"")
+            let (active, open) = if python && remaining.starts_with("\"\"\"") {
+                (LexicalSpan::String("\"\"\""), 3)
             } else if python && remaining.starts_with("'''") {
-                (LexicalSpan::String("'''"), 3, "'''")
+                (LexicalSpan::String("'''"), 3)
             } else if go && c == '\x60' {
-                (LexicalSpan::String("\x60"), 1, "\x60")
+                (LexicalSpan::String("\x60"), 1)
+            } else if javascript && !self.template_interpolation_seen && c == '\x60' {
+                (LexicalSpan::Template, 1)
             } else if !python && remaining.starts_with("/*") {
-                (LexicalSpan::BlockComment, 2, "*/")
+                (LexicalSpan::BlockComment, 2)
             } else {
                 if matches!(c, '"' | '\'' | '\x60') {
                     short_quote = Some(c);
                 }
                 continue;
             };
-            if let Some(end) = remaining[open..].find(close) {
-                let after = i + open + end + close.len();
+            if let Some((end, interpolation)) = active.end_in(&remaining[open..]) {
+                // Interpolation admits code, nested literals, and unmatched braces
+                // outside the hunk. Keep the existing line-level fallback there.
+                self.template_interpolation_seen |= interpolation;
+                let after = i + open + end;
                 if matches!(active, LexicalSpan::BlockComment) {
                     if line[output_start..pos + i].trim().is_empty() {
                         output_start = pos + after;
@@ -402,7 +437,7 @@ impl HunkLexicalContext {
                 self.span = Some(active);
                 return match active {
                     LexicalSpan::BlockComment => &line[output_start..pos + i],
-                    LexicalSpan::String(_) => &line[output_start..],
+                    LexicalSpan::String(_) | LexicalSpan::Template => &line[output_start..],
                 };
             }
         }

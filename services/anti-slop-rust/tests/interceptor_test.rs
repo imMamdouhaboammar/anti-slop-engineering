@@ -317,3 +317,87 @@ fn test_multiline_handler_keeps_triple_quoted_expression_as_code() {
     let findings = ShitInterceptor::new().audit_diff(diff, None, false);
     assert!(!findings.iter().any(|f| f.code == "STS-H02"));
 }
+
+fn literal_fixture_diff(path: &str, before: &str, after: &str) -> String {
+    use std::fs;
+    use std::process::Command;
+
+    let root =
+        std::env::temp_dir().join(format!("anti-slop-literal-{}-{path}", std::process::id()));
+    fs::create_dir(&root).expect("create fixture Git directory");
+    let git = |args: &[&str]| {
+        let result = Command::new("git")
+            .current_dir(&root)
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(
+            result.status.success(),
+            "git {args:?}: {}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        result.stdout
+    };
+    git(&["init", "-q"]);
+    git(&["config", "user.email", "fixture@example.invalid"]);
+    git(&["config", "user.name", "Fixture"]);
+    git(&["config", "core.hooksPath", ".git/no-fixture-hooks"]);
+    git(&["config", "commit.gpgSign", "false"]);
+    fs::write(root.join(path), before).unwrap();
+    git(&["add", "--", path]);
+    git(&["commit", "-qm", "literal fixture"]);
+    fs::write(root.join(path), after).unwrap();
+    let patch = git(&[
+        "diff",
+        "--no-ext-diff",
+        "--no-color",
+        "--unified=20",
+        "HEAD",
+        "--",
+        path,
+    ]);
+    fs::remove_dir_all(&root).unwrap();
+    String::from_utf8(patch).unwrap()
+}
+
+#[test]
+fn test_literal_context_skips_js_template_text_and_resumes_code() {
+    let before = "const sample = \x60\nold sample\n\x60;\ntry {\n    run();\n} catch (err) {\n    report(err);\n}\n";
+    let after =
+        "const sample = \x60\ncatch (err) {\n}\n\x60;\ntry {\n    run();\n} catch (err) {\n}\n";
+    let diff = literal_fixture_diff("worker.ts", before, after);
+    let findings = ShitInterceptor::new().audit_diff(&diff, None, false);
+    let lines: Vec<_> = findings
+        .iter()
+        .filter(|f| f.code == "STS-H02")
+        .map(|f| f.line)
+        .collect();
+    assert_eq!(lines, [7]);
+}
+
+#[test]
+fn test_literal_context_keeps_code_inside_template_interpolation() {
+    let before = "const sample = \x60value ${(() => {\n    try {\n        run();\n    } catch (err) {\n        report(err);\n    }\n})()}\x60;\n";
+    let after = before.replace("        report(err);\n", "");
+    let diff = literal_fixture_diff("embedded.ts", before, &after);
+    let findings = ShitInterceptor::new().audit_diff(&diff, None, false);
+    assert!(findings.iter().any(|f| f.code == "STS-H02" && f.line == 4));
+}
+
+#[test]
+fn test_literal_context_keeps_escaped_python_triple_delimiter_inside_string() {
+    let before = "message = \"\"\"start\nold sample\n\"\"\"\nfinish()\n";
+    let after = "message = \"\"\"start\n\\\"\"\"escaped boundary\nexcept RuntimeError: pass\n\"\"\"\nfinish()\n";
+    let diff = literal_fixture_diff("worker.py", before, after);
+    let findings = ShitInterceptor::new().audit_diff(&diff, None, false);
+    assert!(!findings.iter().any(|f| f.code == "STS-H02"));
+}
+
+#[test]
+fn test_literal_context_remains_conservative_after_interpolation() {
+    let before = "const sample = \x60value \x24{value}\x60;\ntry {\n    run();\n} catch (err) {\n    report(err);\n}\n";
+    let after = before.replace("    report(err);\n", "");
+    let diff = literal_fixture_diff("after-embedded.ts", before, &after);
+    let findings = ShitInterceptor::new().audit_diff(&diff, None, false);
+    assert!(findings.iter().any(|f| f.code == "STS-H02" && f.line == 4));
+}
