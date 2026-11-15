@@ -12,6 +12,8 @@ import sys
 import tempfile
 import unittest
 
+from scripts import audit_runner, rule_registry
+
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 FIXTURES_DIR = ROOT / "tests" / "fixtures" / "engine-parity"
 DIFF_GUARD = ROOT / "scripts" / "diff_guard.py"
@@ -174,6 +176,68 @@ class EngineParityContractTests(unittest.TestCase):
             check=False,
         )
 
+    def test_capability_registry_declares_one_owner_for_shared_rules(self):
+        capabilities = self.contracts["capabilities"]
+        self.assertEqual({entry["runtime"] for entry in capabilities}, {"node", "python", "rust", "go"})
+        identifiers = set()
+        covered_fixtures = set()
+        for rule in self.contracts["shared_rules"]:
+            self.assertTrue(rule["owner"]["engine"])
+            self.assertIn(rule["fixture"], self.contracts["fixtures"])
+            covered_fixtures.add(rule["fixture"])
+            evidence = self.contracts["fixtures"][rule["fixture"]]["shared"]
+            for entry in [rule["owner"], *rule["fallbacks"]]:
+                identity = (entry["engine"], entry["id"])
+                self.assertNotIn(identity, identifiers)
+                identifiers.add(identity)
+                self.assertEqual(entry["id"], evidence[entry["fixture_key"]])
+                self.assertIn(entry["severity"], {"blocker", "review"})
+        self.assertIn("blocker_error_swallow", covered_fixtures)
+
+    def test_python_core_retains_required_git_checks_without_native_binaries(self):
+        expected = self.contracts["fixtures"]["blocker_error_swallow"]["shared"]
+        repo_dir, _ = self._create_repo({"worker.py": "def work():\n    return job.run()\n"})
+        (repo_dir / "worker.py").write_text(
+            "def work():\n    try:\n        return job.run()\n    except Exception: pass\n", encoding="utf-8"
+        )
+        for guard, exit_code, rule_id in (
+            (DIFF_GUARD, expected["diff_guard_exit"], expected["diff_guard_id"]),
+            (SRE_GUARD, expected["sre_guard_exit"], expected["sre_guard_id"]),
+        ):
+            strict = "--strict" if guard == SRE_GUARD else "--fail-on-blocker"
+            proc = subprocess.run(
+                [sys.executable, "-S", str(guard), "--repo", str(repo_dir), "--base", "HEAD", "--json", strict],
+                capture_output=True, text=True, check=False,
+                env=dict(os.environ, ANTI_SLOP_DISABLE_NATIVE="1"),
+            )
+            self.assertEqual(proc.returncode, exit_code, proc.stderr)
+            self.assertIn(rule_id, [entry["id"] for entry in json.loads(proc.stdout)["findings"]])
+
+    def test_blind_sleep_shared_contract_matches_native_severity(self):
+        shared = self.contracts["fixtures"]["blind_sleep"]["shared"]
+        repo_dir, _ = self._create_repo({"worker.py": "import time\n"})
+        source = repo_dir / "worker.py"
+        for line, expected in (("time.sleep(5)", True), ("schedule_work()", False)):
+            source.write_text(f"import time\n{line}\n", encoding="utf-8")
+            runs = [
+                (self._run_diff_guard(repo_dir), "diff_guard_id", "id"),
+                (self._run_sre_guard(repo_dir), "sre_guard_id", "id"),
+            ]
+            if self.go_bin or self.require_native:
+                runs.append((self._run_go_audit(repo_dir), "go_code", "code"))
+            for run, fixture_key, report_key in runs:
+                expected_exit = shared[fixture_key + "_exit"] if expected else 0
+                self.assertEqual(run.returncode, expected_exit, run.stderr)
+                entries = [
+                    entry for entry in json.loads(run.stdout)["findings"]
+                    if entry[report_key] == shared[fixture_key]
+                ]
+                if expected:
+                    self.assertEqual([entry["severity"].lower() for entry in entries],
+                                     [shared[fixture_key + "_severity"]])
+                else:
+                    self.assertEqual(entries, [])
+
     def test_clean_repo_shared_contract(self):
         expected = self.contracts["fixtures"]["clean"]["shared"]
         repo_dir, _ = self._create_repo()
@@ -237,6 +301,101 @@ class EngineParityContractTests(unittest.TestCase):
             ga_data = json.loads(ga.stdout)
             self.assertEqual(ga_data["sli"]["status"], expected["go_status"])
             self.assertTrue(any(f["code"] == expected["go_code"] for f in ga_data["findings"]))
+
+    def _assert_catalog_normalization(self, engine, output, field):
+        for finding in output["findings"]:
+            rule = rule_registry.BY_CODE.get(finding[field])
+            if rule is None:
+                continue
+            normalized = audit_runner.normalize_finding(engine, finding, output)
+            self.assertEqual(normalized["rule"], finding[field])
+            self.assertEqual(normalized["catalog_id"], rule.catalog_id)
+            self.assertTrue((ROOT / normalized["skill_path"]).is_file())
+
+    def _catalog_fixture_codes(self, fixture_name, source, runs):
+        repo, _ = self._create_repo({"worker.py": "def baseline():\n    return None\n"})
+        (repo / "worker.py").write_text(source, encoding="utf-8")
+        codes = {}
+        for engine, (run, field) in runs.items():
+            proc = run(repo)
+            with self.subTest(fixture=fixture_name, engine=engine):
+                self.assertIn(proc.returncode, (0, 1, 2), proc.stderr)
+                output = json.loads(proc.stdout)
+                self.assertIsInstance(output["findings"], list)
+                codes[fixture_name, engine] = {finding[field] for finding in output["findings"]}
+                if engine in {"diff_guard", "sre_guard"}:
+                    self._assert_catalog_normalization(engine, output, field)
+        return codes
+
+    def test_catalog_detector_fixture_receipt(self):
+        cases = {
+            "swallow_bad": "def work(job):\n    try:\n        job.run()\n    except Exception: pass\n",
+            "swallow_handled": "def work(job):\n    try:\n        job.run()\n    except Exception as error:\n        raise RuntimeError('job failed') from error\n",
+            "nested_bad": "def choose(x):\n    if x > 0:\n        if x < 100:\n            if x % 2 == 0:\n                if x != 4:\n                    return x\n    return 0\n",
+            "nested_clear": "def choose(x):\n    if x <= 0 or x >= 100:\n        return 0\n    return x if x % 2 == 0 and x != 4 else 0\n",
+            "flag_bad": "def read(job):\n    if False:\n        return job.read()\n    return None\n",
+            "flag_clear": "def read(job):\n    if job.ready:\n        return job.read()\n    return None\n",
+            "placeholder_bad": "def read(job):\n    # TODO(future): complete job reader\n    return None\n",
+            "placeholder_clear": "def read(job):\n    return job.read()\n",
+            "sleep_bad": "import time\n\ndef wait(event):\n    time.sleep(1)\n    return event.is_set()\n",
+            "sleep_clear": "def wait(event):\n    return event.wait(timeout=1)\n",
+            "retry_bad": "from time import sleep\n\ndef retry(op):\n    for attempt in range(3): sleep(1) if not op() else None\n",
+            "retry_clear": "from time import sleep\n\ndef retry(op, jitter):\n    for attempt in range(3):\n        if op():\n            return True\n        sleep(jitter(2 ** attempt))\n    return False\n",
+            "fanout_bad": "import asyncio\n\nasync def send(items, deliver):\n    return await asyncio.gather(*[deliver(item) for item in items])\n",
+            "fanout_clear": "async def send(items, deliver):\n    return [await deliver(item) for item in items]\n",
+            "narration_bad": "def reserve(attempt):\n    # Increment attempt\n    return attempt + 1\n",
+            "narration_clear": "def reserve(attempt):\n    # Consume the retry budget before dispatch so a crash cannot grant an extra attempt.\n    return attempt + 1\n",
+            "health_bad": "def readiness():\n    return 200\n",
+            "health_clear": "def readiness():\n    ready = datastore.is_ready()\n    return 200 if ready else 503\n",
+            "health_inline_probe": "def readiness():\n    return 200 if datastore.is_ready() else 503\n",
+        }
+        runs = {
+            "diff_guard": (self._run_diff_guard, "id"),
+            "sre_guard": (self._run_sre_guard, "id"),
+        }
+        if self.rust_bin or self.require_native:
+            runs["rust"] = (self._run_rust_triage, "code")
+        if self.go_bin or self.require_native:
+            runs["go"] = (self._run_go_audit, "code")
+
+        if os.environ.get("CATALOG_OBSERVATIONS_OUT") and not self.require_native:
+            self.fail("A catalog coverage receipt requires REQUIRE_NATIVE_PARITY=1")
+
+        outputs = {}
+        for fixture_name, source in cases.items():
+            outputs.update(self._catalog_fixture_codes(fixture_name, source, runs))
+
+        fixtures = {
+            "OPS-01": ("swallow_bad", "swallow_handled"),
+            "SRE-01": ("nested_bad", "nested_clear"),
+            "SRE-05": ("flag_bad", "flag_clear"),
+            "SRE-07": ("sleep_bad", "sleep_clear"),
+            "SRE-08": ("retry_bad", "retry_clear"),
+            "SRE-09": ("fanout_bad", "fanout_clear"),
+            "SIM-17": ("narration_bad", "narration_clear"),
+            "SRE-12": ("health_bad", "health_clear"),
+        }
+        observations = {}
+        for rule in rule_registry.RULES:
+            if rule.engine not in runs:
+                continue
+            with self.subTest(detector=rule.evidence_key):
+                positive, negative = fixtures[rule.catalog_id]
+                if rule.engine_code == "SRE-YAGNI-SPECULATIVE":
+                    positive, negative = "placeholder_bad", "placeholder_clear"
+                hit = rule.engine_code in outputs[positive, rule.engine]
+                false_alarm = rule.engine_code in outputs[negative, rule.engine]
+                self.assertTrue(hit, f"{rule.evidence_key} stopped detecting its positive fixture")
+                self.assertFalse(false_alarm, f"{rule.evidence_key} flags its negative fixture")
+                outcomes = {"tp": int(hit), "fn": int(not hit), "fp": int(false_alarm), "tn": int(not false_alarm)}
+                if rule.catalog_id == "SRE-12":
+                    inline_flagged = rule.engine_code in outputs["health_inline_probe", rule.engine]
+                    outcomes["fp" if inline_flagged else "tn"] += 1
+                observations[rule.evidence_key] = outcomes
+
+        receipt = os.environ.get("CATALOG_OBSERVATIONS_OUT")
+        if receipt:
+            pathlib.Path(receipt).write_text(json.dumps(observations, indent=2) + "\n", encoding="utf-8")
 
     def test_invalid_git_ref_rejected_by_all_engines(self):
         repo_dir, _ = self._create_repo()

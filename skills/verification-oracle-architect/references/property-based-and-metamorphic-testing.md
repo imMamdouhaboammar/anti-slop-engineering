@@ -100,3 +100,13 @@ for (let run = 0; run < 250; run++) {
   }
 }
 ```
+
+## Mutation testing fixture
+
+```sh
+python3 -I -S scripts/mutation_fixture.py --seed 42
+```
+
+The opt-in fixture compares a passing baseline with deterministic AST condition and return changes. Only built-in fixture code runs. Each child runs in a disposable working directory, starts Python in isolated mode without site initialization, and has a one-second deadline. The fixture cannot select project files, discover tests, run parameters as commands, or contact a service.
+
+The score counts a mutant only if the test ran and passed or failed its assertion. A compile error is invalid. An unavailable child or timeout is inconclusive. The test fixture includes these cases so an infrastructure failure cannot inflate the score. The fixture's score applies only to its own oracle and fixed inputs.

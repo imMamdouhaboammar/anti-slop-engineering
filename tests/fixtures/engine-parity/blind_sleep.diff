@@ -1,0 +1,6 @@
+diff --git a/worker.py b/worker.py
+--- a/worker.py
++++ b/worker.py
+@@ -1 +1,2 @@
+ import time
++time.sleep(5)
