@@ -58,7 +58,13 @@ if command -v node >/dev/null 2>&1 && [ -f "$SOURCE_DIR/scripts/installer.mjs" ]
   if [ "$LOCAL_INSTALL" -eq 1 ]; then
     SCOPE_FLAG="--scope=project"
   fi
-  if ! setup_selection="$(node "$SOURCE_DIR/scripts/installer.mjs" --selection-only "$SCOPE_FLAG" "$@")"; then
+  if setup_selection="$(node "$SOURCE_DIR/scripts/installer.mjs" --selection-only "$SCOPE_FLAG" "$@")"; then
+    :
+  else
+    node_status=$?
+    if [ "$node_status" -eq 130 ]; then
+      exit 130
+    fi
     echo "Installer error: plugin selection failed; no files were installed" >&2
     exit 2
   fi
