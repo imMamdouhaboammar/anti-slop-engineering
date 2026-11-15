@@ -254,7 +254,7 @@ func readChangedSources(rootPath string, paths []string, fileLimit, totalLimit i
 			continue
 		}
 		info, err := root.Lstat(path)
-		if errors.Is(err, os.ErrNotExist) {
+		if missingAuditSource(err) {
 			continue
 		}
 		if err != nil {
@@ -264,6 +264,9 @@ func readChangedSources(rootPath string, paths []string, fileLimit, totalLimit i
 			continue
 		}
 		content, err := readAuditSource(root, path, info, fileLimit, totalLimit, remaining)
+		if missingAuditSource(err) {
+			continue
+		}
 		if err != nil {
 			return nil, fmt.Errorf("reading %q: %w", path, err)
 		}
@@ -273,6 +276,10 @@ func readChangedSources(rootPath string, paths []string, fileLimit, totalLimit i
 		}
 	}
 	return files, nil
+}
+
+func missingAuditSource(err error) bool {
+	return errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ENOTDIR)
 }
 
 func readAuditSource(root *os.Root, path string, info os.FileInfo, fileLimit, totalLimit, remaining int64) ([]byte, error) {

@@ -486,3 +486,46 @@ func TestConcurrentAuditRace(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+func TestExecuteAuditSkipsStagedChildUnderWorktreeFile(t *testing.T) {
+	dir := initTempGitRepo(t)
+	nested := filepath.Join(dir, "replaced")
+	if err := os.Mkdir(nested, 0750); err != nil {
+		t.Fatal(err)
+	}
+	child := filepath.Join(nested, "staged.go")
+	if err := os.WriteFile(child, []byte("package sample\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, dir, "add", "replaced/staged.go")
+	if err := os.Remove(child); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(nested); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(nested, []byte("replacement worktree file\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n\nfunc Work() {\n\ttime.Sleep(5 * time.Second)\n}\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(dir)
+
+	var stdout, stderr bytes.Buffer
+	code := executeAudit([]string{"--format", "json"}, &stdout, &stderr)
+	if code != 1 || stderr.Len() != 0 {
+		t.Fatalf("expected an audit finding, got exit=%d stdout=%q stderr=%q", code, &stdout, &stderr)
+	}
+	var report model.AuditReport
+	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
+		t.Fatal(err)
+	}
+	if report.SLI.TotalFiles != 1 || len(report.Findings) != 1 {
+		t.Fatalf("expected one source and finding, got %+v", report)
+	}
+	item := report.Findings[0]
+	if item.File != "main.go" || item.Line != 4 || item.Code != "SRE-SCALE-SLEEP" {
+		t.Fatalf("unexpected finding: %+v", item)
+	}
+}

@@ -158,6 +158,19 @@ func TestEvidenceModeMatchesDefaultOnRealGitProducer(t *testing.T) {
 	write("reverted.go", []byte("package main\n// staged only\n"))
 	runGit(t, dir, "add", "staged.go", "reverted.go")
 	write("reverted.go", []byte("package main\n"))
+	replaced := filepath.Join(dir, "replaced")
+	if err := os.Mkdir(replaced, 0750); err != nil {
+		t.Fatal(err)
+	}
+	write("replaced/staged.go", []byte("package main\n"))
+	runGit(t, dir, "add", "replaced/staged.go")
+	if err := os.Remove(filepath.Join(replaced, "staged.go")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(replaced); err != nil {
+		t.Fatal(err)
+	}
+	write("replaced", []byte("replacement worktree file\n"))
 	write("staged then removed.go", []byte("package main\n"))
 	runGit(t, dir, "add", "staged then removed.go")
 	if err := os.Remove(filepath.Join(dir, "staged then removed.go")); err != nil {
