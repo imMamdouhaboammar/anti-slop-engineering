@@ -2,6 +2,7 @@
 """Check Verification Oracle Architect records and test/source files for Contract-Verified In-Memory Fakes, Property-Based & Metamorphic Oracles, Seeded Deterministic Chaos Testing, and Red-Green Mutation Falsification."""
 
 import argparse
+import glob
 import json
 import os
 import re
@@ -9,6 +10,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tarfile
 import tempfile
 import time
 from pathlib import Path
@@ -73,7 +75,6 @@ ASSERTION_FAIL_RE = re.compile(
     r"|FAIL:\s*test"
     r"|FAILED\s*\(failures="
     r"|ERR_ASSERTION"
-    r"|expect\s*\([^)]*\)\s*\."
     r"|Expected:\s*.*\s*Received:"
     r"|assertion failed"
     r"|--- FAIL:)",
@@ -322,7 +323,7 @@ def is_test_file(path_str: str) -> bool:
 
 
 def find_repo_root(start_dir=None):
-    cwd = start_dir or Path.cwd()
+    cwd = Path(start_dir or Path.cwd())
     try:
         res = subprocess.run(
             ["git", "-C", str(cwd), "rev-parse", "--show-toplevel"],
@@ -337,55 +338,43 @@ def find_repo_root(start_dir=None):
     return cwd.resolve()
 
 
-def detect_changed_test_files(repo_root: Path, base: str = "HEAD~1"):
-    test_files = set()
-    try:
-        diff_res = subprocess.run(
-            ["git", "-C", str(repo_root), "diff", "--name-only", "%s...HEAD" % base],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if diff_res.returncode != 0:
-            diff_res = subprocess.run(
-                ["git", "-C", str(repo_root), "diff", "--name-only", base],
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-        if diff_res.returncode == 0:
-            for line in diff_res.stdout.splitlines():
-                line = line.strip()
-                if line and is_test_file(line) and (repo_root / line).is_file():
-                    test_files.add(line)
+def _git_paths(repo_root: Path, *args):
+    result = subprocess.run(
+        ["git", "-C", str(repo_root), *args],
+        capture_output=True,
+        check=True,
+    )
+    return (os.fsdecode(path) for path in result.stdout.split(b"\0") if path)
 
-        status_res = subprocess.run(
-            ["git", "-C", str(repo_root), "status", "--porcelain"],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if status_res.returncode == 0:
-            for line in status_res.stdout.splitlines():
-                if len(line) > 3:
-                    file_path = line[3:].strip().split(" -> ")[-1]
-                    if is_test_file(file_path) and (repo_root / file_path).is_file():
-                        test_files.add(file_path)
-    except OSError as err:
-        sys.stderr.write("[WARN] Unable to detect changed test files: %s\n" % err)
-    return sorted(test_files)
+
+def _regular_relative_file(repo_root: Path, name: str):
+    path = Path(name)
+    source = repo_root / path
+    if path.is_absolute() or ".." in path.parts or path.as_posix() != name:
+        return False
+    return source.is_file() and source.resolve() == source
+
+
+def detect_changed_test_files(repo_root: Path, base: str = "HEAD~1"):
+    tracked = _git_paths(repo_root, "diff", "--name-only", "-z", base, "--")
+    untracked = _git_paths(repo_root, "ls-files", "--others", "--exclude-standard", "-z")
+    return sorted(
+        name for name in set(tracked).union(untracked)
+        if is_test_file(name) and _regular_relative_file(repo_root, name)
+    )
 
 
 def detect_test_cmd(test_file: str, custom_cmd=None):
     if custom_cmd:
-        if "{test_file}" in custom_cmd or "{file}" in custom_cmd:
-            formatted = custom_cmd.replace("{test_file}", test_file).replace("{file}", test_file)
-            return shlex.split(formatted)
-        return shlex.split(custom_cmd) + [test_file]
+        argv = shlex.split(custom_cmd)
+        if any("{test_file}" in arg or "{file}" in arg for arg in argv):
+            return [arg.replace("{test_file}", test_file).replace("{file}", test_file) for arg in argv]
+        return argv + [test_file]
 
     ext = Path(test_file).suffix.lower()
     if ext == ".py":
-        return [sys.executable, "-m", "unittest", test_file]
+        path = Path(test_file)
+        return [sys.executable, "-m", "unittest", "discover", "-s", str(path.parent), "-p", glob.escape(path.name)]
     if ext in (".ts", ".js", ".mjs"):
         if shutil.which("bun"):
             return ["bun", "test", test_file]
@@ -476,6 +465,8 @@ def classify_test_output(run_res):
         return "dependency_failure", "Test runner command or binary not available in environment"
 
     if exit_code == 0:
+        if re.search(r"^Ran 0 tests? in ", combined, re.MULTILINE):
+            return "no_tests_ran", "The runner exited without executing a test"
         return "passed", "Test completed with exit code 0"
 
     snippet = extract_failure_snippet(combined)
@@ -488,31 +479,49 @@ def classify_test_output(run_res):
     return "test_failure", "Test exited with code %s: %s" % (exit_code, snippet)
 
 
-def _copy_test_tree(repo_root: Path, target_dir: Path, test_files):
-    for t_rel in test_files:
-        src = repo_root / t_rel
-        dest = target_dir / t_rel
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        if src.is_file():
-            shutil.copy2(src, dest)
+def _copy_snapshot_files(repo_root: Path, target_dir: Path, paths):
+    for name in set(paths):
+        if not _regular_relative_file(repo_root, name):
+            continue
+        target = target_dir / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(repo_root / name, target)
 
-    for test_dir_name in ("tests", "test"):
-        src_tests = repo_root / test_dir_name
-        if src_tests.is_dir():
-            for root, _, files in os.walk(src_tests):
-                for f in files:
-                    rel_p = Path(root, f).relative_to(repo_root)
-                    target_p = target_dir / rel_p
-                    if not target_p.exists():
-                        target_p.parent.mkdir(parents=True, exist_ok=True)
-                        shutil.copy2(repo_root / rel_p, target_p)
+
+def _resolve_baseline(root: Path, base: str):
+    return subprocess.run(
+        ["git", "-C", str(root), "rev-parse", "--verify", "--end-of-options", base + "^{commit}"],
+        capture_output=True, check=True, text=True,
+    ).stdout.strip()
+
+
+def _create_baseline(root: Path, target: Path, commit: str):
+    with tempfile.TemporaryFile() as archive:
+        subprocess.run(
+            ["git", "-C", str(root), "archive", "--format=tar", commit],
+            stdout=archive, stderr=subprocess.PIPE, check=True,
+        )
+        archive.seek(0)
+        with tarfile.open(fileobj=archive, mode="r:") as tar:
+            _extract_baseline(tar, target)
+
+
+def _extract_baseline(tar: tarfile.TarFile, target: Path):
+    for member in tar:
+        name = Path(member.name)
+        if name.is_absolute() or ".." in name.parts or not member.isfile():
+            continue
+        destination = target / name
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        with tar.extractfile(member) as source, destination.open("wb") as output:
+            shutil.copyfileobj(source, output)
+        destination.chmod(member.mode & 0o777)
 
 
 def _execute_test_isolated(test_file: str, cwd: Path, custom_cmd=None, timeout: int = 30):
     cmd = detect_test_cmd(test_file, custom_cmd)
     env = os.environ.copy()
-    cur_pypath = env.get("PYTHONPATH", "")
-    env["PYTHONPATH"] = str(cwd) + (os.pathsep + cur_pypath if cur_pypath else "")
+    env["PYTHONPATH"] = str(cwd)
     res = run_command_safe(cmd, cwd=cwd, env=env, timeout=timeout)
     cls_type, reason = classify_test_output(res)
     res["classification"] = cls_type
@@ -526,9 +535,13 @@ def _evaluate_test_status(base_cls: str, curr_cls: str) -> str:
         return "dependency_failure"
     if base_cls == "flaky_nondeterministic" or curr_cls == "flaky_nondeterministic":
         return "flaky_nondeterministic"
+    if curr_cls in ("no_tests_ran", "infrastructure_error"):
+        return "inconclusive_infrastructure"
+    if curr_cls == "timed_out":
+        return "inconclusive"
     if curr_cls != "passed":
         return "failed_on_current"
-    if base_cls in ("assertion_failure", "test_failure"):
+    if base_cls == "assertion_failure":
         return "verified"
     if base_cls == "passed":
         return "tautological"
@@ -549,10 +562,8 @@ def _synthesize_proof_verdict(results, base_ref: str):
         return "tautological", "refuse", False, "Test passed on baseline '%s' without implementation changes; lacks red-state proof." % base_ref
     if all(s == "verified" for s in statuses):
         return "verified", "proceed", True, "Affirmative counterfactual red-state proof: tests failed on baseline and pass on current tree."
-    if any(s == "verified" for s in statuses):
-        return "verified", "proceed", True, "Partial affirmative proof: verified tests failed on baseline, other tests inconclusive."
     if all(s == "inconclusive_infrastructure" for s in statuses):
-        return "inconclusive_infrastructure", "pause", False, "Tests failed on baseline due to missing imports/symbols; inconclusive (not fraud)."
+        return "inconclusive_infrastructure", "pause", False, "The runner could not evaluate a test because required code or fixtures were missing, or no test ran."
     return "inconclusive", "pause", False, "Test outcomes could not establish conclusive red-green proof."
 
 
@@ -565,83 +576,76 @@ def run_counterfactual_proof(
     check_flaky: bool = False,
 ):
     root = find_repo_root(repo_root)
-    resolved_tests = test_files or detect_changed_test_files(root, base=base)
-
-    if not resolved_tests:
-        return {
-            "status": "no_tests_found",
-            "verdict": "pause",
-            "red_green_verified": False,
-            "rationale": "No new or modified test files detected against baseline '%s'" % base,
-            "base_ref": base,
-            "test_files": [],
-            "results": {},
-        }
-
-    temp_base = Path(tempfile.gettempdir())
-    temp_worktree = temp_base / ("anti-slop-proof-%s-%d" % (os.getpid(), int(time.time() * 1000)))
-
-    worktree_created = False
+    resolved_tests = []
     try:
-        wt_add = subprocess.run(
-            ["git", "-C", str(root), "worktree", "add", "--detach", str(temp_worktree), base],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if wt_add.returncode != 0:
+        commit = _resolve_baseline(root, base)
+        resolved_tests = test_files or detect_changed_test_files(root, base=commit)
+        if not resolved_tests:
             return {
-                "status": "inconclusive_infrastructure",
+                "status": "no_tests_found",
                 "verdict": "pause",
                 "red_green_verified": False,
-                "rationale": "Unable to establish isolated baseline worktree at '%s': %s" % (base, wt_add.stderr.strip()),
+                "rationale": "No new or modified test files detected against baseline '%s'" % base,
                 "base_ref": base,
-                "test_files": resolved_tests,
+                "test_files": [],
                 "results": {},
             }
-        worktree_created = True
-        _copy_test_tree(root, temp_worktree, resolved_tests)
-
-        per_test_results = {}
-        for t_file in resolved_tests:
-            base_run = _execute_test_isolated(t_file, cwd=temp_worktree, custom_cmd=test_cmd, timeout=timeout)
-            curr_run = _execute_test_isolated(t_file, cwd=root, custom_cmd=test_cmd, timeout=timeout)
-
-            if check_flaky:
-                base_run2 = _execute_test_isolated(t_file, cwd=temp_worktree, custom_cmd=test_cmd, timeout=timeout)
-                curr_run2 = _execute_test_isolated(t_file, cwd=root, custom_cmd=test_cmd, timeout=timeout)
-                if base_run["classification"] != base_run2["classification"] or curr_run["classification"] != curr_run2["classification"]:
-                    base_run["classification"] = "flaky_nondeterministic"
-                    base_run["reason"] = "Test outcome varied across repeated executions"
-
-            t_status = _evaluate_test_status(base_run["classification"], curr_run["classification"])
-            per_test_results[t_file] = {
-                "status": t_status,
-                "baseline": base_run,
-                "current": curr_run,
-            }
-
-        overall_status, overall_verdict, rg_verified, rationale = _synthesize_proof_verdict(per_test_results, base)
+        for name in resolved_tests:
+            if not _regular_relative_file(root, name):
+                raise ValueError("Test is missing or is not a regular repository-relative file: %r" % name)
+        with tempfile.TemporaryDirectory(prefix="anti-slop-proof-") as temp_dir:
+            baseline = Path(temp_dir) / "baseline"
+            current = Path(temp_dir) / "current"
+            baseline.mkdir()
+            current.mkdir()
+            _create_baseline(root, baseline, commit)
+            _copy_snapshot_files(root, baseline, resolved_tests)
+            current_paths = _git_paths(root, "ls-files", "--cached", "--others", "--exclude-standard", "-z")
+            _copy_snapshot_files(root, current, set(current_paths).union(resolved_tests))
+            results = _run_proof_tests(resolved_tests, baseline, current, test_cmd, timeout, check_flaky)
+    except (OSError, RuntimeError, ValueError, subprocess.CalledProcessError, tarfile.TarError) as exc:
         return {
-            "status": overall_status,
-            "verdict": overall_verdict,
-            "red_green_verified": rg_verified,
-            "rationale": rationale,
+            "status": "inconclusive_infrastructure",
+            "verdict": "pause",
+            "red_green_verified": False,
+            "rationale": "Unable to run proof at baseline '%s': %s" % (base, exc),
             "base_ref": base,
             "test_files": resolved_tests,
-            "results": per_test_results,
+            "results": {},
+        }
+    status, verdict, verified, rationale = _synthesize_proof_verdict(results, base)
+    return {
+        "status": status,
+        "verdict": verdict,
+        "red_green_verified": verified,
+        "rationale": rationale,
+        "base_ref": base,
+        "test_files": resolved_tests,
+        "results": results,
+    }
+
+
+def _run_proof_tests(test_files, baseline: Path, current: Path, test_cmd, timeout: int, check_flaky: bool):
+    per_test_results = {}
+    for t_file in test_files:
+        base_run = _execute_test_isolated(t_file, cwd=baseline, custom_cmd=test_cmd, timeout=timeout)
+        curr_run = _execute_test_isolated(t_file, cwd=current, custom_cmd=test_cmd, timeout=timeout)
+
+        if check_flaky:
+            base_run2 = _execute_test_isolated(t_file, cwd=baseline, custom_cmd=test_cmd, timeout=timeout)
+            curr_run2 = _execute_test_isolated(t_file, cwd=current, custom_cmd=test_cmd, timeout=timeout)
+            if base_run["classification"] != base_run2["classification"] or curr_run["classification"] != curr_run2["classification"]:
+                base_run["classification"] = "flaky_nondeterministic"
+                base_run["reason"] = "Test outcome varied across repeated executions"
+
+        t_status = _evaluate_test_status(base_run["classification"], curr_run["classification"])
+        per_test_results[t_file] = {
+            "status": t_status,
+            "baseline": base_run,
+            "current": curr_run,
         }
 
-    finally:
-        if worktree_created:
-            subprocess.run(
-                ["git", "-C", str(root), "worktree", "remove", "--force", str(temp_worktree)],
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-        if temp_worktree.exists():
-            shutil.rmtree(temp_worktree, ignore_errors=True)
+    return per_test_results
 
 
 def main():

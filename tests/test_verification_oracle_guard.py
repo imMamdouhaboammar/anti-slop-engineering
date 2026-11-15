@@ -372,9 +372,10 @@ class VerificationOracleGuardTests(unittest.TestCase):
             tests_dir.mkdir(parents=True, exist_ok=True)
             test_file = tests_dir / "test_multiply.py"
             test_file.write_text(
-                "import unittest\nfrom calc import multiply\n\n"
+                "import unittest\nfrom pathlib import Path\nfrom calc import multiply\n\n"
                 "class MultiplyTest(unittest.TestCase):\n"
                 "    def test_mult(self):\n"
+                "        Path('run-marker.txt').write_text('ran')\n"
                 "        self.assertEqual(multiply(3, 4), 12)\n\n"
                 "if __name__ == '__main__':\n"
                 "    unittest.main()\n",
@@ -387,7 +388,6 @@ class VerificationOracleGuardTests(unittest.TestCase):
             res = verification_oracle_guard.run_counterfactual_proof(
                 repo_root=tmp_path,
                 base="HEAD",
-                test_files=["tests/test_multiply.py"],
             )
             self.assertEqual(res["status"], "verified")
             self.assertTrue(res["red_green_verified"])
@@ -399,6 +399,60 @@ class VerificationOracleGuardTests(unittest.TestCase):
             self.assertEqual(worktrees_before, worktrees_after, "Worktree list must contain zero leftover worktrees")
             self.assertTrue(uncommitted_file.is_file())
             self.assertEqual(uncommitted_file.read_text(encoding="utf-8"), "sensitive uncommitted developer notes\n")
+
+    def test_counterfactual_does_not_treat_runner_crash_as_an_assertion(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            git = _init_git_repo(root)
+            version = root / "version.txt"
+            version.write_text("old", encoding="utf-8")
+            git("add", "version.txt")
+            git("commit", "-m", "chore: initial version")
+            version.write_text("new", encoding="utf-8")
+            test_file = root / "test_example.py"
+            test_file.write_text(
+                "import unittest\nfrom pathlib import Path\n\n"
+                "class ExampleTest(unittest.TestCase):\n"
+                "    def test_feature(self):\n"
+                "        if Path('version.txt').read_text() == 'old':\n"
+                "            raise RuntimeError('runner crashed')\n",
+                encoding="utf-8",
+            )
+
+            result = verification_oracle_guard.run_counterfactual_proof(root, base="HEAD")
+
+            self.assertEqual(result["status"], "inconclusive")
+            self.assertFalse(result["red_green_verified"])
+
+    def test_counterfactual_compares_repeated_runs(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            git = _init_git_repo(root)
+            version = root / "version.txt"
+            version.write_text("old", encoding="utf-8")
+            git("add", "version.txt")
+            git("commit", "-m", "chore: initial version")
+            version.write_text("new", encoding="utf-8")
+            test_file = root / "test_toggle.py"
+            test_file.write_text(
+                "import unittest\nfrom pathlib import Path\n\n"
+                "class ToggleTest(unittest.TestCase):\n"
+                "    def test_toggle(self):\n"
+                "        if Path('version.txt').read_text() == 'old':\n"
+                "            marker = Path('run-marker.txt')\n"
+                "            first_run = not marker.exists()\n"
+                "            marker.touch()\n"
+                "            self.assertFalse(first_run)\n",
+                encoding="utf-8",
+            )
+
+            result = verification_oracle_guard.run_counterfactual_proof(
+                root, base="HEAD", check_flaky=True,
+            )
+
+            self.assertEqual(result["status"], "flaky_nondeterministic")
+            self.assertFalse(result["red_green_verified"])
+            self.assertFalse((root / "run-marker.txt").exists())
 
     def test_cli_counterfactual_and_proof_subcommand_invocations(self):
         with tempfile.TemporaryDirectory() as tmp_dir:

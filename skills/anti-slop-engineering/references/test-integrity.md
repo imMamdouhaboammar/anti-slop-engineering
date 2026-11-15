@@ -47,19 +47,10 @@ A test is a fallible executable claim about a contract, not infallible truth. Th
 
 The objective is independent test *signal*, not maximal test count. DAMP tests may repeat input setup for clarity; do not apply DRY dogmatically to tests.
 
-## Isolated Counterfactual Red-State Proof Runner
+## Isolated counterfactual test runs
 
-To prove that a newly added test actually tests the bugfix or feature rather than being tautological, the Verification Oracle guard provides an isolated counterfactual proof runner (`python3 scripts/verification_oracle_guard.py counterfactual` or `npx anti-slop-engineering counterfactual`).
+Run `python3 scripts/verification_oracle_guard.py counterfactual --base <commit> --tests <path>` for a test command and checkout you trust. The command runs test code under your own account. Use an OS sandbox for untrusted code.
 
-### Execution Model
-1. **Disposable Isolation:** Creates a detached, ephemeral git worktree at the baseline commit (`--base HEAD~1` or specified ref). The user's working tree is never mutated or stashed.
-2. **Selective Test Tree Injection:** Copies new/modified test files into the disposable baseline worktree without implementation code changes.
-3. **Red-State Evaluation:** Executes the test suite against the baseline tree and captures exit codes and diagnostic output.
-4. **Classification & Fraud Prevention:**
-   - `verified`: Baseline fails on assertion/expectation (`AssertionError`, `FAIL:`, `FAILED (failures=)`), changed tree passes (`exit code 0`).
-   - `tautological`: Test passes on baseline without the implementation change; lacks red-state proof.
-   - `inconclusive_infrastructure`: Test fails on baseline due to missing imports, modules, or syntax differences (`ModuleNotFoundError`, `ImportError`). Never asserts fraud from an irrelevant failure.
-   - `dependency_failure`: Missing runner or environment dependency.
-   - `flaky_nondeterministic`: Execution outcomes vary across repeated runs.
-   - `failed_on_current`: Test fails on current tree.
-5. **Clean Disposal:** The ephemeral worktree is unconditionally removed upon completion.
+- Baseline files come from the selected Git commit with the selected tests copied on top. Current files come from the working tree, including staged and unstaged edits and untracked files Git does not ignore. Each run uses a temporary checkout without Git metadata. Dependencies or fixtures missing from the snapshots may make the result inconclusive.
+- A verified result requires assertion-failure evidence from the baseline and a passing result from the current snapshot. A generic nonzero exit or missing dependency is inconclusive. A test that already passes on the baseline has no red-state evidence.
+- Use `--check-flaky` to compare two runs per snapshot. The snapshots are discarded on completion.
