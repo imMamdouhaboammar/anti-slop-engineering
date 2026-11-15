@@ -1,13 +1,16 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 Mamdouh Aboammar <mamdouhfces1997@gmail.com> and contributors
 """Behavioral tests for the Google SRE Guard."""
+import contextlib
+import io
 import json
-import os
 import pathlib
+import runpy
 import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / 'scripts' / 'sre_guard.py'
@@ -252,17 +255,22 @@ class SreGuardTests(unittest.TestCase):
         )
 
     def test_git_diff_reports_unreadable_path_encoding_and_checks_other_files(self):
-        if sys.platform != 'linux':
-            self.skipTest('Requires a Linux filesystem with byte-encoded filenames')
-        undecodable = os.fsdecode(b'src/legacy-\xff.py')
-        sources = ['src/worker.py', undecodable]
-        for name in sources:
-            (self.repo / name).write_text('import time\ntime.sleep(2)\n', encoding='utf-8')
-        git(self.repo, 'add', '--', *sources)
+        source = self.repo / 'src' / 'worker.py'
+        source.write_text('import time\ntime.sleep(2)\n', encoding='utf-8')
+        git(self.repo, 'add', 'src/worker.py')
+        scan = runpy.run_path(str(SCRIPT))['scan_git_diff']
+        git_exec = scan.__globals__['git_exec']
 
-        res, report = self.run_sre('--base', 'HEAD', '--json')
-        self.assertEqual(res.returncode, 0, res.stderr)
-        self.assertIn('skipping non-UTF-8 Git path', res.stderr)
+        def with_non_utf8_record(repo, *args):
+            result = git_exec(repo, *args)
+            if '--name-only' in args:
+                return b'src/legacy-\xff.py\0' + result
+            return result
+
+        stderr = io.StringIO()
+        with mock.patch.dict(scan.__globals__, git_exec=with_non_utf8_record), contextlib.redirect_stderr(stderr):
+            report = scan(self.repo)
+        self.assertIn('skipping non-UTF-8 Git path', stderr.getvalue())
         self.assertEqual(report['summary']['scanned_files'], 1)
         self.assertEqual(
             [(f['file'], f['line'], f['in_active_diff']) for f in report['findings']
