@@ -672,6 +672,7 @@ def normalize_finding(name: str, finding: Dict[str, Any], report: Dict[str, Any]
         or finding.get("evidence")
         or finding.get("description")
         or finding.get("detail")
+        or finding.get("title")
         or ""
     )
     if name == "contrast_guard" and finding.get("fg") and finding.get("bg"):

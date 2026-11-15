@@ -10,7 +10,10 @@ import (
 var (
 	reBlindSleep   = regexp.MustCompile(`(?i)(?:time\.Sleep\([0-9]+\s*\*\s*time\.Second\)|sleep\([0-9]+\)|Thread\.sleep\([0-9]+\))`)
 	reFixedRetry   = regexp.MustCompile(`(?i)(?:for\s+retry\s*:=\s*0;\s*retry\s*<\s*[0-9]+;\s*retry\+\+|for\s+attempt\s+in\s+range\([0-9]+\):)`)
-	reSwallowErr   = regexp.MustCompile(`(?i)(?:if\s+err\s*!=\s*nil\s*\{\s*\}|catch\s*\([^)]*\)\s*\{\s*\}|except(?:\s+Exception)?\s*:\s*pass)`)
+	reSwallowErr   = regexp.MustCompile(`(?i)(?:if\s+err\s*!=\s*nil\s*\{\s*\}|catch\s*(?:\([^)]*\))?\s*\{\s*\}|except(?:\s+[^:]*)?:\s*(?:pass|\.\.\.))`)
+	reGoIfErrNil   = regexp.MustCompile(`^(?:if\s+(?:.+;\s*)?err\s*!=\s*nil|if\s+err\s*!=\s*nil)\s*\{?$`)
+	reCatchBlock   = regexp.MustCompile(`^(?:\}\s*)?catch\s*(?:\([^)]*\))?\s*\{?$`)
+	rePyExcept     = regexp.MustCompile(`^except(?:\s+[^:]*)?:$`)
 	reYAGNIComment = regexp.MustCompile(`(?i)(?:TODO\s*\((?:future|someday|unneeded)\)|placeholder\s+for\s+future|not\s+implemented\s+yet)`)
 )
 
@@ -46,7 +49,7 @@ func auditLineToil(file string, lineNo int, line string, allLines []string) []mo
 		))
 	}
 
-	if reSwallowErr.MatchString(trimmed) {
+	if isSwallowedError(file, lineNo-1, trimmed, allLines) {
 		findings = append(findings, makeToilFinding(
 			file, lineNo, model.CategoryScale, model.SeverityBlocker, "SRE-SCALE-SWALLOW",
 			"Silent error swallowing turns failure modes into operational diagnostic toil.",
@@ -63,6 +66,204 @@ func auditLineToil(file string, lineNo int, line string, allLines []string) []mo
 	}
 
 	return findings
+}
+
+func isCommentOrDocLine(line string) bool {
+	return strings.HasPrefix(line, "//") ||
+		strings.HasPrefix(line, "/*") ||
+		strings.HasPrefix(line, "*") ||
+		strings.HasPrefix(line, "#") ||
+		strings.HasPrefix(line, `"""`) ||
+		strings.HasPrefix(line, "'''")
+}
+
+func hasDocumentedReason(text string) bool {
+	lower := strings.ToLower(text)
+	reasons := []string{
+		"ignore",
+		"intentional",
+		"expected",
+		"deliberate",
+		"by design",
+		"suppress",
+		"safe to ignore",
+		"noop",
+		"no-op",
+		"skip",
+		"fallback",
+	}
+	for _, r := range reasons {
+		if strings.Contains(lower, r) {
+			return true
+		}
+	}
+	return false
+}
+
+func isInsideStringLiteral(line string, idx int) bool {
+	inDouble := false
+	inSingle := false
+	inBacktick := false
+	escaped := false
+
+	for i, r := range line {
+		if i >= idx {
+			break
+		}
+		if escaped {
+			escaped = false
+			continue
+		}
+		if r == '\\' {
+			escaped = true
+			continue
+		}
+		if r == '"' && !inSingle && !inBacktick {
+			inDouble = !inDouble
+		} else if r == '\'' && !inDouble && !inBacktick {
+			inSingle = !inSingle
+		} else if r == '`' && !inDouble && !inSingle {
+			inBacktick = !inBacktick
+		}
+	}
+
+	return inDouble || inSingle || inBacktick
+}
+
+func isSwallowedError(file string, currentIdx int, trimmed string, allLines []string) bool {
+	if isCommentOrDocLine(trimmed) {
+		return false
+	}
+
+	if loc := reSwallowErr.FindStringIndex(trimmed); loc != nil {
+		if !isInsideStringLiteral(trimmed, loc[0]) {
+			return true
+		}
+	}
+
+	if reGoIfErrNil.MatchString(trimmed) && !isInsideStringLiteral(trimmed, 0) {
+		return isSwallowedBraceBlock(currentIdx, allLines)
+	}
+
+	if reCatchBlock.MatchString(trimmed) && !isInsideStringLiteral(trimmed, 0) {
+		return isSwallowedBraceBlock(currentIdx, allLines)
+	}
+
+	if rePyExcept.MatchString(trimmed) && !isInsideStringLiteral(trimmed, 0) {
+		return isSwallowedPythonExcept(currentIdx, allLines)
+	}
+
+	return false
+}
+
+func checkCommentDocGo(line string) (bool, bool) {
+	if isCommentOrDocLine(line) {
+		return true, hasDocumentedReason(line)
+	}
+	return false, false
+}
+
+func isSwallowedBraceBlock(startIdx int, lines []string) bool {
+	limit := startIdx + 25
+	if limit > len(lines) {
+		limit = len(lines)
+	}
+
+	braceCount := 0
+	foundOpen := false
+	hasStatements := false
+	hasDocumented := false
+
+	for j := startIdx; j < limit; j++ {
+		line := strings.TrimSpace(lines[j])
+		if line == "" {
+			continue
+		}
+
+		if isComment, isDoc := checkCommentDocGo(line); isComment {
+			if isDoc {
+				hasDocumented = true
+			}
+			continue
+		}
+
+		openCount := strings.Count(line, "{")
+		closeCount := strings.Count(line, "}")
+
+		if !foundOpen {
+			if openCount > 0 {
+				foundOpen = true
+				braceCount += openCount - closeCount
+				stripped := line
+				if idx := strings.Index(stripped, "{"); idx != -1 {
+					after := strings.TrimSpace(stripped[idx+1:])
+					after = strings.TrimSuffix(after, "}")
+					if after != "" && !isCommentOrDocLine(after) {
+						hasStatements = true
+					}
+				}
+				if braceCount <= 0 {
+					return !hasStatements && !hasDocumented
+				}
+			}
+			continue
+		}
+
+		braceCount += openCount - closeCount
+
+		cleaned := strings.ReplaceAll(strings.ReplaceAll(line, "{", ""), "}", "")
+		cleaned = strings.TrimSpace(cleaned)
+		if cleaned != "" {
+			hasStatements = true
+		}
+
+		if braceCount <= 0 {
+			break
+		}
+	}
+
+	return foundOpen && !hasStatements && !hasDocumented
+}
+
+func isSwallowedPythonExcept(startIdx int, lines []string) bool {
+	limit := startIdx + 20
+	if limit > len(lines) {
+		limit = len(lines)
+	}
+
+	hasStatements := false
+	hasDocumented := false
+	onlyPassOrEllipsis := false
+
+	baseIndent := len(lines[startIdx]) - len(strings.TrimLeft(lines[startIdx], " \t"))
+
+	for j := startIdx + 1; j < limit; j++ {
+		rawLine := lines[j]
+		line := strings.TrimSpace(rawLine)
+		if line == "" {
+			continue
+		}
+
+		indent := len(rawLine) - len(strings.TrimLeft(rawLine, " \t"))
+		if indent <= baseIndent && line != "" {
+			break
+		}
+
+		if isComment, isDoc := checkCommentDocGo(line); isComment {
+			if isDoc {
+				hasDocumented = true
+			}
+			continue
+		}
+
+		if line == "pass" || line == "..." {
+			onlyPassOrEllipsis = true
+		} else {
+			hasStatements = true
+		}
+	}
+
+	return onlyPassOrEllipsis && !hasStatements && !hasDocumented
 }
 
 func hasBackoffLookahead(currentIdx int, lines []string) bool {
@@ -87,8 +288,23 @@ func CheckToilAndScale(filePath string, content string) []model.Finding {
 
 	lines := strings.Split(content, "\n")
 	var findings []model.Finding
+	inBlockComment := false
 
 	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if inBlockComment {
+			if strings.Contains(trimmed, "*/") {
+				inBlockComment = false
+			}
+			continue
+		}
+		if strings.HasPrefix(trimmed, "/*") {
+			if !strings.Contains(trimmed, "*/") {
+				inBlockComment = true
+			}
+			continue
+		}
+
 		lineFindings := auditLineToil(filePath, i+1, line, lines)
 		findings = append(findings, lineFindings...)
 	}

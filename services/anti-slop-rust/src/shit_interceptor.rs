@@ -7,6 +7,9 @@ pub struct ShitInterceptor {
     re_companion_hash: Regex,
     re_swallow_error: Regex,
     re_hypothetical_wrapper: Regex,
+    re_go_if_err_nil: Regex,
+    re_catch_block: Regex,
+    re_py_except: Regex,
 }
 
 impl Default for ShitInterceptor {
@@ -18,21 +21,24 @@ impl Default for ShitInterceptor {
 impl ShitInterceptor {
     pub fn new() -> Self {
         Self {
-            re_companion_hash: Regex::new(
+            re_companion_hash: compile_regex(
                 r#"(?i)(createHash\(['"](?:sha256|md5|sha1)['"]\)|hashlib\.(?:sha256|md5|sha1)\()"#,
-            )
-            .unwrap(),
-            re_swallow_error: Regex::new(
+            ),
+            re_swallow_error: compile_regex(
                 r#"(?x)
-                catch\s*\([^)]*\)\s*\{\s*\}|
-                except(?:\s+Exception)?\s*:\s*pass
+                catch\s*(?:\([^)]*\))?\s*\{\s*\}|
+                except(?:\s+[^:]*)?:\s*(?:pass|\.\.\.)|
+                if\s+(?:.+;\s*)?err\s*!=\s*nil\s*\{\s*\}
                 "#,
-            )
-            .unwrap(),
-            re_hypothetical_wrapper: Regex::new(
+            ),
+            re_hypothetical_wrapper: compile_regex(
                 r#"(?i)class\s+(?:Base|Abstract|Generic)\w+(?:Adapter|Provider|Factory|Service)\b"#,
-            )
-            .unwrap(),
+            ),
+            re_go_if_err_nil: compile_regex(
+                r#"^(?:if\s+(?:.+;\s*)?err\s*!=\s*nil|if\s+err\s*!=\s*nil)\s*\{?$"#,
+            ),
+            re_catch_block: compile_regex(r#"^(?:\}\s*)?catch\s*(?:\([^)]*\))?\s*\{?$"#),
+            re_py_except: compile_regex(r#"^except(?:\s+[^:]*)?:$"#),
         }
     }
 
@@ -47,9 +53,41 @@ impl ShitInterceptor {
         let mut current_file = String::new();
         let mut line_no = 0;
         let mut in_hunk = false;
+        let mut hunk_lines: Vec<(usize, char, String)> = Vec::new();
+
+        let process_file_hunks = |file: &str, h_lines: &[(usize, char, String)]| -> Vec<Finding> {
+            if file.is_empty() || is_doc_file(file) || is_test_file(file) {
+                return Vec::new();
+            }
+            let mut f_findings = Vec::new();
+            for i in 0..h_lines.len() {
+                let (l_no, prefix, ref line_text) = h_lines[i];
+                if prefix != '+' {
+                    continue;
+                }
+                let code_content = line_text.trim();
+                let mut line_findings = self.audit_added_code(file, l_no, code_content);
+                f_findings.append(&mut line_findings);
+
+                if !f_findings.iter().any(|f| f.code == "STS-H02" && f.line == l_no) {
+                    if self.is_multiline_swallowed_error(i, h_lines) {
+                        f_findings.push(Self::hardening_blocker(
+                            file,
+                            l_no,
+                            "STS-H02",
+                            "Hypothetical hardening: swallowing error without logging or structured recovery.",
+                            "Handle errors explicitly or propagate them with actionable context.",
+                        ));
+                    }
+                }
+            }
+            f_findings
+        };
 
         for line in diff_text.lines() {
             if line.starts_with("diff --git") {
+                findings.extend(process_file_hunks(&current_file, &hunk_lines));
+                hunk_lines.clear();
                 current_file = extract_target_file(line).unwrap_or_default();
                 line_no = 0;
                 in_hunk = false;
@@ -57,6 +95,8 @@ impl ShitInterceptor {
             }
             if !in_hunk {
                 if let Some(f) = extract_target_file(line) {
+                    findings.extend(process_file_hunks(&current_file, &hunk_lines));
+                    hunk_lines.clear();
                     current_file = f;
                     continue;
                 }
@@ -78,13 +118,14 @@ impl ShitInterceptor {
                 findings.push(f);
             }
 
-            let is_addition = line.starts_with('+') && !line.starts_with("+++");
-            let is_ignored = is_doc_file(&current_file) || is_test_file(&current_file);
+            let is_hunk_content = (line.starts_with('+') && !line.starts_with("+++"))
+                || (line.starts_with('-') && !line.starts_with("---"))
+                || line.starts_with(' ');
 
-            if is_addition && !is_ignored {
-                let code_content = line[1..].trim();
-                let mut line_findings = self.audit_added_code(&current_file, line_no, code_content);
-                findings.append(&mut line_findings);
+            if is_hunk_content {
+                let prefix = line.chars().next().unwrap_or(' ');
+                let text = line.get(1..).unwrap_or("");
+                hunk_lines.push((line_no, prefix, text.to_string()));
             }
 
             if line.starts_with('+') || line.starts_with(' ') {
@@ -92,7 +133,121 @@ impl ShitInterceptor {
             }
         }
 
+        findings.extend(process_file_hunks(&current_file, &hunk_lines));
+
         findings
+    }
+
+    fn is_multiline_swallowed_error(&self, start_idx: usize, lines: &[(usize, char, String)]) -> bool {
+        let (_, _, ref first_text) = lines[start_idx];
+        let code = first_text.trim();
+
+        if is_comment_or_doc_line(code) || is_inside_string_literal(code, 0) {
+            return false;
+        }
+
+        if self.re_go_if_err_nil.is_match(code) || self.re_catch_block.is_match(code) {
+            return self.is_swallowed_brace_block(start_idx, lines);
+        }
+
+        if self.re_py_except.is_match(code) {
+            return self.is_swallowed_python_except(start_idx, lines);
+        }
+
+        false
+    }
+
+    fn is_swallowed_brace_block(&self, start_idx: usize, lines: &[(usize, char, String)]) -> bool {
+        let limit = (start_idx + 25).min(lines.len());
+        let mut brace_count: i32 = 0;
+        let mut found_open = false;
+        let mut has_statements = false;
+        let mut has_documented = false;
+
+        for j in start_idx..limit {
+            let Some((_raw, line)) = get_active_hunk_line(lines, j) else {
+                continue;
+            };
+
+            let (is_comment, is_doc) = check_comment_doc(line);
+            if is_comment {
+                if is_doc {
+                    has_documented = true;
+                }
+                continue;
+            }
+
+            let open_count = line.chars().filter(|&c| c == '{').count() as i32;
+            let close_count = line.chars().filter(|&c| c == '}').count() as i32;
+
+            if !found_open {
+                if open_count > 0 {
+                    found_open = true;
+                    brace_count += open_count - close_count;
+                    if let Some(idx) = line.find('{') {
+                        let after = line[idx + 1..].trim().trim_end_matches('}').trim();
+                        if !after.is_empty() && !is_comment_or_doc_line(after) {
+                            has_statements = true;
+                        }
+                    }
+                    if brace_count <= 0 {
+                        return !has_statements && !has_documented;
+                    }
+                }
+                continue;
+            }
+
+            brace_count += open_count - close_count;
+
+            let cleaned: String = line.chars().filter(|&c| c != '{' && c != '}').collect();
+            let cleaned = cleaned.trim();
+            if !cleaned.is_empty() {
+                has_statements = true;
+            }
+
+            if brace_count <= 0 {
+                break;
+            }
+        }
+
+        found_open && !has_statements && !has_documented
+    }
+
+    fn is_swallowed_python_except(&self, start_idx: usize, lines: &[(usize, char, String)]) -> bool {
+        let limit = (start_idx + 20).min(lines.len());
+        let mut has_statements = false;
+        let mut has_documented = false;
+        let mut only_pass_or_ellipsis = false;
+
+        let (_, _, ref base_text) = lines[start_idx];
+        let base_indent = base_text.len() - base_text.trim_start().len();
+
+        for j in (start_idx + 1)..limit {
+            let Some((raw, line)) = get_active_hunk_line(lines, j) else {
+                continue;
+            };
+
+            let indent = raw.len() - raw.trim_start().len();
+            if indent <= base_indent {
+                break;
+            }
+
+            let (is_comment, is_doc) = check_comment_doc(line);
+            if is_comment {
+                if is_doc {
+                    has_documented = true;
+                }
+                continue;
+            }
+
+            if line == "pass" || line == "..." {
+                only_pass_or_ellipsis = true;
+            } else {
+                has_statements = true;
+            }
+        }
+
+        only_pass_or_ellipsis && !has_statements && !has_documented
     }
 
     fn audit_added_code(&self, file: &str, line_no: usize, code: &str) -> Vec<Finding> {
@@ -110,14 +265,16 @@ impl ShitInterceptor {
             ));
         }
 
-        if self.re_swallow_error.is_match(code) {
-            findings.push(Self::hardening_blocker(
-                file,
-                line_no,
-                "STS-H02",
-                "Hypothetical hardening: swallowing error without logging or structured recovery.",
-                "Handle errors explicitly or propagate them with actionable context.",
-            ));
+        if let Some(loc) = self.re_swallow_error.find(code) {
+            if !is_comment_or_doc_line(code) && !is_inside_string_literal(code, loc.start()) {
+                findings.push(Self::hardening_blocker(
+                    file,
+                    line_no,
+                    "STS-H02",
+                    "Hypothetical hardening: swallowing error without logging or structured recovery.",
+                    "Handle errors explicitly or propagate them with actionable context.",
+                ));
+            }
         }
 
         if self.re_hypothetical_wrapper.is_match(code) {
@@ -159,6 +316,88 @@ impl ShitInterceptor {
             suggestion: suggestion.to_string(),
         }
     }
+}
+
+fn compile_regex(pat: &str) -> Regex {
+    match Regex::new(pat) {
+        Ok(r) => r,
+        Err(e) => panic!("invalid static regex pattern: {e}"),
+    }
+}
+
+fn get_active_hunk_line(lines: &[(usize, char, String)], idx: usize) -> Option<(&str, &str)> {
+    let (_, prefix, ref text) = lines[idx];
+    if prefix == '-' {
+        return None;
+    }
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    Some((text.as_str(), trimmed))
+}
+
+fn check_comment_doc(line: &str) -> (bool, bool) {
+    if is_comment_or_doc_line(line) {
+        return (true, has_documented_reason(line));
+    }
+    (false, false)
+}
+
+fn is_comment_or_doc_line(line: &str) -> bool {
+    let t = line.trim_start();
+    t.starts_with("//")
+        || t.starts_with("/*")
+        || t.starts_with('*')
+        || t.starts_with('#')
+        || t.starts_with("\"\"\"")
+        || t.starts_with("'''")
+}
+
+fn has_documented_reason(text: &str) -> bool {
+    let lower = text.to_lowercase();
+    let reasons = [
+        "ignore",
+        "intentional",
+        "expected",
+        "deliberate",
+        "by design",
+        "suppress",
+        "safe to ignore",
+        "noop",
+        "no-op",
+        "skip",
+        "fallback",
+    ];
+    reasons.iter().any(|r| lower.contains(r))
+}
+
+fn is_inside_string_literal(line: &str, target_idx: usize) -> bool {
+    let mut in_double = false;
+    let mut in_single = false;
+    let mut in_backtick = false;
+    let mut escaped = false;
+
+    for (i, c) in line.char_indices() {
+        if i >= target_idx {
+            break;
+        }
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if c == '\\' {
+            escaped = true;
+            continue;
+        }
+        match c {
+            '"' if !in_single && !in_backtick => in_double = !in_double,
+            '\'' if !in_double && !in_backtick => in_single = !in_single,
+            '`' if !in_double && !in_single => in_backtick = !in_backtick,
+            _ => {}
+        }
+    }
+    in_double || in_single || in_backtick
 }
 
 fn extract_target_file(line: &str) -> Option<String> {
