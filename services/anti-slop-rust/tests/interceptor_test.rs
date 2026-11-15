@@ -52,7 +52,10 @@ diff --git a/export.ts b/export.ts
 "#;
     let findings = interceptor.audit_diff(diff, None, false);
     assert_eq!(findings.len(), 1);
-    assert_eq!(findings[0].category, ViolationCategory::HypotheticalHardening);
+    assert_eq!(
+        findings[0].category,
+        ViolationCategory::HypotheticalHardening
+    );
     assert_eq!(findings[0].code, "STS-H01");
 }
 
@@ -68,7 +71,10 @@ diff --git a/worker.py b/worker.py
 "#;
     let findings = interceptor.audit_diff(diff, None, false);
     assert_eq!(findings.len(), 1);
-    assert_eq!(findings[0].category, ViolationCategory::HypotheticalHardening);
+    assert_eq!(
+        findings[0].category,
+        ViolationCategory::HypotheticalHardening
+    );
     assert_eq!(findings[0].code, "STS-H02");
 }
 
@@ -167,5 +173,56 @@ diff --git a/docs.go b/docs.go
 +const template = "except Exception:\n    pass"
 "#;
     let findings = interceptor.audit_diff(diff, None, false);
+    assert!(!findings.iter().any(|f| f.code == "STS-H02"));
+}
+
+#[test]
+fn test_multiline_handler_stops_at_end_of_hunk() {
+    let diff = r#"
+diff --git a/worker.py b/worker.py
+--- a/worker.py
++++ b/worker.py
+@@ -8,1 +8,2 @@
+     try:
++    except Exception:
+@@ -70,1 +71,2 @@
+         pass
++        ...
+"#;
+    let findings = ShitInterceptor::new().audit_diff(diff, None, false);
+    assert!(!findings.iter().any(|f| f.code == "STS-H02"));
+}
+
+#[test]
+fn test_incomplete_brace_handler_is_inconclusive() {
+    let diff = r#"
+diff --git a/worker.go b/worker.go
+--- a/worker.go
++++ b/worker.go
+@@ -8,1 +8,2 @@
+     start()
++    if err != nil {
+"#;
+    let findings = ShitInterceptor::new().audit_diff(diff, None, false);
+    assert!(!findings.iter().any(|f| f.code == "STS-H02"));
+}
+
+#[test]
+fn test_multiline_catch_keeps_recovery_before_finally() {
+    let diff = r#"
+diff --git a/worker.ts b/worker.ts
+--- a/worker.ts
++++ b/worker.ts
+@@ -8,4 +8,10 @@
+     try {
+         run();
++    } catch (error) {
++        report(error);
++    } finally {
++        cleanup();
+     }
+ }
+"#;
+    let findings = ShitInterceptor::new().audit_diff(diff, None, false);
     assert!(!findings.iter().any(|f| f.code == "STS-H02"));
 }

@@ -67,19 +67,18 @@ impl ShitInterceptor {
                 }
                 let code_content = line_text.trim();
                 let mut line_findings = self.audit_added_code(file, l_no, code_content);
-                f_findings.append(&mut line_findings);
-
-                if !f_findings.iter().any(|f| f.code == "STS-H02" && f.line == l_no) {
-                    if self.is_multiline_swallowed_error(i, h_lines) {
-                        f_findings.push(Self::hardening_blocker(
-                            file,
-                            l_no,
-                            "STS-H02",
-                            "Hypothetical hardening: swallowing error without logging or structured recovery.",
-                            "Handle errors explicitly or propagate them with actionable context.",
-                        ));
-                    }
+                if !line_findings.iter().any(|f| f.code == "STS-H02")
+                    && self.is_multiline_swallowed_error(i, h_lines)
+                {
+                    line_findings.push(Self::hardening_blocker(
+                        file,
+                        l_no,
+                        "STS-H02",
+                        "Hypothetical hardening: swallowing error without logging or structured recovery.",
+                        "Handle errors explicitly or propagate them with actionable context.",
+                    ));
                 }
+                f_findings.append(&mut line_findings);
             }
             f_findings
         };
@@ -102,6 +101,8 @@ impl ShitInterceptor {
                 }
             }
             if let Some(l) = extract_hunk_line(line) {
+                findings.extend(process_file_hunks(&current_file, &hunk_lines));
+                hunk_lines.clear();
                 line_no = l;
                 in_hunk = true;
                 continue;
@@ -114,7 +115,9 @@ impl ShitInterceptor {
                 findings.push(f);
             }
 
-            if let Some(f) = check_intent_violation(&current_file, line_no, read_only_intent, is_change) {
+            if let Some(f) =
+                check_intent_violation(&current_file, line_no, read_only_intent, is_change)
+            {
                 findings.push(f);
             }
 
@@ -138,7 +141,11 @@ impl ShitInterceptor {
         findings
     }
 
-    fn is_multiline_swallowed_error(&self, start_idx: usize, lines: &[(usize, char, String)]) -> bool {
+    fn is_multiline_swallowed_error(
+        &self,
+        start_idx: usize,
+        lines: &[(usize, char, String)],
+    ) -> bool {
         let (_, _, ref first_text) = lines[start_idx];
         let code = first_text.trim();
 
@@ -177,6 +184,11 @@ impl ShitInterceptor {
                 continue;
             }
 
+            let line = if found_open {
+                line
+            } else {
+                line.strip_prefix('}').unwrap_or(line).trim_start()
+            };
             let open_count = line.chars().filter(|&c| c == '{').count() as i32;
             let close_count = line.chars().filter(|&c| c == '}').count() as i32;
 
@@ -206,14 +218,18 @@ impl ShitInterceptor {
             }
 
             if brace_count <= 0 {
-                break;
+                return !has_statements && !has_documented;
             }
         }
 
-        found_open && !has_statements && !has_documented
+        false
     }
 
-    fn is_swallowed_python_except(&self, start_idx: usize, lines: &[(usize, char, String)]) -> bool {
+    fn is_swallowed_python_except(
+        &self,
+        start_idx: usize,
+        lines: &[(usize, char, String)],
+    ) -> bool {
         let limit = (start_idx + 20).min(lines.len());
         let mut has_statements = false;
         let mut has_documented = false;
@@ -290,11 +306,23 @@ impl ShitInterceptor {
         findings
     }
 
-    fn hardening_review(file: &str, line_no: usize, code: &str, msg: &str, suggestion: &str) -> Finding {
+    fn hardening_review(
+        file: &str,
+        line_no: usize,
+        code: &str,
+        msg: &str,
+        suggestion: &str,
+    ) -> Finding {
         Self::hardening_finding(file, line_no, Severity::Review, code, msg, suggestion)
     }
 
-    fn hardening_blocker(file: &str, line_no: usize, code: &str, msg: &str, suggestion: &str) -> Finding {
+    fn hardening_blocker(
+        file: &str,
+        line_no: usize,
+        code: &str,
+        msg: &str,
+        suggestion: &str,
+    ) -> Finding {
         Self::hardening_finding(file, line_no, Severity::Blocker, code, msg, suggestion)
     }
 
@@ -412,7 +440,13 @@ fn extract_target_file(line: &str) -> Option<String> {
 
 pub(crate) fn extract_hunk_line(line: &str) -> Option<usize> {
     let start = line.strip_prefix("@@")?.split('+').nth(1)?;
-    start.split_whitespace().next()?.split(',').next()?.parse().ok()
+    start
+        .split_whitespace()
+        .next()?
+        .split(',')
+        .next()?
+        .parse()
+        .ok()
 }
 
 fn check_intent_violation(
@@ -478,7 +512,8 @@ mod review_regression_tests {
 
     #[test]
     fn metadata_and_changed_lines_are_separated() {
-        let diff = "diff --git a/a.rs b/a.rs\n--- a/a.rs\n+++ b/a.rs\n@@ -0,0 +1 @@\n+++not a header\n";
+        let diff =
+            "diff --git a/a.rs b/a.rs\n--- a/a.rs\n+++ b/a.rs\n@@ -0,0 +1 @@\n+++not a header\n";
         let findings = ShitInterceptor::new().audit_diff(diff, Some(&["src/"]), true);
         assert!(findings.iter().any(|f| f.code == "STS-I01"));
         assert!(findings.iter().any(|f| f.code == "STS-S01"));

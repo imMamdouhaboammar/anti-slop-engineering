@@ -181,3 +181,21 @@ var description = "except Exception:\n    pass"
 		}
 	}
 }
+
+func TestCheckToilAndScale_IncompleteBraceHandlerIsInconclusive(t *testing.T) {
+	findings := CheckToilAndScale("worker.go", "if err != nil {\n")
+	for _, f := range findings {
+		if f.Code == "SRE-SCALE-SWALLOW" {
+			t.Errorf("unexpected SRE-SCALE-SWALLOW with incomplete block: %v", f)
+		}
+	}
+}
+
+func TestCheckToilAndScale_MultilineCatchKeepsRecoveryBeforeFinally(t *testing.T) {
+	code := "try {\n    run();\n} catch (error) {\n    report(error);\n} finally {\n    cleanup();\n}"
+	for _, f := range CheckToilAndScale("worker.ts", code) {
+		if f.Code == "SRE-SCALE-SWALLOW" {
+			t.Errorf("unexpected SRE-SCALE-SWALLOW for recovery before finally: %v", f)
+		}
+	}
+}

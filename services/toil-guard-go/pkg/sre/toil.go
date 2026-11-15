@@ -60,7 +60,7 @@ func auditLineToil(file string, lineNo int, line string, allLines []string) []mo
 	if reYAGNIComment.MatchString(trimmed) {
 		findings = append(findings, makeToilFinding(
 			file, lineNo, model.CategoryYAGNI, model.SeverityReview, "SRE-YAGNI-SPECULATIVE",
-			"Speculative placeholder comment detected: '" + trimmed + "'. Build only for verified requirements.",
+			"Speculative placeholder comment detected: '"+trimmed+"'. Build only for verified requirements.",
 			"Remove speculative scaffolding. YAGNI: You Aren't Gonna Need It.",
 		))
 	}
@@ -187,6 +187,9 @@ func isSwallowedBraceBlock(startIdx int, lines []string) bool {
 			continue
 		}
 
+		if !foundOpen {
+			line = strings.TrimSpace(strings.TrimPrefix(line, "}"))
+		}
 		openCount := strings.Count(line, "{")
 		closeCount := strings.Count(line, "}")
 
@@ -218,11 +221,11 @@ func isSwallowedBraceBlock(startIdx int, lines []string) bool {
 		}
 
 		if braceCount <= 0 {
-			break
+			return !hasStatements && !hasDocumented
 		}
 	}
 
-	return foundOpen && !hasStatements && !hasDocumented
+	return false
 }
 
 func isSwallowedPythonExcept(startIdx int, lines []string) bool {
