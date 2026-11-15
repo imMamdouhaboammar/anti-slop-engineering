@@ -7,6 +7,8 @@ import os
 import stat
 import sys
 import tempfile
+import warnings
+from contextlib import ExitStack
 from pathlib import Path
 
 if not __package__:
@@ -20,11 +22,14 @@ from scripts.exec_guard import (
     validate_hook_event,
 )
 
+from scripts.safe_install import SYSTEM_SYMLINKS, _open_instruction_parent_posix
+
 PHASES = {"PreToolUse": "pre_tool", "PostToolUse": "post_tool"}
 TOOLS = {"Read": "read", "Edit": "write", "Write": "write"}
 MATCHER = "Read|Edit|Write"
 HOOK_PATH = str(Path(__file__).resolve())
 ERROR_MESSAGE = "invalid Claude hook event or local policy"
+CHECKPOINT_BYTES = 64 * 1024
 
 
 def normalize_event(payload, phase, project):
@@ -68,13 +73,61 @@ def translate_policy(result, phase):
     raise ValueError("Hook policy returned an error")
 
 
+def read_local_source(project, source):
+    system_root = Path(source.anchor, *source.parts[1:2])
+    if system_root in SYSTEM_SYMLINKS:
+        source = system_root.resolve() / source.relative_to(system_root)
+    if ".." in source.parts or not source.is_relative_to(project):
+        raise ValueError("Expected a regular local source file")
+    dir_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    file_flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK
+    with ExitStack() as stack:
+        parent = _open_instruction_parent_posix(stack, source, dir_flags)
+        descriptor = os.open(source.name, file_flags, dir_fd=parent)
+        with os.fdopen(descriptor, "rb") as stream:
+            if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+                raise ValueError("Expected a regular local source file")
+            return stream.read(CHECKPOINT_BYTES + 1)
+
+
+def python_checkpoint(project, target):
+    """Check one local file without running it, changing it, or exposing its contents."""
+    source = Path(target)
+    if source.suffix not in (".py", ".pyi"):
+        return None
+
+    try:
+        content = read_local_source(project, source)
+    except (AttributeError, OSError, ValueError, RuntimeError):
+        return "Python syntax check skipped: could not read a project-local regular file."
+    if len(content) > CHECKPOINT_BYTES:
+        return "Python syntax check skipped: source exceeds 64 KiB."
+
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", SyntaxWarning)
+            compile(content, "<post-write checkpoint>", "exec", dont_inherit=True)
+    except SyntaxError as exc:
+        return f"Python syntax error at line {exc.lineno or 1}. Correct the file, then run its focused tests."
+    except (ValueError, RecursionError, OverflowError):
+        return "Python syntax check skipped: the local compiler could not process this file."
+    return None
+
+
+def evaluate_native_event(project, event, phase):
+    state = _load_hook_policy(SessionStateManager(project / ".anti-slop"))
+    policy = evaluate_hook_event(event, state, project)
+    if phase == "PostToolUse" and event["operation"] == "write" and policy["reason_code"] == "WITHIN_CONTRACT":
+        message = python_checkpoint(project, event["target_paths"][0])
+        if message:
+            return translate_policy({"decision": "warn", "message": message}, phase)
+    return translate_policy(policy, phase)
+
+
 def evaluate(project, phase):
     try:
         event = normalize_event(read_hook_object(sys.stdin.buffer), phase, project)
-        result = {} if event is None else translate_policy(
-            evaluate_hook_event(event, _load_hook_policy(SessionStateManager(project / ".anti-slop")), project),
-            phase,
-        )
+        result = {} if event is None else evaluate_native_event(project, event, phase)
     except (OSError, ValueError, RuntimeError):
         print(ERROR_MESSAGE, file=sys.stderr)
         return 1

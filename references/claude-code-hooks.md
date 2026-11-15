@@ -21,6 +21,8 @@ anti-slop-engineering exec parse-prompt '$anti-slop review guard -- Review the p
 | `PostToolUse` | The same tools after success. Any reported policy violation is feedback for the next model request. |
 | Outside this adapter | Shell, MCP, NotebookEdit, Glob, Grep, and actions outside Claude's registered tool events remain subject to the host's own controls and explicit repository checks. |
 
+After an authorized `Write` or `Edit`, the adapter checks the syntax of that one project-local Python source or stub using its own Python interpreter. It reads at most 64 KiB plus one byte and rejects symlinks and non-regular files. A syntax error reports the line number without source text. Interpreter warnings are omitted. A skipped check reports the reason. Review the feedback, correct the file if needed, and run its focused tests before the separate repository checks. This checkpoint runs no project code, writes no files, and initiates no retry. Read-only contracts, paths outside the policy, and actions without an active contract keep their normal policy behavior.
+
 An unconfirmed or off contract leaves decisions to Claude Code. A pre-hook that cannot start, times out, or rejects its payload is configured to stop the matched action. Inspect the local settings and package path if a failure occurs.
 
 ```sh

@@ -131,6 +131,74 @@ class ClaudeHookTests(unittest.TestCase):
         self.assertIn("does not authorize", result["hookSpecificOutput"]["additionalContext"])
         self.assertNotIn("synthetic", proc.stdout + proc.stderr)
 
+    def python_post(self, name, tool="Write"):
+        payload = dict(self.event, hook_event_name="PostToolUse", tool_name=tool,
+                       tool_input={"file_path": str(self.project / name), "content": "fixture only"})
+        result = self.invoke("evaluate", "--project", str(self.project), "--phase", "PostToolUse", payload=payload)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return json.loads(result.stdout)
+
+    def test_confirmed_write_reports_python_syntax_and_clears_after_correction(self):
+        self.arm("$anti-slop change guard files=snippet.py -- Edit only the example")
+        source = self.project / "snippet.py"
+        source.write_text("value = 1\nprivate_fixture_marker = (\n")
+        initial = self.python_post("snippet.py")
+        message = initial["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("Python syntax error at line 2", message)
+        self.assertNotIn("private_fixture_marker", message)
+        self.assertNotIn("fixture only", message)
+        self.assertEqual(self.python_post("snippet.py"), initial)
+        self.assertTrue(source.exists())
+        source.write_text("raise RuntimeError('must not execute')\n")
+        self.assertEqual(self.python_post("snippet.py", tool="Edit"), {})
+
+    def test_checkpoint_is_excluded_for_unconfirmed_read_only_and_non_python_actions(self):
+        source = self.project / "snippet.py"
+        source.write_text("value = (\n")
+        self.assertEqual(self.python_post("snippet.py"), {})
+        self.arm("$anti-slop change watch files=snippet.py|note.txt -- Edit examples")
+        self.assertEqual(self.python_post("snippet.py", tool="Read"), {})
+        (self.project / "note.txt").write_text("value = (\n")
+        self.assertEqual(self.python_post("note.txt"), {})
+        self.arm("$anti-slop review watch -- Review only")
+        message = self.python_post("snippet.py")["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("does not authorize", message)
+        self.assertNotIn("Python syntax", message)
+
+    def test_checkpoint_reports_skips_for_large_or_unsafe_sources(self):
+        self.arm("$anti-slop change guard -- Edit examples")
+        source = self.project / "snippet.py"
+        source.write_bytes(b"x" * (64 * 1024 + 1))
+        message = self.python_post("snippet.py")["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("exceeds 64 KiB", message)
+        source.unlink()
+        regular = self.project / "example.txt"
+        regular.write_text("value = (\n")
+        source.symlink_to(regular)
+        message = self.python_post("snippet.py")["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("could not read a project-local regular file", message)
+        self.assertNotIn("Python syntax error at line", message)
+        source.unlink()
+        message = self.python_post("snippet.py")["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("could not read a project-local regular file", message)
+        actual = self.project / "actual"
+        actual.mkdir()
+        (actual / "snippet.py").write_text("value = (\n")
+        (self.project / "alias").symlink_to(actual, target_is_directory=True)
+        message = self.python_post("alias/snippet.py")["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("could not read a project-local regular file", message)
+        self.assertNotIn("Python syntax error at line", message)
+
+    def test_checkpoint_does_not_report_or_leak_a_syntax_warning(self):
+        self.arm("$anti-slop change guard -- Edit examples")
+        (self.project / "snippet.py").write_text("value = 1 is 2\n")
+        payload = dict(self.event, hook_event_name="PostToolUse", tool_input={"file_path": "snippet.py"})
+        result = self.invoke("evaluate", "--project", str(self.project), "--phase", "PostToolUse", payload=payload)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout), {})
+        self.assertEqual(result.stderr, "")
+
+
     def test_invalid_payload_returns_error_and_does_not_reclassify_unsupported_tool(self):
         wrong_phase = dict(self.event, hook_event_name="PostToolUse")
         proc = self.invoke("evaluate", "--project", str(self.project), "--phase", "PreToolUse", payload=wrong_phase)
