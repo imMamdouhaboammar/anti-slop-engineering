@@ -525,9 +525,42 @@ def handle_mode(args: List[str]) -> int:
         return 2
 
 
-def run_command(cmd: List[str]) -> Dict[str, Any]:
+SENSITIVE_ENV_SUBSTRINGS = (
+    "KEY",
+    "SECRET",
+    "TOKEN",
+    "PASSWORD",
+    "PASSWD",
+    "AUTH",
+    "CREDENTIAL",
+    "PRIVATE",
+    "SIGNING",
+    "CERTIFICATE",
+)
+
+
+def sanitize_environment(base_env: Optional[Dict[str, str]] = None) -> Dict[str, str]:
+    """Sanitize environment variables for child processes, stripping credentials and secret tokens."""
+    source = base_env if base_env is not None else os.environ
+    sanitized = {}
+    for key, value in source.items():
+        key_upper = key.upper()
+        if any(substr in key_upper for substr in SENSITIVE_ENV_SUBSTRINGS):
+            continue
+        sanitized[key] = value
+    return sanitized
+
+
+def run_command(cmd: List[str], env: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+    child_env = sanitize_environment(env)
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=GUARD_TIMEOUT_SECONDS)
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=GUARD_TIMEOUT_SECONDS,
+            env=child_env,
+        )
         return {"exit_code": proc.returncode, "stdout": proc.stdout, "stderr": proc.stderr,
                 "timed_out": False, "error": None}
     except subprocess.TimeoutExpired as exc:

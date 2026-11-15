@@ -40,6 +40,7 @@ REASON_CODES = {
     "HASH_NOT_AUTHORIZED": "The action introduces unapproved cryptographic hashing or checksums.",
     "DEPENDENCY_NOT_AUTHORIZED": "The action introduces dependencies without authorization.",
     "AGENT_BUDGET_EXHAUSTED": "The concurrent subagent delegation budget has been exhausted.",
+    "ENV_LEAKAGE_RISK": "The action inspects or exposes environment variables risking credential leakage.",
     "RECOVERY_READ_ONLY": "Operating in read-only recovery mode due to state protection.",
     "LOCK_DAMAGED": "The session lock is damaged and requires administrative remediation.",
 }
@@ -143,34 +144,53 @@ def _parse_agent_budget(contract, val):
 
 def analyze_shell_command(cmd_str):
     """
-    Statically inspect shell commands for mutability, dependencies, and hashing.
+    Statically inspect shell commands for mutability, dependencies, hashing, and env leakage.
     Uses shlex for tokenization and standard library regex for pattern matching.
     """
     if not cmd_str or not cmd_str.strip():
-        return {"mutability": "read", "dependency_intent": False, "hash_intent": False, "reason": "empty"}
+        return {"mutability": "read", "dependency_intent": False, "hash_intent": False, "env_leak_intent": False, "reason": "empty"}
 
     raw = cmd_str.strip()
     if ">" in raw or ">>" in raw:
-        return {"mutability": "write", "dependency_intent": False, "hash_intent": False, "reason": "redirection"}
+        return {"mutability": "write", "dependency_intent": False, "hash_intent": False, "env_leak_intent": False, "reason": "redirection"}
 
     try:
         tokens = shlex.split(raw)
     except ValueError:
-        return {"mutability": "unknown", "dependency_intent": False, "hash_intent": False, "reason": "unparseable_syntax"}
+        return {"mutability": "unknown", "dependency_intent": False, "hash_intent": False, "env_leak_intent": False, "reason": "unparseable_syntax"}
 
     if not tokens:
-        return {"mutability": "read", "dependency_intent": False, "hash_intent": False, "reason": "empty"}
+        return {"mutability": "read", "dependency_intent": False, "hash_intent": False, "env_leak_intent": False, "reason": "empty"}
 
     dep_intent = _detect_package_manager_intent(tokens)
     hash_intent = _detect_hashing_intent(tokens)
+    env_leak = _detect_env_leak_intent(tokens)
     mutability = "write" if (dep_intent or _detect_mutating_command(tokens)) else "read"
 
     return {
         "mutability": mutability,
         "dependency_intent": dep_intent,
         "hash_intent": hash_intent,
+        "env_leak_intent": env_leak,
         "reason": "analyzed_tokens",
     }
+
+
+def _detect_env_leak_intent(tokens):
+    """Detect if shell command tokens attempt to dump or inspect environment variables."""
+    if not tokens:
+        return False
+    cmd = tokens[0]
+    if cmd in {"env", "printenv"}:
+        return True
+    if cmd in {"export", "set"} and len(tokens) == 1:
+        return True
+    joined = " ".join(tokens)
+    patterns = [
+        r"\b(?:cat|head|tail|more|less|grep)\s+.*\.env\b",
+        r"\b(?:source|\.)\s+.*\.env\b",
+    ]
+    return any(re.search(pat, joined) for pat in patterns)
 
 
 def _detect_package_manager_intent(tokens):
@@ -245,6 +265,7 @@ def classify_tool_action(tool_name, tool_args):
         action["command"] = cmd
         action["hash_intent"] = shell_res["hash_intent"]
         action["dependency_intent"] = shell_res["dependency_intent"]
+        action["env_leak_intent"] = shell_res.get("env_leak_intent", False)
         return action
 
     return _make_action(name, "unknown", [])
@@ -258,6 +279,7 @@ def _make_action(tool_name, mutability, affected_paths):
         "affected_paths": affected_paths,
         "hash_intent": False,
         "dependency_intent": False,
+        "env_leak_intent": False,
     }
 
 
@@ -334,6 +356,10 @@ def decide(contract, action, state=None, depth=0, max_depth=100):
     hash_decision = _check_hash_policy(contract, level, action)
     if hash_decision:
         return hash_decision
+
+    env_decision = _check_env_leak_policy(contract, level, action)
+    if env_decision:
+        return env_decision
 
     path_decision = _check_path_boundary(contract, level, action)
     if path_decision:
@@ -426,6 +452,19 @@ def _check_hash_policy(contract, level, action):
         policy, level, "H", "HASH_NOT_AUTHORIZED",
         f"Action introduces hashing while hash policy is '{policy}'.",
         "Use direct alternatives or obtain hash=allow authority."
+    )
+
+
+def _check_env_leak_policy(contract, level, action):
+    """Enforce security policy against environment variable and credential leakage."""
+    if not action.get("env_leak_intent"):
+        return None
+    return _make_decision(
+        controlled_outcome(level, "require_user_approval"),
+        "S",
+        "ENV_LEAKAGE_RISK",
+        "The proposed action inspects or dumps environment variables risking credential leakage.",
+        "Pass explicitly required variables or request user confirmation."
     )
 
 

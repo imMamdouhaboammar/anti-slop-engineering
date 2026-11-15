@@ -127,6 +127,30 @@ class ExecGuardShellAnalysisTests(unittest.TestCase):
             analysis = exec_guard.analyze_shell_command(cmd)
             self.assertTrue(analysis["hash_intent"], f"Failed for {cmd}")
 
+    def test_environment_leakage_commands_detected(self):
+        leak_commands = [
+            "env",
+            "printenv",
+            "export",
+            "cat .env",
+            "cat .env.production",
+            "head -n 10 .env.local",
+        ]
+        for cmd in leak_commands:
+            analysis = exec_guard.analyze_shell_command(cmd)
+            self.assertTrue(analysis.get("env_leak_intent"), f"Failed for {cmd}")
+
+    def test_safe_commands_do_not_trigger_env_leak_intent(self):
+        safe_commands = [
+            "ls -la",
+            "cat README.md",
+            "echo 'hello world'",
+            "node index.js",
+        ]
+        for cmd in safe_commands:
+            analysis = exec_guard.analyze_shell_command(cmd)
+            self.assertFalse(analysis.get("env_leak_intent"), f"False positive for {cmd}")
+
 
 class ExecGuardDecisionTests(unittest.TestCase):
     """Test suite for core decision engine rules."""
@@ -137,6 +161,24 @@ class ExecGuardDecisionTests(unittest.TestCase):
         decision = exec_guard.decide(contract, action)
         self.assertEqual(decision["outcome"], "allow")
         self.assertEqual(decision["reason_code"], "CONTROL_INACTIVE")
+
+    def test_env_leakage_triggers_user_approval(self):
+        contract = {
+            "mode": "change",
+            "level": "guard",
+            "allowed_paths": None,
+            "hash_policy": "deny",
+            "dependency_policy": "deny",
+            "agent_budget": 10,
+        }
+        action = {
+            "mutability": "read",
+            "env_leak_intent": True,
+            "affected_paths": [],
+        }
+        decision = exec_guard.decide(contract, action)
+        self.assertEqual(decision["outcome"], "require_user_approval")
+        self.assertEqual(decision["reason_code"], "ENV_LEAKAGE_RISK")
 
     def test_review_mode_forbids_mutation(self):
         contract = {

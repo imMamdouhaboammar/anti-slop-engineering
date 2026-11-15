@@ -3,6 +3,7 @@
 # Copyright (c) 2026 Mamdouh Aboammar <mamdouhfces1997@gmail.com> and contributors
 
 import json
+import os
 import re
 import shlex
 import subprocess
@@ -439,3 +440,20 @@ class AuditRunnerTests(unittest.TestCase):
         with self.assertRaises(ValueError) as ctx:
             evaluate_report(report, audit_exit=0)
         self.assertIn("Mandatory guard diff_guard is incomplete", str(ctx.exception))
+
+    def test_run_command_sanitizes_environment(self):
+        """run_command strips sensitive tokens and credentials from child environment."""
+        old_val = os.environ.get("SUPER_SECRET_API_KEY")
+        os.environ["SUPER_SECRET_API_KEY"] = "super-secret-12345"
+        try:
+            cmd = [sys.executable, "-c", "import os, json; print(json.dumps(dict(os.environ)))"]
+            res = audit_runner.run_command(cmd)
+            self.assertEqual(res["exit_code"], 0)
+            child_env = json.loads(res["stdout"])
+            self.assertNotIn("SUPER_SECRET_API_KEY", child_env)
+            self.assertIn("PATH", child_env)
+        finally:
+            if old_val is None:
+                os.environ.pop("SUPER_SECRET_API_KEY", None)
+            else:
+                os.environ["SUPER_SECRET_API_KEY"] = old_val
