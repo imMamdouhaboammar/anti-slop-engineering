@@ -30,7 +30,13 @@ export interface MicroBenchmarkSummary {
   readonly iterations: number;
   readonly p50Ms: number;
   readonly p99Ms: number;
+  /** Observed positive heap growth per sample, kept for existing consumers. */
   readonly allocBytesPerOp: number;
+  readonly allocationMeasurement: {
+    readonly method: 'positive_heap_growth_proxy';
+    readonly confidence: 'low' | 'inconclusive';
+    readonly heapDrops: number;
+  };
 }
 
 export function indexActiveTenants(tenants: readonly TenantConfig[]): Map<string, number> {
@@ -154,26 +160,39 @@ export function runPercentileAndAllocBenchmark(
   }
 
   const latenciesMs = new Float64Array(sampleRuns);
-  const heapStart = readHeapUsedBytes();
+  let positiveHeapGrowth = 0;
+  let heapDrops = 0;
+  let prevHeap = readHeapUsedBytes();
 
   for (let i = 0; i < sampleRuns; i++) {
     const t0 = nowNanoseconds();
     operation();
     const t1 = nowNanoseconds();
     latenciesMs[i] = (t1 - t0) / 1_000_000;
+
+    const currentHeap = readHeapUsedBytes();
+    if (currentHeap > prevHeap) {
+      positiveHeapGrowth += currentHeap - prevHeap;
+    } else if (currentHeap < prevHeap) {
+      heapDrops++;
+    }
+    prevHeap = currentHeap;
   }
 
-  const heapEnd = readHeapUsedBytes();
   latenciesMs.sort();
 
   const p50Idx = Math.floor(sampleRuns * 0.5);
   const p99Idx = Math.floor(sampleRuns * 0.99);
-  const totalBytes = Math.max(0, heapEnd - heapStart);
 
   return {
     iterations: sampleRuns,
     p50Ms: Number(latenciesMs[p50Idx].toFixed(4)),
     p99Ms: Number(latenciesMs[p99Idx].toFixed(4)),
-    allocBytesPerOp: Math.round(totalBytes / sampleRuns),
+    allocBytesPerOp: Math.round(positiveHeapGrowth / sampleRuns),
+    allocationMeasurement: {
+      method: 'positive_heap_growth_proxy',
+      confidence: heapDrops > 0 || positiveHeapGrowth === 0 ? 'inconclusive' : 'low',
+      heapDrops,
+    },
   };
 }

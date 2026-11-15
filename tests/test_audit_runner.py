@@ -592,5 +592,22 @@ class AuditRunnerTests(unittest.TestCase):
             with self.assertRaises(subprocess.CalledProcessError):
                 audit_runner.changed_check_targets("missing-revision", root)
 
+    def test_changed_checks_includes_index_only_change_shadowed_by_worktree(self):
+        with tempfile.TemporaryDirectory() as root:
+            def git(*args):
+                subprocess.run(["git", *args], cwd=root, check=True, capture_output=True)
+
+            git("init")
+            source = Path(root, "sample.py")
+            source.write_text("value = 1\n")
+            git("add", source.name)
+            git("-c", "user.name=Fixture", "-c", "user.email=fixture@example.test",
+                "commit", "-m", "baseline")
+            source.write_text("value = 2\n")
+            git("add", source.name)
+            source.write_text("value = 1\n")
+
+            self.assertEqual(audit_runner.changed_check_targets("HEAD", root), ["check"])
+
     def test_invalid_engine_never_succeeds_in_non_strict_mode(self):
         self.assertEqual(audit_runner.run_engine_command("absent-engine", ["no-op"], strict=False), 2)

@@ -36,14 +36,16 @@ if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
 fi
 
 BASH_DRY_RUN=0
+LOCAL_INSTALL=0
 for argument in "$@"; do
   case "$argument" in
     --dry-run) BASH_DRY_RUN=1 ;;
+    --local|--project) LOCAL_INSTALL=1 ;;
     --json)
       echo "Installer error: use 'anti-slop-engineering install --json' for structured JSON output" >&2
       exit 2 ;;
     --agent*|--scope*)
-      echo "Installer error: agent/scope flags require 'anti-slop-engineering setup'; the Bash installer keeps its legacy target locations" >&2
+      echo "Installer error: agent/scope flags require 'anti-slop-engineering setup'" >&2
       exit 2 ;;
   esac
 done
@@ -52,7 +54,17 @@ done
 # A minimal Bash-only environment still gets the mandatory core.
 SELECTED_MODULES=""
 if command -v node >/dev/null 2>&1 && [ -f "$SOURCE_DIR/scripts/installer.mjs" ]; then
-  if ! setup_selection="$(node "$SOURCE_DIR/scripts/installer.mjs" --selection-only --scope=global "$@")"; then
+  SCOPE_FLAG="--scope=global"
+  if [ "$LOCAL_INSTALL" -eq 1 ]; then
+    SCOPE_FLAG="--scope=project"
+  fi
+  if setup_selection="$(node "$SOURCE_DIR/scripts/installer.mjs" --selection-only "$SCOPE_FLAG" "$@")"; then
+    :
+  else
+    node_status=$?
+    if [ "$node_status" -eq 130 ]; then
+      exit 130
+    fi
     echo "Installer error: plugin selection failed; no files were installed" >&2
     exit 2
   fi
@@ -66,6 +78,13 @@ for skill in data["skills"]:
         print(skill)
 ' "$setup_selection")"
 else
+  for argument in "$@"; do
+    case "$argument" in
+      --preset|--preset=*|--pack|--pack=*)
+        echo "Installer error: Node.js is needed to select a preset; use --skills=core without Node.js" >&2
+        exit 2 ;;
+    esac
+  done
   case " $* " in
     *--skills=core*|*"-s core"*|*--plugins=core*|*--modules=core*) : ;;
     *--skills*|*--plugins*|*--modules*|*"-s "*|*--all*)
@@ -97,7 +116,7 @@ install_to() {
   local result
   local preview=()
   if [ "$BASH_DRY_RUN" -eq 1 ]; then preview=(--dry-run); fi
-  result="$(python3 "$SOURCE_DIR/scripts/safe_install.py" --source "$SOURCE_DIR" --dest "$dest" "${preview[@]}")"
+  result="$(python3 "$SOURCE_DIR/scripts/safe_install.py" --source "$SOURCE_DIR" --dest "$dest" --exclude skills "${preview[@]}")"
   report_install "$result" "$label" "$dest"
   # Install only the optional skills selected from the authoritative catalog.
   local module
@@ -114,31 +133,38 @@ install_to() {
 
 INSTALLED_COUNT=0
 
-# 1. Claude Code & Claude Desktop
-if [ -d "$HOME/.claude" ] || command -v claude >/dev/null 2>&1; then
-  install_to "$HOME/.claude/skills/${TARGET_NAME}" "Claude Code"
-  INSTALLED_COUNT=$((INSTALLED_COUNT + 1))
-fi
-
-# 2. Antigravity & Gemini CLI
-if [ -d "$HOME/.gemini" ]; then
-  install_to "$HOME/.gemini/config/skills/${TARGET_NAME}" "Antigravity / Gemini CLI"
-  INSTALLED_COUNT=$((INSTALLED_COUNT + 1))
-fi
-
-# 3. Codex & OpenCode
-if [ -d "$HOME/.codex" ] || command -v codex >/dev/null 2>&1; then
-  install_to "$HOME/.codex/skills/${TARGET_NAME}" "Codex / OpenCode"
-  INSTALLED_COUNT=$((INSTALLED_COUNT + 1))
-fi
-
-# 4. Universal Agent Kernel (~/.agents/skills)
-install_to "$HOME/.agents/skills/${TARGET_NAME}" "Universal Agent Kernel (~/.agents/skills)"
-INSTALLED_COUNT=$((INSTALLED_COUNT + 1))
-
-# 5. Local project installation if --local or --project is requested
-if [ "$1" = "--local" ] || [ "$1" = "--project" ]; then
+if [ "$LOCAL_INSTALL" -eq 1 ]; then
+  # Local project installation
   install_to "$PWD/.agents/skills/${TARGET_NAME}" "Local Project (.agents/skills)"
+  if [ "$BASH_DRY_RUN" -eq 0 ] && [ -f "$SOURCE_DIR/package.json" ]; then
+    modules=()
+    while IFS= read -r module; do
+      if [ -n "$module" ]; then modules+=("$module"); fi
+    done <<< "$SELECTED_MODULES"
+    python3 "$SOURCE_DIR/scripts/bash_selection.py" "$PWD/.agents/skills" "$SOURCE_DIR/package.json" "${modules[@]}"
+  fi
+  INSTALLED_COUNT=$((INSTALLED_COUNT + 1))
+else
+  # 1. Claude Code & Claude Desktop
+  if [ -d "$HOME/.claude" ] || command -v claude >/dev/null 2>&1; then
+    install_to "$HOME/.claude/skills/${TARGET_NAME}" "Claude Code"
+    INSTALLED_COUNT=$((INSTALLED_COUNT + 1))
+  fi
+
+  # 2. Antigravity & Gemini CLI
+  if [ -d "$HOME/.gemini" ]; then
+    install_to "$HOME/.gemini/config/skills/${TARGET_NAME}" "Antigravity / Gemini CLI"
+    INSTALLED_COUNT=$((INSTALLED_COUNT + 1))
+  fi
+
+  # 3. Codex & OpenCode
+  if [ -d "$HOME/.codex" ] || command -v codex >/dev/null 2>&1; then
+    install_to "$HOME/.codex/skills/${TARGET_NAME}" "Codex / OpenCode"
+    INSTALLED_COUNT=$((INSTALLED_COUNT + 1))
+  fi
+
+  # 4. Universal Agent Kernel (~/.agents/skills)
+  install_to "$HOME/.agents/skills/${TARGET_NAME}" "Universal Agent Kernel (~/.agents/skills)"
   INSTALLED_COUNT=$((INSTALLED_COUNT + 1))
 fi
 
@@ -192,7 +218,7 @@ link_installed_cli() {
   done
 }
 
-if [ "$BASH_DRY_RUN" -eq 0 ]; then
+if [ "$BASH_DRY_RUN" -eq 0 ] && [ "$LOCAL_INSTALL" -eq 0 ]; then
   link_installed_cli
 fi
 
@@ -207,5 +233,9 @@ echo "  Optional modules: ${SELECTED_MODULES:-none}"
 echo ""
 echo "Quick Verifications:"
 echo "  • CLI triage:    npx anti-slop-engineering --base HEAD"
-echo "  • Python script: python3 ~/.agents/skills/${TARGET_NAME}/scripts/diff_guard.py --base HEAD"
-echo "  • Skill docs:    cat ~/.agents/skills/${TARGET_NAME}/SKILL.md"
+verification_root="~/.agents/skills/${TARGET_NAME}"
+if [ "$LOCAL_INSTALL" -eq 1 ]; then
+  verification_root=".agents/skills/${TARGET_NAME}"
+fi
+echo "  • Python script: python3 $verification_root/scripts/diff_guard.py --base HEAD"
+echo "  • Skill docs:    cat $verification_root/SKILL.md"
