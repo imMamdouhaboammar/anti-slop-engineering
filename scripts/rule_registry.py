@@ -15,6 +15,11 @@ OUTCOMES = ("tp", "fp", "tn", "fn")
 SEVERITY_GUIDANCE = {
     "OPS-01": "Escalate when evidence shows the swallowed error hides a required operation or trust-boundary failure.",
     "SRE-01": "Treat nesting as review evidence. Escalate only for a demonstrated impact beyond readability.",
+    "SRE-05": "Confirm the branch is unreachable or the placeholder is speculative before requesting removal.",
+    "SRE-07": "Establish whether the delay substitutes for synchronization. Scheduled waits can be intentional.",
+    "SRE-08": "Verify total retry attempts and deadline, and assess fleet-wide impact before escalation.",
+    "SRE-09": "Confirm the collection can grow beyond safe bounds. A small, constrained fan-out can be valid.",
+    "SRE-12": "Check whether this endpoint promises readiness. A constant liveness response can be intentional.",
 }
 
 
@@ -23,6 +28,7 @@ class Rule:
     engine: str
     engine_code: str
     catalog_id: str
+    source: str
     skill: str = "anti-slop-engineering"
 
     @property
@@ -30,13 +36,29 @@ class Rule:
         return f"{self.engine}:{self.engine_code}"
 
 
+DIFF_SOURCE = "scripts/diff_guard.py"
+SRE_SOURCE = "scripts/sre_guard.py"
+GO_TOIL_SOURCE = "services/toil-guard-go/pkg/sre/toil.go"
+
 RULES = (
-    Rule("diff_guard", "ERROR_SWALLOW_CANDIDATE", "OPS-01"),
-    Rule("sre_guard", "SCALE_TOIL_ERROR_SWALLOW", "OPS-01"),
-    Rule("rust", "STS-H02", "OPS-01"),
-    Rule("go", "SRE-SCALE-SWALLOW", "OPS-01"),
-    Rule("sre_guard", "KISS_DEEP_NESTING", "SRE-01"),
-    Rule("go", "SRE-KISS-NESTING", "SRE-01"),
+    Rule("diff_guard", "ERROR_SWALLOW_CANDIDATE", "OPS-01", DIFF_SOURCE),
+    Rule("sre_guard", "SCALE_TOIL_ERROR_SWALLOW", "OPS-01", SRE_SOURCE),
+    Rule("rust", "STS-H02", "OPS-01", "services/anti-slop-rust/src/shit_interceptor.rs"),
+    Rule("go", "SRE-SCALE-SWALLOW", "OPS-01", GO_TOIL_SOURCE),
+    Rule("sre_guard", "KISS_DEEP_NESTING", "SRE-01", SRE_SOURCE),
+    Rule("go", "SRE-KISS-NESTING", "SRE-01", "services/toil-guard-go/pkg/sre/complexity.go"),
+    Rule("diff_guard", "SRE_YAGNI_DEAD_FLAG", "SRE-05", DIFF_SOURCE),
+    Rule("sre_guard", "YAGNI_DEAD_SPECULATIVE_FLAG", "SRE-05", SRE_SOURCE),
+    Rule("go", "SRE-YAGNI-SPECULATIVE", "SRE-05", GO_TOIL_SOURCE),
+    Rule("diff_guard", "SRE_SCALE_SLEEP_BAND_AID", "SRE-07", DIFF_SOURCE),
+    Rule("sre_guard", "SCALE_SLEEP_BAND_AID", "SRE-07", SRE_SOURCE),
+    Rule("go", "SRE-SCALE-SLEEP", "SRE-07", GO_TOIL_SOURCE),
+    Rule("diff_guard", "SRE_SCALE_FLAT_RETRY", "SRE-08", DIFF_SOURCE),
+    Rule("sre_guard", "SCALE_UNBOUNDED_OR_FLAT_RETRY", "SRE-08", SRE_SOURCE),
+    Rule("go", "SRE-SCALE-RETRY", "SRE-08", GO_TOIL_SOURCE),
+    Rule("diff_guard", "SRE_SCALE_UNBOUNDED_CONCURRENCY", "SRE-09", DIFF_SOURCE),
+    Rule("sre_guard", "SCALE_UNBOUNDED_CONCURRENCY", "SRE-09", SRE_SOURCE),
+    Rule("sre_guard", "SCALE_MISLEADING_HEALTH_CHECK", "SRE-12", SRE_SOURCE),
 )
 BY_CODE = {rule.engine_code: rule for rule in RULES}
 
@@ -73,6 +95,8 @@ def validate_registry(rules):
             raise ValueError(f"Unknown catalog ID: {rule.catalog_id}")
         if not (ROOT / "skills" / rule.skill / "SKILL.md").is_file():
             raise ValueError(f"Unknown remediation skill: {rule.skill}")
+        if not (ROOT / rule.source).is_file():
+            raise ValueError(f"Unknown detector source: {rule.source}")
         codes.add(rule.engine_code)
 
 
@@ -96,7 +120,7 @@ def describe_entry(entry, rule=None):
         **entry,
         "engine_code": rule.engine_code if rule else None,
         "related_rules": [
-            {"engine": item.engine, "engine_code": item.engine_code} for item in related
+            {"engine": item.engine, "engine_code": item.engine_code, "source": item.source} for item in related
         ],
         "skill": skill,
         "skill_path": f"skills/{skill}/SKILL.md" if skill else None,
@@ -149,6 +173,10 @@ def build_coverage(observations):
         "total_patterns": len(patterns),
         "counts": counts,
         "patterns": patterns,
+        "detectors": {
+            rule.evidence_key: {"catalog_id": rule.catalog_id, "source": rule.source}
+            for rule in RULES
+        },
         "scope": "Fixture observations for curated detector mappings only",
         "fixture_precision": {
             key: result["tp"] / (result["tp"] + result["fp"])

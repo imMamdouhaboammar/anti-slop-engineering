@@ -246,6 +246,19 @@ class EngineParityContractTests(unittest.TestCase):
             "swallow_handled": "def work(job):\n    try:\n        job.run()\n    except Exception as error:\n        raise RuntimeError('job failed') from error\n",
             "nested_bad": "def choose(x):\n    if x > 0:\n        if x < 100:\n            if x % 2 == 0:\n                if x != 4:\n                    return x\n    return 0\n",
             "nested_clear": "def choose(x):\n    if x <= 0 or x >= 100:\n        return 0\n    return x if x % 2 == 0 and x != 4 else 0\n",
+            "flag_bad": "def read(job):\n    if False:\n        return job.read()\n    return None\n",
+            "flag_clear": "def read(job):\n    if job.ready:\n        return job.read()\n    return None\n",
+            "placeholder_bad": "def read(job):\n    # TODO(future): complete job reader\n    return None\n",
+            "placeholder_clear": "def read(job):\n    return job.read()\n",
+            "sleep_bad": "import time\n\ndef wait(event):\n    time.sleep(1)\n    return event.is_set()\n",
+            "sleep_clear": "def wait(event):\n    return event.wait(timeout=1)\n",
+            "retry_bad": "from time import sleep\n\ndef retry(op):\n    for attempt in range(3): sleep(1) if not op() else None\n",
+            "retry_clear": "from time import sleep\n\ndef retry(op, jitter):\n    for attempt in range(3):\n        if op():\n            return True\n        sleep(jitter(2 ** attempt))\n    return False\n",
+            "fanout_bad": "import asyncio\n\nasync def send(items, deliver):\n    return await asyncio.gather(*[deliver(item) for item in items])\n",
+            "fanout_clear": "async def send(items, deliver):\n    return [await deliver(item) for item in items]\n",
+            "health_bad": "def readiness():\n    return 200\n",
+            "health_clear": "def readiness():\n    ready = datastore.is_ready()\n    return 200 if ready else 503\n",
+            "health_inline_probe": "def readiness():\n    return 200 if datastore.is_ready() else 503\n",
         }
         runs = {
             "diff_guard": (self._run_diff_guard, "id"),
@@ -279,22 +292,32 @@ class EngineParityContractTests(unittest.TestCase):
                             self.assertEqual(normalized["catalog_id"], rule_registry.BY_CODE[finding[field]].catalog_id)
                             self.assertTrue((ROOT / normalized["skill_path"]).is_file())
 
+        fixtures = {
+            "OPS-01": ("swallow_bad", "swallow_handled"),
+            "SRE-01": ("nested_bad", "nested_clear"),
+            "SRE-05": ("flag_bad", "flag_clear"),
+            "SRE-07": ("sleep_bad", "sleep_clear"),
+            "SRE-08": ("retry_bad", "retry_clear"),
+            "SRE-09": ("fanout_bad", "fanout_clear"),
+            "SRE-12": ("health_bad", "health_clear"),
+        }
         observations = {}
         for rule in rule_registry.RULES:
             if rule.engine not in runs:
                 continue
             with self.subTest(detector=rule.evidence_key):
-                positive, negative = (
-                    ("swallow_bad", "swallow_handled") if rule.catalog_id == "OPS-01"
-                    else ("nested_bad", "nested_clear")
-                )
+                positive, negative = fixtures[rule.catalog_id]
+                if rule.engine_code == "SRE-YAGNI-SPECULATIVE":
+                    positive, negative = "placeholder_bad", "placeholder_clear"
                 hit = rule.engine_code in outputs[positive, rule.engine]
                 false_alarm = rule.engine_code in outputs[negative, rule.engine]
                 self.assertTrue(hit, f"{rule.evidence_key} stopped detecting its positive fixture")
                 self.assertFalse(false_alarm, f"{rule.evidence_key} flags its negative fixture")
-                observations[rule.evidence_key] = {
-                    "tp": int(hit), "fn": int(not hit), "fp": int(false_alarm), "tn": int(not false_alarm),
-                }
+                outcomes = {"tp": int(hit), "fn": int(not hit), "fp": int(false_alarm), "tn": int(not false_alarm)}
+                if rule.catalog_id == "SRE-12":
+                    inline_flagged = rule.engine_code in outputs["health_inline_probe", rule.engine]
+                    outcomes["fp" if inline_flagged else "tn"] += 1
+                observations[rule.evidence_key] = outcomes
 
         receipt = os.environ.get("CATALOG_OBSERVATIONS_OUT")
         if receipt:
