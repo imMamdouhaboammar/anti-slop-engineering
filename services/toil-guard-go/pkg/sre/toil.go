@@ -98,14 +98,17 @@ func goSwallowedErrorLines(filePath, content string) map[int]bool {
 			return true
 		}
 		first := sort.Search(len(parsed.Comments), func(i int) bool {
-			return parsed.Comments[i].Pos() > condition.Body.Lbrace
+			return parsed.Comments[i].End() > condition.Cond.End()
 		})
 		for _, comment := range parsed.Comments[first:] {
 			if comment.Pos() >= condition.Body.Rbrace {
 				break
 			}
-			if reIgnoredErrorReason.MatchString(comment.Text()) {
-				return true
+			for _, part := range comment.List {
+				if part.Pos() >= condition.Cond.End() && part.Pos() < condition.Body.Rbrace &&
+					reIgnoredErrorReason.MatchString(part.Text) {
+					return true
+				}
 			}
 		}
 		findings[files.PositionFor(condition.If, false).Line] = true
@@ -121,7 +124,7 @@ func isGoErrorCheck(expression ast.Expr) bool {
 	}
 	left, leftOK := ast.Unparen(check.X).(*ast.Ident)
 	right, rightOK := ast.Unparen(check.Y).(*ast.Ident)
-	return leftOK && rightOK && left.Name == "err" && right.Name == "nil"
+	return leftOK && rightOK && strings.EqualFold(left.Name, "err") && right.Name == "nil"
 }
 
 // CheckToilAndScale audits code for Google SRE Scale and Operational Toil violations
