@@ -24,7 +24,7 @@ metadata:
 | Suspicious | A concrete mismatch or prohibited behavior, such as an approved digest mismatch, registry substitution, a package coordinate that differs from trusted documentation, or a lifecycle hook that reads unrelated secrets. Record evidence and hold installation. |
 | Unknown | Available evidence cannot establish identity, bytes, or script behavior. For an offline uncached release, request the approved metadata or artifact. Never infer approval from a clean grep or missing alerts. |
 
-Catalog: [CI-01, CI-04, CI-07](../../references/anti-pattern-catalog.md).
+Catalog: [CI-01, CI-04, CI-07](../anti-slop-engineering/references/anti-pattern-catalog.md).
 
 ## Evidence exercise
 

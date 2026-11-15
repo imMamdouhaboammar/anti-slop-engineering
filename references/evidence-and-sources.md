@@ -24,3 +24,35 @@
 ## Provenance policy
 
 Do not attach a source to an individual catalog item unless the source actually supports that mechanism. Much of this catalog is engineering synthesis based on longstanding failure modes plus agent-specific risks. Community anecdotes are not prevalence estimates. Findings on a specific PR need **direct local evidence** and verification, not a citation to a general blog post.
+
+## Committed repository evidence
+
+Add `--verify-evidence --repo <checkout>` to the `decision audit`, `root-fix audit`, or `paranoid audit` command. Check out the claimed head commit first. The record file can live outside that checkout to avoid a self-reference.
+
+An opt-in record uses the following fields. All hashes are lowercase hex. Git object IDs use the repository's full SHA-1 or SHA-256 width.
+
+| Field under `repository_evidence` | Value |
+| --- | --- |
+| `version` | `1` |
+| `base_commit`, `head_commit` | Full IDs for a parent or ancestor and the checked-out commit |
+| `paths` | 1 to 16 objects with `path` (repository-relative regular file), `blob_sha256` (file bytes at head), and `patch_sha256` (exact Git patch bytes for that path) |
+| `check` | Object with `name` equal to `git_diff_check`, `exit_code` equal to `0`, and `stdout_sha256` and `stderr_sha256` of the two output streams |
+
+From the selected checkout, collect hashes with this example. The baseline must contain the old commit locally. Use the same Git version and repository-local attributes for reproducible patch bytes. The verifier reads committed attributes from the evidence head. A repository-local `.git/info/attributes` file can override them. Git versions without `--attr-source` produce an inconclusive opt-in result.
+
+```bash
+base="$(git rev-parse HEAD^)"
+head="$(git rev-parse HEAD)"
+path="src/example.py"
+git cat-file blob "$head:$path" | shasum -a 256
+git --attr-source="$head" --literal-pathspecs -c core.quotePath=true -c core.abbrev=12 diff \
+  --no-ext-diff --no-textconv --no-renames --no-color --no-relative \
+  --diff-algorithm=myers --no-indent-heuristic \
+  --src-prefix=a/ --dst-prefix=b/ --unified=3 "$base" "$head" -- "$path" | shasum -a 256
+```
+
+Run the same diff with `--check` and the full list of claimed paths. Capture the exit code plus the SHA-256 of stdout and stderr independently. Use `printf '' | shasum -a 256` to obtain the digest of an empty stream.
+
+The verifier reruns the fixed Git check, bypasses external diff and text conversion, and compares the observed exit and hashes. It does not execute a command, follow a URL, or fetch a commit supplied by the record. The listed files are capped at 1 MiB per revision. Symlink, submodule, deleted-file, shallow-history, and unsupported path evidence can be inconclusive.
+
+`record_valid` is structural. `evidence_status: implementation_verified` means only the committed claims and scoped Git whitespace check matched. Test behavior, performance, security, authorship, and the reasoning in the record require their own proof. Missing or mismatched evidence is `inconclusive` and returns `3` if the record was structurally complete. Existing exit behavior and JSON fields apply without the opt-in flag.

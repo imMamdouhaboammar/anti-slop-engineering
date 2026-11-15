@@ -16,6 +16,8 @@ import os
 import random
 import re
 import shlex
+import stat
+import string
 import sys
 import time
 import uuid
@@ -272,8 +274,8 @@ def normalize_path(path_str, cwd=None, depth=0, max_depth=100):
             rel = p.relative_to(Path(cwd))
             return str(rel).replace("\\", "/")
         except ValueError:
-            return cleaned.lstrip("./")
-    return cleaned.lstrip("./")
+            return cleaned
+    return cleaned[2:] if cleaned.startswith("./") else cleaned
 
 
 def path_allowed(target_path, allowed_patterns, cwd=None, depth=0, max_depth=100):
@@ -285,6 +287,8 @@ def path_allowed(target_path, allowed_patterns, cwd=None, depth=0, max_depth=100
     if not allowed_patterns:
         return False
     norm_target = normalize_path(target_path, cwd, depth=depth + 1, max_depth=max_depth)
+    if not norm_target:
+        return False
     for pat in allowed_patterns:
         norm_pat = normalize_path(pat, cwd, depth=depth + 1, max_depth=max_depth)
         if norm_pat == "**":
@@ -718,6 +722,172 @@ def _handle_check_action(manager, args):
         sys.exit(0 if decision["outcome"] == "allow" else 2)
 
 
+
+HOOK_EVENT_MAX_BYTES = 64 * 1024
+HOOK_EVENT_MAX_PATHS = 32
+HOOK_EVENT_MAX_PATH_LENGTH = 1024
+HOOK_EVENT_FIELDS = {
+    "schema_version", "agent", "phase", "tool", "operation", "target_paths",
+    "payload_trust", "correlation_id",
+}
+HOOK_ID_CHARACTERS = frozenset(string.ascii_letters + string.digits + "_.:-")
+HOOK_EFFECTS = {
+    "allow": "allow",
+    "report_and_defer": "warn",
+    "deny_and_explain": "block",
+    "require_user_approval": "block",
+}
+HOOK_MESSAGES = {
+    "INVALID_HOOK_EVENT": "The hook received an invalid or unsupported event.",
+    "STATE_DAMAGED": "The local action contract could not be read or validated.",
+    "TARGET_OUTSIDE_WORKSPACE": "A tool target is outside the configured workspace.",
+    "TARGET_UNAVAILABLE": "The hook could not resolve a tool target.",
+    "POLICY_UNAVAILABLE": "The hook could not evaluate the local action contract.",
+}
+
+
+def _unique_hook_object(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("Duplicate JSON field")
+        result[key] = value
+    return result
+
+
+def read_hook_object(stream):
+    raw = stream.read(HOOK_EVENT_MAX_BYTES + 1)
+    if len(raw) > HOOK_EVENT_MAX_BYTES:
+        raise ValueError("Hook JSON exceeds its byte limit")
+    try:
+        value = json.loads(raw.decode("utf-8"), object_pairs_hook=_unique_hook_object)
+    except RecursionError as exc:
+        raise ValueError("Hook JSON nesting exceeds decoder capacity") from exc
+    if not isinstance(value, dict):
+        raise ValueError("Hook JSON requires an object")
+    return value
+
+
+def _valid_hook_paths(paths):
+    return len(paths) <= HOOK_EVENT_MAX_PATHS and all(
+        isinstance(path, str) and 0 < len(path) <= HOOK_EVENT_MAX_PATH_LENGTH
+        and path.strip() and "\x00" not in path for path in paths
+    )
+
+
+def validate_hook_event(event):
+    if set(event) != HOOK_EVENT_FIELDS or type(event["schema_version"]) is not int or event["schema_version"] != 1:
+        raise ValueError("Unsupported hook event fields or version")
+    for field in ("agent", "tool", "correlation_id"):
+        value = event[field]
+        if not isinstance(value, str) or not 0 < len(value) <= 128 or not HOOK_ID_CHARACTERS.issuperset(value):
+            raise ValueError("Invalid hook identifier")
+    if event["phase"] not in ("pre_tool", "post_tool") or event["operation"] not in ("read", "write", "unknown"):
+        raise ValueError("Unknown hook phase or operation")
+    if event["payload_trust"] != "untrusted":
+        raise ValueError("Unsupported payload trust level")
+    paths = event["target_paths"]
+    if not isinstance(paths, list) or not _valid_hook_paths(paths):
+        raise ValueError("Invalid target paths")
+    if event["operation"] != "unknown" and not paths:
+        raise ValueError("A structured file operation requires a target path")
+
+
+def _validate_hook_policy(state):
+    contract = state.get("contract", make_default_contract())
+    if not isinstance(contract, dict):
+        raise ValueError("Invalid contract")
+    for field, allowed in (
+        ("mode", VALID_MODES), ("level", VALID_LEVELS),
+        ("hash_policy", VALID_HASH_POLICIES), ("dependency_policy", VALID_DEP_POLICIES),
+    ):
+        value = contract.get(field)
+        if not isinstance(value, str) or value not in allowed:
+            raise ValueError("Invalid contract option")
+    paths = contract.get("allowed_paths")
+    if paths is not None and (not isinstance(paths, list) or not _valid_hook_paths(paths)):
+        raise ValueError("Invalid contract path patterns")
+    return contract
+
+
+def _load_hook_policy(manager):
+    if manager.state_dir.is_symlink() or manager.state_file.is_symlink():
+        raise ValueError("Hook state must be local")
+    try:
+        flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_NOFOLLOW", 0)
+        fd = os.open(manager.state_file, flags)
+    except FileNotFoundError:
+        return {}
+    with os.fdopen(fd, "rb") as stream:
+        if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+            raise ValueError("Hook state must be a regular file")
+        return read_hook_object(stream)
+
+
+def _hook_result(event, decision, reason_code):
+    if decision == "block" and event.get("phase") == "post_tool":
+        decision = "warn"
+    message = REASON_CODES.get(reason_code) or HOOK_MESSAGES.get(reason_code, HOOK_MESSAGES["POLICY_UNAVAILABLE"])
+    return {
+        "schema_version": 1,
+        "correlation_id": event.get("correlation_id"),
+        "decision": decision,
+        "reason_code": reason_code,
+        "message": message,
+    }
+
+
+def _hook_targets(event, workspace):
+    paths = []
+    for target in event["target_paths"]:
+        resolved = (workspace / target).resolve()
+        relative = resolved.relative_to(workspace)
+        # The legacy matcher normalizes backslashes and trims spaces. Keep
+        # paths it cannot represent outside its authorization input.
+        relative_path = relative.as_posix()
+        if relative_path != relative_path.strip() or chr(92) in relative_path:
+            raise OSError("Target cannot be represented by the path policy")
+        paths.append(relative_path)
+    return paths
+
+
+def evaluate_hook_event(event, state, workspace):
+    """Evaluate one validated event without changing policy, tickets, or logs."""
+    if state.get("storage_error"):
+        return _hook_result(event, "error", "STATE_DAMAGED")
+    contract = _validate_hook_policy(state)
+    operation = event["operation"]
+    if contract["level"] == "off" or contract["mode"] == "unconfirmed":
+        return _hook_result(event, "allow", "CONTROL_INACTIVE")
+
+    try:
+        paths = _hook_targets(event, workspace)
+    except ValueError:
+        effect = "warn" if contract["level"] == "watch" else "block"
+        return _hook_result(event, effect, "TARGET_OUTSIDE_WORKSPACE")
+    except (OSError, RuntimeError):
+        return _hook_result(event, "error", "TARGET_UNAVAILABLE")
+    action = _make_action(event["tool"], operation, paths)
+    policy = decide(contract, action, state)
+    effect = HOOK_EFFECTS.get(policy["outcome"], "error")
+    return _hook_result(event, effect, policy["reason_code"])
+
+
+def _handle_hook_event(manager, workspace):
+    try:
+        event = read_hook_object(sys.stdin.buffer)
+        validate_hook_event(event)
+    except (OSError, ValueError):
+        result = _hook_result({}, "error", "INVALID_HOOK_EVENT")
+    else:
+        try:
+            result = evaluate_hook_event(event, _load_hook_policy(manager), workspace)
+        except (OSError, ValueError):
+            result = _hook_result(event, "error", "STATE_DAMAGED")
+    print(json.dumps(result))
+    return {"allow": 0, "warn": 0, "block": 2, "error": 1}[result["decision"]]
+
+
 def main():
     """Command-line interface entry point."""
     parser = argparse.ArgumentParser(description="Anti-Slop In-Flight Action Guard")
@@ -730,6 +900,8 @@ def main():
     p_check.add_argument("--tool", required=True, help="Tool name")
     p_check.add_argument("--args", required=True, help="Tool arguments JSON string")
     p_check.add_argument("--ticket", default=None, help="Approval ticket ID if previously granted")
+
+    subparsers.add_parser("hook-event", help="Evaluate one normalized hook event from stdin")
 
     p_grant = subparsers.add_parser("grant-ticket", help="Grant a single-use approval ticket")
     p_grant.add_argument("cmd", help="Exact command string to approve")
@@ -747,6 +919,8 @@ def main():
         _handle_parse_prompt(manager, args)
     elif args.command == "check-action":
         _handle_check_action(manager, args)
+    elif args.command == "hook-event":
+        sys.exit(_handle_hook_event(manager, Path.cwd()))
     elif args.command == "grant-ticket":
         ticket_id = manager.grant_approval_ticket(args.cmd, args.ttl)
         print(json.dumps({"ticket_id": ticket_id, "command": args.cmd, "ttl": args.ttl}, indent=2))
