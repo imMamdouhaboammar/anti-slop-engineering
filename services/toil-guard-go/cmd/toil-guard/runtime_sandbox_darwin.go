@@ -176,11 +176,14 @@ func verifyRuntimeIsolation(readCanary, writeCanary, loopback string) (runtimeIs
 		return runtimeIsolation{}, err
 	}
 	isolation := runtimeIsolation{Sandbox: "macos-sandbox-exec"}
-	_, readErr := os.ReadFile(readCanary)
-	isolation.ReadCanaryDenied = errors.Is(readErr, fs.ErrPermission)
-	if !isolation.ReadCanaryDenied {
-		return isolation, nil
+	canary, readErr := os.Open(readCanary)
+	if readErr == nil {
+		return isolation, canary.Close()
 	}
+	if !errors.Is(readErr, fs.ErrPermission) {
+		return isolation, fmt.Errorf("reading filesystem canary: %w", readErr)
+	}
+	isolation.ReadCanaryDenied = true
 
 	limit := syscall.Rlimit{Cur: runtimeCPULimit, Max: runtimeCPULimit}
 	if err := syscall.Setrlimit(syscall.RLIMIT_CPU, &limit); err != nil {
