@@ -30,6 +30,7 @@ class RuleRegistryTests(unittest.TestCase):
 
     def test_calibrated_detector_provenance_resolves_to_live_code(self):
         cases = {
+            "TRIVIAL_COMMENT_NARRATION": ("SIM-17", "scripts/diff_guard.py"),
             "SRE-YAGNI_DEAD_FLAG": None,
             "SRE_YAGNI_DEAD_FLAG": ("SRE-05", "scripts/diff_guard.py"),
             "SRE-SCALE-SLEEP": ("SRE-07", "services/toil-guard-go/pkg/sre/toil.go"),

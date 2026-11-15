@@ -256,6 +256,8 @@ class EngineParityContractTests(unittest.TestCase):
             "retry_clear": "from time import sleep\n\ndef retry(op, jitter):\n    for attempt in range(3):\n        if op():\n            return True\n        sleep(jitter(2 ** attempt))\n    return False\n",
             "fanout_bad": "import asyncio\n\nasync def send(items, deliver):\n    return await asyncio.gather(*[deliver(item) for item in items])\n",
             "fanout_clear": "async def send(items, deliver):\n    return [await deliver(item) for item in items]\n",
+            "narration_bad": "def reserve(attempt):\n    # Increment attempt\n    return attempt + 1\n",
+            "narration_clear": "def reserve(attempt):\n    # Consume the retry budget before dispatch so a crash cannot grant an extra attempt.\n    return attempt + 1\n",
             "health_bad": "def readiness():\n    return 200\n",
             "health_clear": "def readiness():\n    ready = datastore.is_ready()\n    return 200 if ready else 503\n",
             "health_inline_probe": "def readiness():\n    return 200 if datastore.is_ready() else 503\n",
@@ -299,6 +301,7 @@ class EngineParityContractTests(unittest.TestCase):
             "SRE-07": ("sleep_bad", "sleep_clear"),
             "SRE-08": ("retry_bad", "retry_clear"),
             "SRE-09": ("fanout_bad", "fanout_clear"),
+            "SIM-17": ("narration_bad", "narration_clear"),
             "SRE-12": ("health_bad", "health_clear"),
         }
         observations = {}

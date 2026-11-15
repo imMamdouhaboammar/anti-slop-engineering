@@ -14,6 +14,7 @@ REGISTRY_VERSION = 1
 OUTCOMES = ("tp", "fp", "tn", "fn")
 SEVERITY_GUIDANCE = {
     "OPS-01": "Escalate when evidence shows the swallowed error hides a required operation or trust-boundary failure.",
+    "SIM-17": "Keep comments that explain a constraint, failure mode, or rationale the code cannot express. Treat narration findings as review only.",
     "SRE-01": "Treat nesting as review evidence. Escalate only for a demonstrated impact beyond readability.",
     "SRE-05": "Confirm the branch is unreachable or the placeholder is speculative before requesting removal.",
     "SRE-07": "Establish whether the delay substitutes for synchronization. Scheduled waits can be intentional.",
@@ -45,6 +46,7 @@ RULES = (
     Rule("sre_guard", "SCALE_TOIL_ERROR_SWALLOW", "OPS-01", SRE_SOURCE),
     Rule("rust", "STS-H02", "OPS-01", "services/anti-slop-rust/src/shit_interceptor.rs"),
     Rule("go", "SRE-SCALE-SWALLOW", "OPS-01", GO_TOIL_SOURCE),
+    Rule("diff_guard", "TRIVIAL_COMMENT_NARRATION", "SIM-17", DIFF_SOURCE),
     Rule("sre_guard", "KISS_DEEP_NESTING", "SRE-01", SRE_SOURCE),
     Rule("go", "SRE-KISS-NESTING", "SRE-01", "services/toil-guard-go/pkg/sre/complexity.go"),
     Rule("diff_guard", "SRE_YAGNI_DEAD_FLAG", "SRE-05", DIFF_SOURCE),
