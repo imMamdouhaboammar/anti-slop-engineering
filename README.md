@@ -189,7 +189,28 @@ bunx anti-slop-engineering toil stream
 
 # Start the optional HTTP service:
 bunx anti-slop-engineering serve-go --port 9092
+
+# Opt-in runtime fixture, with the native Go binary built:
+bunx anti-slop-engineering toil runtime-check --fixture=go-lookup
 ```
+
+The built-in Go lookup fixture measures single-item and batched dependency calls,
+checks result equality, and records recovery from one injected local failure.
+A two-worker scenario records observed overlap and cancels while both workers
+are in flight. It reports completed, canceled and unstarted operations for six
+local lookups. Elapsed times describe the fixture run.
+
+On macOS, the worker uses a disposable directory and verifies denial of a read
+canary, file creation, local TCP connection and listening, and child execution
+before measuring. The profile blocks reads from the caller's working directory
+and account home. Other system reads remain available for runtime startup. A
+five-second timeout, two CPU seconds, an output ceiling, and a fixed workload
+bound the worker. The Go memory target is 32 MiB.
+
+The JSON status is `passed` (exit 0) or `failed` (exit 1) for an executed
+fixture. If containment checks fail or the host lacks the supported macOS
+sandbox, it reports `inconclusive` with `executed: false` (exit 2).
+Static `toil audit` works independently.
 
 ### Package Installation and Native Builds
 

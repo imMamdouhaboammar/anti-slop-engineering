@@ -32,6 +32,13 @@ func main() {
 	switch command {
 	case "audit":
 		runAudit(os.Args[2:])
+	case "runtime-check":
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		code := executeRuntimeCheck(ctx, os.Args[2:], os.Stdout, os.Stderr, runSandboxedRuntimeFixture)
+		stop()
+		os.Exit(code)
+	case "_runtime-worker":
+		os.Exit(runRuntimeWorker(os.Args[2:]))
 	case "serve":
 		runServe(os.Args[2:])
 	case "stream":
@@ -52,6 +59,7 @@ func printUsage() {
 	fmt.Println()
 	fmt.Println("Commands:")
 	fmt.Println("  audit   [paths...]     Audit source paths or git changes against KISS, DRY, YAGNI, and Scale")
+	fmt.Println("  runtime-check --fixture=go-lookup  Run a built-in runtime fixture in a verified macOS sandbox")
 	fmt.Println("  serve   [--port 9092]  Start high-throughput HTTP SRE daemon with /healthz, /metrics, /v1/audit")
 	fmt.Println("  stream  [--interval 3s]  Stream git diff statistics (not a live error-budget calculation)")
 	fmt.Println("  help                   Show this help message")
