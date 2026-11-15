@@ -94,32 +94,24 @@ def managed_group(project, phase):
     return {"matcher": MATCHER, "hooks": [runner]}
 
 
-def owns_hook_path(item):
-    if not isinstance(item, dict):
-        return False
-    args = item.get("args")
-    return isinstance(args, list) and args[:1] == [HOOK_PATH]
-
-
-def edit_hooks(settings, project, install):
+def edit_hooks(settings, groups_by_phase, own_handler, install):
     hooks = settings.get("hooks", {})
     if not isinstance(hooks, dict):
-        raise ValueError("Claude hooks settings must be an object")
+        raise ValueError("Hook settings must be an object")
     changed = False
-    for phase in PHASES:
+    for phase, expected in groups_by_phase.items():
         groups = hooks.get(phase, [])
         if not isinstance(groups, list) or any(not isinstance(group, dict) for group in groups):
-            raise ValueError("Claude hook groups must be objects")
-        expected = managed_group(project, phase)
+            raise ValueError("Hook groups must be objects")
         known = []
         for group in groups:
             handlers = group.get("hooks")
             if not isinstance(handlers, list):
-                raise ValueError("Claude hook group requires a handler list")
-            if any(owns_hook_path(item) for item in handlers):
+                raise ValueError("Hook group requires a handler list")
+            if any(own_handler(item) for item in handlers):
                 known.append(group)
         if known and known != [expected]:
-            raise ValueError("Existing Anti-Slop Claude hook was modified. Restore or remove it in settings.")
+            raise ValueError("Existing Anti-Slop hook was modified. Restore or remove it in settings.")
         if install and not known:
             hooks[phase] = [*groups, expected]
             changed = True
@@ -178,26 +170,38 @@ def write_settings(path, initial_stat, contents):
         Path(temp).unlink(missing_ok=True)
 
 
-def configure(project, install, dry_run, consent):
+def configure_hooks(path, groups, own_handler, install, dry_run, consent):
     if not dry_run and not consent:
         raise ValueError("Use --dry-run to inspect changes or --yes to apply them.")
-    path = project / ".claude" / "settings.local.json"
     if path.parent.is_symlink() or path.is_symlink():
         raise ValueError("Claude settings must be local")
     initial_stat, settings = read_settings(path)
-    changed = edit_hooks(settings, project, install)
+    changed = edit_hooks(settings, groups, own_handler, install)
     status = "unchanged"
     if changed and dry_run:
         status = "would_change"
     elif changed:
         write_settings(path, initial_stat, settings)
         status = "changed"
-    print(json.dumps({"status": status, "settings": str(path), "tools": list(TOOLS)}))
+    return {"status": status, "settings": str(path)}
+
+
+def configure(project, install, dry_run, consent):
+    def owns_handler(item):
+        args = item.get("args") if isinstance(item, dict) else None
+        return isinstance(args, list) and args[:1] == [HOOK_PATH]
+
+    groups = {phase: managed_group(project, phase) for phase in PHASES}
+    result = configure_hooks(
+        project / ".claude" / "settings.local.json", groups, owns_handler, install, dry_run, consent,
+    )
+    result["tools"] = list(TOOLS)
+    print(json.dumps(result))
     return 0
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+def run_hook_cli(description, evaluate, configure):
+    parser = argparse.ArgumentParser(description=description)
     commands = parser.add_subparsers(dest="command", required=True)
     for command in ("install", "uninstall"):
         config = commands.add_parser(command)
@@ -217,9 +221,9 @@ def main():
             return evaluate(project, args.phase)
         return configure(project, args.command == "install", args.dry_run, args.yes)
     except (OSError, ValueError, RuntimeError) as exc:
-        print(f"Claude hook configuration failed: {exc}", file=sys.stderr)
+        print(f"Hook configuration failed: {exc}", file=sys.stderr)
         return 1
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(run_hook_cli(__doc__, evaluate, configure))
