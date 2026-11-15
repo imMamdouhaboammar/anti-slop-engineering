@@ -89,13 +89,15 @@ def line_range(token, prefix):
     return int(start), int(count) if separator else 1
 
 
-def patch_ranges(patch):
+def patch_ranges(patch, added_lines=None):
     ranges = defaultdict(list)
     old = new = None
     header = False
+    new_line = None
     for line in patch.split(b"\n"):
         if line.startswith(b"diff --git "):
             old = new = None
+            new_line = None
             header = True
         elif header and line.startswith(b"--- "):
             old = patch_path(line[4:], b"a/")
@@ -108,11 +110,18 @@ def patch_ranges(patch):
                 raise ValueError("Unexpected Git patch range")
             old_start, old_count = line_range(old_range, b"-")
             new_start, new_count = line_range(new_range, b"+")
+            new_line = new_start
             key = (old if old is not None else new, new if new is not None else old)
             ranges[key].append({
                 "old_start": old_start, "old_count": old_count,
                 "new_start": new_start, "new_count": new_count,
             })
+        elif added_lines is not None and not header and new is not None and new_line is not None:
+            if line.startswith(b"+"):
+                added_lines.append((new, new_line, line[1:]))
+                new_line += 1
+            elif line.startswith(b" "):
+                new_line += 1
     return ranges
 
 
@@ -120,7 +129,7 @@ def repository_root(repo):
     return os.fsdecode(git(repo, "rev-parse", "--show-toplevel").removesuffix(b"\n"))
 
 
-def collect_changes(repo, base, snapshot="worktree", target=None):
+def collect_changes(repo, base, snapshot="worktree", target=None, *, added_lines=None, detect_renames=True):
     """Collect from the repository root resolved by the caller."""
     if snapshot not in {"worktree", "index", "commit"} or (snapshot == "commit") != bool(target):
         raise ValueError("A target is required only for the commit snapshot")
@@ -131,7 +140,8 @@ def collect_changes(repo, base, snapshot="worktree", target=None):
 
     options = [
         "--raw", "--numstat", "-z", "--patch", "--no-ext-diff", "--no-textconv",
-        "--no-color", "--no-relative", "--find-renames", "--src-prefix=a/", "--dst-prefix=b/",
+        "--no-color", "--no-relative", "--src-prefix=a/", "--dst-prefix=b/",
+        "--find-renames" if detect_renames else "--no-renames",
         "--unified=0", "--inter-hunk-context=0", "--submodule=short",
         "--output-indicator-new=+", "--output-indicator-old=-", "--output-indicator-context= ",
     ]
@@ -144,7 +154,7 @@ def collect_changes(repo, base, snapshot="worktree", target=None):
     data, _, patch = result.partition(b"\0\0")
     try:
         records, counts = raw_records(data)
-        ranges = patch_ranges(patch)
+        ranges = patch_ranges(patch, added_lines)
     except (StopIteration, ValueError) as error:
         raise RuntimeError("Git produced an invalid change set") from error
     if ranges.keys() - records.keys():

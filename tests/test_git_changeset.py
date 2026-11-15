@@ -126,6 +126,24 @@ class ChangeSetTests(unittest.TestCase):
         self.assertEqual(bad_result.stdout, "")
         self.assertIn("target is required", bad_result.stderr)
 
+    def test_portable_diff_uses_exact_quoted_path_and_line(self):
+        name = "src/café with space.py"
+        source = self.repo / name
+        source.write_text("value = 1\n", encoding="utf-8")
+        self.git("add", "--", name)
+        self.git("commit", "-qm", "tracked file")
+        source.write_text("value = 1\ntry: pass\nexcept Exception: pass\n", encoding="utf-8")
+        result = subprocess.check_output([
+            sys.executable, "-S", str(REPO_ROOT / "scripts" / "diff_guard.py"),
+            "--repo", str(self.repo), "--base", "HEAD", "--json",
+        ], text=True)
+        report = json.loads(result)
+        self.assertEqual(report["summary"]["changed_files"], 1)
+        self.assertIn((name, 3), [
+            (item["file"], item["line"]) for item in report["findings"]
+            if item["id"] == "ERROR_SWALLOW_CANDIDATE"
+        ])
+
     def test_invalid_mode_and_revision_fail_explicitly(self):
         with self.assertRaises(ValueError):
             collect_changes(self.repo, "HEAD", "commit")

@@ -1,6 +1,6 @@
 # Git change evidence v1
 
-The Python standard-library producer in `scripts/git_changeset.py` supplies file changes to the Python SRE Git scan. Existing CLI flags, report fields, exit status, and native input paths remain compatible. Native adapters can consume this record once their separate migrations are verified.
+The Python standard-library producer in `scripts/git_changeset.py` supplies file changes to the Python Diff and SRE Git scans. Existing CLI flags, report fields, exit status, and native input paths remain compatible. Diff Guard preserves its delete/add treatment of renames and parses added source lines internally. SRE uses rename records and new-side hunk coordinates. Native adapters can consume this record once their separate migrations are verified.
 
 ## Snapshot inputs
 
