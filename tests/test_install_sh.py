@@ -316,6 +316,32 @@ class BashInstallerSafetyTests(unittest.TestCase):
             self.assertFalse((core_dir / dev_dir).exists(), f"Dev directory {dev_dir} leaked into core install")
 
     @unittest.skipUnless(HAS_NODE, "Node.js required for plugin catalog selection")
+    def test_installed_cli_resolves_only_explicit_oxlint_plugin(self):
+        env = {**os.environ, "HOME": str(self.home), "PATH": SAFE_PATH, "CI": "true"}
+        setup = ["bash", str(REPO / "install.sh")]
+        installed = self.home / ".agents/skills/anti-slop-engineering/bin/cli.js"
+        plugin_dir = self.home / "project-plugin"
+
+        def run(args):
+            return subprocess.run(args, cwd=self.home, env=env, capture_output=True, text=True)
+
+        core = run([*setup, "--skills=core"])
+        self.assertEqual(core.returncode, 0, core.stderr)
+        missing = run(["node", str(installed), "install-oxlint", str(plugin_dir)])
+        self.assertNotEqual(missing.returncode, 0)
+        self.assertIn("install-anti-slop optional skill", missing.stderr)
+        self.assertFalse(plugin_dir.exists())
+
+        selected = run([*setup, "--skills=install-anti-slop"])
+        self.assertEqual(selected.returncode, 0, selected.stderr)
+        copied = run(["node", str(installed), "install-oxlint", str(plugin_dir)])
+        self.assertEqual(copied.returncode, 0, copied.stderr)
+        self.assertTrue((plugin_dir / "index.ts").is_file())
+        updated = run(["node", str(installed), "update-oxlint", str(plugin_dir)])
+        self.assertEqual(updated.returncode, 0, updated.stderr)
+        self.assertFalse((installed.parent.parent / "skills").exists())
+
+    @unittest.skipUnless(HAS_NODE, "Node.js required for plugin catalog selection")
     def test_bash_optional_plugin_install_does_not_leak_unselected_skills_into_core(self):
         """Verify installing one optional plugin installs only that plugin and leaves core unpolluted."""
         result = subprocess.run(
