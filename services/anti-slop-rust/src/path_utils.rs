@@ -16,3 +16,26 @@ pub fn is_test_file(path: &str) -> bool {
         || path.contains("/test_")
         || path.starts_with("test_")
 }
+
+/// Normalize path components, resolving "." and ".." and stripping leading slashes
+pub fn normalize_path(path: &str) -> String {
+    let trimmed = path.trim().replace('\\', "/");
+    let mut parts: Vec<&str> = Vec::new();
+
+    for seg in trimmed.split('/') {
+        if seg.is_empty() || seg == "." {
+            continue;
+        }
+        if seg != ".." {
+            parts.push(seg);
+            continue;
+        }
+        if matches!(parts.last(), Some(&last) if last != "..") {
+            parts.pop();
+        } else {
+            parts.push("..");
+        }
+    }
+
+    parts.join("/")
+}

@@ -1,5 +1,5 @@
 use crate::model::{Finding, Severity, ViolationCategory};
-use crate::path_utils::{is_doc_file, is_test_file};
+use crate::path_utils::{is_doc_file, is_test_file, normalize_path};
 use regex::Regex;
 
 #[derive(Debug)]
@@ -207,10 +207,24 @@ fn check_scope_creep(
     if file.is_empty() || allowed.is_empty() || !is_change {
         return None;
     }
-    let is_allowed = allowed.iter().any(|prefix| file.starts_with(prefix));
+    let norm_file = normalize_path(file);
+    let is_allowed = allowed.iter().any(|prefix| {
+        let norm_prefix = normalize_path(prefix.trim_end_matches('/'));
+        if norm_prefix.is_empty() {
+            return true;
+        }
+        if norm_file == norm_prefix {
+            return true;
+        }
+        if norm_file.starts_with(&format!("{norm_prefix}/")) {
+            return true;
+        }
+        false
+    });
+
     if !is_allowed {
         Some(Finding {
-            file: file.to_string(),
+            file: norm_file,
             line: line_no,
             category: ViolationCategory::ScopeCreep,
             severity: Severity::Blocker,
@@ -243,5 +257,26 @@ mod review_regression_tests {
         let findings = ShitInterceptor::new().audit_diff(diff, Some(&["src/"]), true);
         assert!(findings.iter().any(|f| f.code == "STS-I01"));
         assert!(findings.iter().any(|f| f.code == "STS-S01"));
+    }
+
+    #[test]
+    fn prefix_collision_does_not_permit_unauthorized_files() {
+        let diff = "diff --git a/src/auth_bypass.rs b/src/auth_bypass.rs\n--- a/src/auth_bypass.rs\n+++ b/src/auth_bypass.rs\n@@ -1 +1,2 @@\n let a = 1;\n+let b = 2;\n";
+        let findings = ShitInterceptor::new().audit_diff(diff, Some(&["src/auth"]), false);
+        assert!(findings.iter().any(|f| f.code == "STS-S01" && f.file == "src/auth_bypass.rs"));
+    }
+
+    #[test]
+    fn path_traversal_is_normalized_and_blocked() {
+        let diff = "diff --git a/src/auth/../../.github/workflows/ci.yml b/src/auth/../../.github/workflows/ci.yml\n--- a/src/auth/../../.github/workflows/ci.yml\n+++ b/src/auth/../../.github/workflows/ci.yml\n@@ -1 +1,2 @@\n name: CI\n+run: echo pwned\n";
+        let findings = ShitInterceptor::new().audit_diff(diff, Some(&["src/auth"]), false);
+        assert!(findings.iter().any(|f| f.code == "STS-S01" && f.file == ".github/workflows/ci.yml"));
+    }
+
+    #[test]
+    fn component_boundary_permits_valid_subpath() {
+        let diff = "diff --git a/src/auth/login.rs b/src/auth/login.rs\n--- a/src/auth/login.rs\n+++ b/src/auth/login.rs\n@@ -1 +1,2 @@\n let a = 1;\n+let b = 2;\n";
+        let findings = ShitInterceptor::new().audit_diff(diff, Some(&["src/auth"]), false);
+        assert!(!findings.iter().any(|f| f.code == "STS-S01"));
     }
 }
