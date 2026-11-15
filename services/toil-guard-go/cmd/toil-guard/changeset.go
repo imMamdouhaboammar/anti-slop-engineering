@@ -109,12 +109,20 @@ func readRegularEvidence(path string, original os.FileInfo, limit int64, open fu
 		return nil, err
 	}
 	defer file.Close()
+	return readRegularSource(file, original, limit)
+}
+
+// A negative limit permits an unbounded read for the default Git audit.
+func readRegularSource(file *os.File, original os.FileInfo, limit int64) ([]byte, error) {
 	actual, err := file.Stat()
 	if err != nil {
 		return nil, err
 	}
 	if !actual.Mode().IsRegular() || !os.SameFile(original, actual) {
 		return nil, errEvidenceFileChanged
+	}
+	if limit < 0 {
+		return io.ReadAll(file)
 	}
 	data, err := io.ReadAll(io.LimitReader(file, limit+1))
 	if int64(len(data)) > limit {

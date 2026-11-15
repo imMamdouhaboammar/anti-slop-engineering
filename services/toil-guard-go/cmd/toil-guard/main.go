@@ -269,7 +269,7 @@ func readChangedSources(rootPath string, paths []string, fileLimit, totalLimit i
 
 func readAuditSource(root *os.Root, path string, info os.FileInfo, fileLimit, totalLimit, remaining int64) ([]byte, error) {
 	if fileLimit <= 0 {
-		return root.ReadFile(path)
+		return readRegularEvidence(path, info, -1, root.OpenFile)
 	}
 	limit := min(fileLimit, remaining)
 	if info.Size() > limit || remaining <= 0 {
