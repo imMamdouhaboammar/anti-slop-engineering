@@ -25,7 +25,7 @@ enum Commands {
         #[arg(short, long)]
         diff: Option<String>,
 
-        /// Allowed file prefixes to check against scope creep (comma-separated)
+        /// Allowed repository-relative paths or directory prefixes (comma-separated)
         #[arg(short, long)]
         allowed: Option<String>,
 
