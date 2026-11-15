@@ -30,6 +30,6 @@ For each meter, multiply billable units by the applicable rate. When relevant, a
 
 The [offline cost cases](examples/cost_cases.py) use synthetic USD rates. They distinguish a bounded fan-out and retry budget, observed work without an upper bound, and an unavailable price. The fixture consumes billable counts already obtained from a trace. It does not query a provider or forecast spend.
 
-Catalog: [CON-09, OPS-07, SRE-08](../../references/anti-pattern-catalog.md).
+Catalog: [CON-09, OPS-07, SRE-08](../anti-slop-engineering/references/anti-pattern-catalog.md).
 
 References: [FinOps unit economics](https://www.finops.org/framework/capabilities/unit-economics/), [FOCUS specification](https://focus.finops.org/focus-specification/), [Google SRE on managing overload](https://sre.google/sre-book/handling-overload/).

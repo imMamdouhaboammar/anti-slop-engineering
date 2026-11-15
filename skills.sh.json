@@ -25,7 +25,8 @@
         "comment-budget-guard",
         "pr-boundary-guard",
         "demock-guard",
-        "install-anti-slop"
+        "install-anti-slop",
+        "llm-eval-and-prompt-injection-fortress"
       ]
     },
     {
@@ -36,6 +37,7 @@
         "safe-evolution-and-rollout-choreographer",
         "zero-downtime-migration-gate",
         "privacy-and-data-lineage-gate",
+        "cryptographic-agility-and-secret-lifecycle-gate",
         "observability-and-slo-architect",
         "observability-and-slo-gate"
       ]
@@ -47,7 +49,8 @@
         "mechanical-sympathy-and-perf-gate",
         "finops-and-unit-economics-governor",
         "mechanical-sympathy-profiler",
-        "scientific-fault-isolation"
+        "scientific-fault-isolation",
+        "context-window-and-token-economics-architect"
       ]
     },
     {

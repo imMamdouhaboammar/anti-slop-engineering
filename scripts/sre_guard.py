@@ -20,8 +20,12 @@ import os
 import pathlib
 import re
 import sre_compile
-import subprocess
 import sys
+
+if not __package__:
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+
+from scripts.git_changeset import collect_changes, repository_root
 
 __version__ = '1.8.0'
 
@@ -109,14 +113,6 @@ SRE_PATTERNS = [
         'SCALE violation: Static health check detected without dependency probe. Distinguish liveness from readiness, and verify critical dependencies before returning ready status.'
     ),
 ]
-
-
-def git_exec(repo, *args):
-    """Execute git command in repo directory."""
-    p = subprocess.run(['git', '-C', str(repo), *args], capture_output=True, text=True)
-    if p.returncode != 0:
-        raise RuntimeError(p.stderr.strip() or f"git {' '.join(args)} failed with code {p.returncode}")
-    return p.stdout
 
 
 def safe_read_file(path_obj):
@@ -380,46 +376,35 @@ def build_sre_summary(file_count, findings, base=None):
 
 
 def scan_git_diff(repo, base='HEAD', max_nesting=4, min_dup_lines=4, max_function_lines=80):
-    """Analyze Git diff against base commit for SRE violations."""
-    git_exec(repo, 'rev-parse', '--verify', f'{base}^{{commit}}')
-
-    diff_stat = git_exec(repo, 'diff', '--no-ext-diff', '--name-only', base, '--').splitlines()
-    changed_files = [f for f in diff_stat if any(f.endswith(ext) for ext in CODE_EXTENSIONS)]
-
+    """Analyze the worktree against a base commit using Git change-set evidence."""
+    repo = pathlib.Path(repository_root(repo)).resolve()
     file_contents = {}
-    for f in changed_files:
-        full_path = pathlib.Path(repo) / f
-        if full_path.is_file() and not GENERATED_PATH_RE.search(f):
-            content = safe_read_file(full_path)
-            if content is not None:
-                file_contents[f] = content
+    changed_hunks = {}
+    for change in collect_changes(repo, base)["files"]:
+        path = change["new_path"]
+        if path is None or change["binary"] or change["new_mode"] not in {"100644", "100755"}:
+            continue
+        name = path["text"]
+        if name is None:
+            print("[sre-guard] Warning: skipped a non-UTF-8 Git path.", file=sys.stderr)
+            continue
+        if pathlib.Path(name).suffix not in CODE_EXTENSIONS or GENERATED_PATH_RE.search(name):
+            continue
+        full_path = repo / name
+        if full_path.is_symlink() or not full_path.is_file() or not full_path.resolve().is_relative_to(repo):
+            continue
+        content = safe_read_file(full_path)
+        if content is not None:
+            file_contents[name] = content
+            changed_hunks[name] = change["hunks"]
 
     findings = scan_contents_map(file_contents, max_nesting, min_dup_lines, max_function_lines)
-
-    # Parse diff patch to filter findings to changed/added lines
-    patch = git_exec(repo, 'diff', '--no-ext-diff', '--unified=0', base, '--')
-    diff_added_lines = collections.defaultdict(set)
-    current_file = None
-
-    for line in patch.splitlines():
-        if line.startswith('+++ b/'):
-            current_file = line[6:]
-        elif line.startswith('@@') and current_file:
-            m = re.search(r'\+(\d+)(?:,(\d+))?', line)
-            if m:
-                start = int(m.group(1))
-                count = int(m.group(2)) if m.group(2) else 1
-                for l in range(start, start + count):
-                    diff_added_lines[current_file].add(l)
-
-    for f in findings:
-        file_path = f.get('file')
-        line_num = f.get('line')
-        if file_path and line_num and file_path in diff_added_lines:
-            f['in_active_diff'] = line_num in diff_added_lines[file_path]
-        else:
-            f['in_active_diff'] = False
-
+    for finding in findings:
+        line = finding.get("line")
+        finding["in_active_diff"] = bool(line and any(
+            hunk["new_start"] <= line < hunk["new_start"] + hunk["new_count"]
+            for hunk in changed_hunks.get(finding.get("file"), ())
+        ))
     return build_sre_summary(len(file_contents), findings, base=base)
 
 
