@@ -295,6 +295,29 @@ class VerificationOracleGuardTests(unittest.TestCase):
             self.assertEqual(res["results"]["tests/test_tautology.py"]["baseline"]["classification"], "passed")
             self.assertEqual(res["results"]["tests/test_tautology.py"]["current"]["classification"], "passed")
 
+    def test_counterfactual_baseline_preserves_files_omitted_from_archives(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            git = _init_git_repo(root)
+            (root / ".gitattributes").write_text("fixture.txt export-ignore\n", encoding="utf-8")
+            (root / "fixture.txt").write_text("fixture", encoding="utf-8")
+            git("add", ".gitattributes", "fixture.txt")
+            git("commit", "-m", "chore: add fixture outside export archives")
+            (root / "test_fixture.py").write_text(
+                "import unittest\nfrom pathlib import Path\n\n"
+                "class FixtureTest(unittest.TestCase):\n"
+                "    def test_fixture_is_present(self):\n"
+                "        self.assertTrue(Path('fixture.txt').is_file())\n",
+                encoding="utf-8",
+            )
+
+            result = verification_oracle_guard.run_counterfactual_proof(root, base="HEAD")
+
+            self.assertEqual(result["status"], "tautological", result)
+            self.assertFalse(result["red_green_verified"])
+            self.assertEqual(result["results"]["test_fixture.py"]["baseline"]["classification"], "passed")
+            self.assertEqual(result["results"]["test_fixture.py"]["current"]["classification"], "passed")
+
     def test_counterfactual_proof_inconclusive_infrastructure_never_asserts_fraud(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_path = Path(tmp_dir)

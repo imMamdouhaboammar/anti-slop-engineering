@@ -10,7 +10,6 @@ import shlex
 import shutil
 import subprocess
 import sys
-import tarfile
 import tempfile
 import time
 from pathlib import Path
@@ -495,27 +494,51 @@ def _resolve_baseline(root: Path, base: str):
     ).stdout.strip()
 
 
-def _create_baseline(root: Path, target: Path, commit: str):
-    with tempfile.TemporaryFile() as archive:
-        subprocess.run(
-            ["git", "-C", str(root), "archive", "--format=tar", commit],
-            stdout=archive, stderr=subprocess.PIPE, check=True,
-        )
-        archive.seek(0)
-        with tarfile.open(fileobj=archive, mode="r:") as tar:
-            _extract_baseline(tar, target)
-
-
-def _extract_baseline(tar: tarfile.TarFile, target: Path):
-    for member in tar:
-        name = Path(member.name)
-        if name.is_absolute() or ".." in name.parts or not member.isfile():
+def _baseline_entries(root: Path, commit: str):
+    tree = subprocess.run(
+        ["git", "-C", str(root), "ls-tree", "-rz", "--full-tree", commit],
+        capture_output=True, check=True,
+    )
+    for entry in tree.stdout.split(b"\0"):
+        if not entry:
             continue
-        destination = target / name
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        with tar.extractfile(member) as source, destination.open("wb") as output:
-            shutil.copyfileobj(source, output)
-        destination.chmod(member.mode & 0o777)
+        metadata, raw_path = entry.split(b"\t", 1)
+        mode, kind, oid = metadata.split()
+        path = Path(os.fsdecode(raw_path))
+        if kind != b"blob" or mode not in (b"100644", b"100755") or path.is_absolute() or ".." in path.parts:
+            continue
+        yield path, mode, oid
+
+
+def _write_baseline_blob(objects, destination: Path, mode, oid):
+    header = objects.readline().split()
+    if len(header) != 3 or header[:2] != [oid, b"blob"]:
+        raise ValueError("Unable to read a regular file from the baseline commit")
+    remaining = int(header[2])
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with destination.open("wb") as output:
+        while remaining:
+            chunk = objects.read(min(remaining, 64 * 1024))
+            if not chunk:
+                raise ValueError("Incomplete baseline blob")
+            output.write(chunk)
+            remaining -= len(chunk)
+    if objects.read(1) != b"\n":
+        raise ValueError("Incomplete baseline blob separator")
+    destination.chmod(int(mode, 8) & 0o777)
+
+
+def _create_baseline(root: Path, target: Path, commit: str):
+    entries = list(_baseline_entries(root, commit))
+    with tempfile.TemporaryFile() as objects:
+        subprocess.run(
+            ["git", "-C", str(root), "cat-file", "--batch"],
+            input=b"".join(oid + b"\n" for _, _, oid in entries),
+            stdout=objects, stderr=subprocess.PIPE, check=True,
+        )
+        objects.seek(0)
+        for path, mode, oid in entries:
+            _write_baseline_blob(objects, target / path, mode, oid)
 
 
 def _execute_test_isolated(test_file: str, cwd: Path, custom_cmd=None, timeout: int = 30):
@@ -603,7 +626,7 @@ def run_counterfactual_proof(
             current_paths = _git_paths(root, "ls-files", "--cached", "--others", "--exclude-standard", "-z")
             _copy_snapshot_files(root, current, set(current_paths).union(resolved_tests))
             results = _run_proof_tests(resolved_tests, baseline, current, test_cmd, timeout, check_flaky)
-    except (OSError, RuntimeError, ValueError, subprocess.CalledProcessError, tarfile.TarError) as exc:
+    except (OSError, RuntimeError, ValueError, subprocess.CalledProcessError) as exc:
         return {
             "status": "inconclusive_infrastructure",
             "verdict": "pause",
