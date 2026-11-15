@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 import { reviewForwardRef } from "../skills/type-level-and-ast-slop-gate/examples/react-ref-advisory.mjs";
@@ -52,4 +53,67 @@ test("later majors and malformed release receipts remain inconclusive", () => {
   assert.equal(reviewForwardRef(evidence, usage, ["19.0.0", "20.0.0"]).status, "inconclusive");
   assert.equal(reviewForwardRef(null, usage, compatibility).status, "inconclusive");
   assert.equal(reviewForwardRef(evidence, { ...usage, export: "memo" }, compatibility).status, "not_applicable");
+});
+
+
+test("Oxlint resolves genuine React wrappers and leaves shadowed or ambiguous uses alone", (context) => {
+  const dir = mkdtempSync(join(tmpdir(), "react-ref-ast-"));
+  context.after(() => rmSync(dir, { recursive: true, force: true }));
+  const plugin = fileURLToPath(new URL(
+    "../skills/install-anti-slop/assets/anti-slop/index.ts", import.meta.url,
+  ));
+  const oxlint = fileURLToPath(new URL("../node_modules/.bin/oxlint", import.meta.url));
+  writeFileSync(join(dir, "oxlint.json"), JSON.stringify({
+    jsPlugins: [{ name: "anti-slop", specifier: plugin }],
+    categories: { correctness: "off" },
+    rules: { "anti-slop/react-forward-ref-evidence": "warn" },
+  }));
+  writeFileSync(join(dir, "sample.tsx"), [
+    'import React, { forwardRef as bridge } from "react";',
+    'import * as ReactModule from "react";',
+    'import { forwardRef as compat } from "preact/compat";',
+    'const named = bridge((props, ref) => <input ref={ref} />);',
+    'const namespace = ReactModule.forwardRef(function Input(props, ref) { return <input ref={ref} />; });',
+    'const defaultImport = React["forwardRef"]((props, ref) => <input ref={ref} />);',
+    'function shadow(bridge, React) {',
+    '  bridge((props, ref) => <div />);',
+    '  return React.forwardRef((props, ref) => <div />);',
+    '}',
+    'const otherModule = compat((props, ref) => <div />);',
+    'const unresolved = bridge(Component);',
+    'const notACall = "React.forwardRef((props, ref) => null)";',
+  ].join("\n"));
+  const output = Bun.spawnSync([oxlint, "-c", "oxlint.json", "--format=json", "sample.tsx"], { cwd: dir });
+  assert.equal(output.exitCode, 0, output.stderr.toString());
+  const diagnostics = JSON.parse(output.stdout.toString()).diagnostics;
+  const observations = diagnostics.map((finding) => finding.labels[0].span.line).sort((a, b) => a - b);
+  assert.deepEqual(observations, [4, 5, 6]);
+  for (const finding of diagnostics) {
+    assert.equal(finding.code, "anti-slop(react-forward-ref-evidence)");
+    assert.equal(finding.severity, "warning");
+  }
+  const receipt = join(dir, "react-lock.json");
+  const support = join(dir, "support.json");
+  const report = join(dir, "source-report.json");
+  writeFileSync(receipt, JSON.stringify(evidence));
+  writeFileSync(support, JSON.stringify({ supportedVersions: compatibility }));
+  writeFileSync(report, output.stdout);
+  const advisory = fileURLToPath(new URL(
+    "../skills/type-level-and-ast-slop-gate/examples/react-ref-advisory.mjs", import.meta.url,
+  ));
+  const run = () => Bun.spawnSync([process.execPath, advisory, receipt, support, "--oxlint-report", report]);
+  let result = run();
+  assert.equal(result.exitCode, 0, result.stderr.toString());
+  assert.equal(JSON.parse(result.stdout.toString()).status, "advisory");
+
+  writeFileSync(support, JSON.stringify({ supportedVersions: ["18.3.1", "19.0.0"] }));
+  result = run();
+  assert.equal(result.exitCode, 0, result.stderr.toString());
+  assert.equal(JSON.parse(result.stdout.toString()).status, "compatibility_exception");
+
+  writeFileSync(report, JSON.stringify({ diagnostics: [{ code: "unrelated(react-forward-ref-evidence)" }] }));
+  result = run();
+  assert.equal(result.exitCode, 0, result.stderr.toString());
+  assert.equal(JSON.parse(result.stdout.toString()).status, "not_applicable");
+
 });

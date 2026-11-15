@@ -112,3 +112,14 @@ bun skills/type-level-and-ast-slop-gate/examples/react-ref-advisory.mjs react-lo
 The receipt uses `{"status":"locked","resolved":"19.0.0","release":"stable"}` for a confirmed direct React dependency. The reviewed usage record uses `{"module":"react","export":"forwardRef","kind":"function-component","supportedVersions":["19.0.0","19.1.0"]}`. Populate these fields from dependency and source evidence. The example gives a review advisory for the documented React 19 behavior. It does not infer package identity from a function name or change code.
 
 Read [React 19 ref-as-prop semantics](https://react.dev/blog/2024/12/05/react-19#ref-as-a-prop) and the [React v19.0.0 implementation](https://github.com/facebook/react/blob/7aa5dda3b3e4c2baa905a59b922ae7ec14734b24/packages/react/src/jsx/ReactJSXElement.js). Preserve the public ref type, callback-ref cleanup, and actual forwarding target during migration.
+
+## Automated source evidence with Oxlint
+
+Enable `anti-slop/react-forward-ref-evidence` as `"warn"` in the project's Oxlint config after [installing the plugin](../install-anti-slop/SKILL.md). It resolves the actual lexical React import for named, default, or namespace bindings. The observation applies to a direct call around an inline function or arrow. Shadowed bindings, compatibility shims, and wrappers passed by reference need separate evidence.
+
+```bash
+bunx oxlint --format=json src/MyInput.tsx > react-source.json
+bun skills/type-level-and-ast-slop-gate/examples/react-ref-advisory.mjs react-lock-evidence.json react-support.json --oxlint-report react-source.json
+```
+
+Set `react-support.json` to the reviewed support matrix, for example `{"supportedVersions":["19.0.0","19.1.0"]}`. Run Oxlint with the configured rule and check that the scan succeeded. Keep the report, locked dependency receipt, and supported versions scoped to the same package. Oxlint reports the source location. The example returns a migration advisory only after the version and compatibility checks also pass.

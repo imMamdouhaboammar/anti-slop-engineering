@@ -36,18 +36,33 @@ export function reviewForwardRef(lock, usage, supportedVersions) {
   };
 }
 
+const OXLINT_RULE_CODE = "anti-slop(react-forward-ref-evidence)";
+
+function usageFromOxlintReport(report) {
+  if (!Array.isArray(report?.diagnostics)) {
+    throw new Error("Expected an Oxlint JSON diagnostics array");
+  }
+  return report.diagnostics.some((diagnostic) => diagnostic?.code === OXLINT_RULE_CODE)
+    ? { module: "react", export: "forwardRef", kind: "function-component" }
+    : undefined;
+}
+
 if (import.meta.main) {
-  const [lockPath, usagePath] = process.argv.slice(2);
-  if (!lockPath || !usagePath || process.argv.length !== 4) {
-    console.error("Usage: bun react-ref-advisory.mjs <react-lock-evidence.json> <reviewed-usage.json>");
+  const [lockPath, usagePath, reportOption, reportPath, extra] = process.argv.slice(2);
+  const reportRequested = reportOption === "--oxlint-report" && reportPath;
+  if (!lockPath || !usagePath || extra || (reportOption !== undefined && !reportRequested)) {
+    console.error("Usage: bun react-ref-advisory.mjs <react-lock-evidence.json> <reviewed-usage-or-support.json> [--oxlint-report <oxlint.json>]");
     process.exitCode = 2;
   } else {
     try {
       const lock = JSON.parse(await readFile(lockPath, "utf8"));
-      const usage = JSON.parse(await readFile(usagePath, "utf8"));
-      console.log(JSON.stringify(reviewForwardRef(lock, usage, usage?.supportedVersions)));
+      const record = JSON.parse(await readFile(usagePath, "utf8"));
+      const usage = reportRequested
+        ? usageFromOxlintReport(JSON.parse(await readFile(reportPath, "utf8")))
+        : record;
+      console.log(JSON.stringify(reviewForwardRef(lock, usage, record?.supportedVersions)));
     } catch {
-      console.error("Cannot read React lock evidence or usage JSON");
+      console.error("Cannot read React lock, support, usage, or Oxlint evidence");
       process.exitCode = 2;
     }
   }
