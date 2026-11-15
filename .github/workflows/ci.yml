@@ -86,6 +86,10 @@ jobs:
       - name: Verify Python syntax
         run: python -m py_compile scripts/diff_guard.py scripts/sre_guard.py scripts/decision_guard.py scripts/root_fix_guard.py scripts/future_scale_guard.py scripts/bump_version.py tests/test_diff_guard.py tests/test_sre_guard.py tests/test_decision_guard.py tests/test_root_fix_guard.py tests/test_future_scale_guard.py tests/test_bump_version.py
 
+      - name: Verify release metadata and tracked platform junk
+        if: matrix.python-version == '3.12'
+        run: python scripts/bump_version.py --check
+
       - name: Run unit test suite
         run: python -m unittest discover -s tests -v
 
@@ -138,6 +142,9 @@ jobs:
 
       - name: Run Bun Security Regression Suite
         run: bun run test:security
+
+      - name: Verify React version advisory
+        run: bun test tests/react_ref_advisory.test.mjs
 
       - name: Test explicit skill setup and offline package install
         run: node --test tests/test_installer.mjs tests/test_installer_setup.mjs tests/test_package_install.mjs
@@ -206,9 +213,17 @@ jobs:
       - name: Native vs Python fallback differential contract tests
         env:
           REQUIRE_NATIVE_PARITY: "1"
+          CATALOG_OBSERVATIONS_OUT: catalog-observations.json
         run: |
           cargo build --manifest-path services/anti-slop-rust/Cargo.toml --locked
-          python3 -m unittest tests/test_engine_parity.py -v
+          python3 -m unittest discover -s tests -p test_engine_parity.py -v
+          python3 scripts/rule_registry.py coverage --observations catalog-observations.json --output catalog-coverage.json
+      - name: Upload catalog fixture coverage
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: catalog-coverage
+          path: catalog-coverage.json
+          if-no-files-found: error
       - name: Native CLI failure contracts
         run: |
           if cargo run --manifest-path services/anti-slop-rust/Cargo.toml --locked -- ladder-audit does-not-exist.rs; then exit 1; fi

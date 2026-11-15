@@ -34,19 +34,18 @@ pub fn triage_diff(
     read_only: bool,
 ) -> AuditReport {
     let mut findings = SHIT_INTERCEPTOR.audit_diff(diff_text, allowed_files, read_only);
-    let mut current_file = String::new();
+    let mut paths = path_utils::DiffPaths::default();
     let mut line_no = 0;
     let mut in_hunk = false;
 
     for line in diff_text.lines() {
-        if line.starts_with("diff --git") {
+        if path_utils::is_git_file_header(line) {
             in_hunk = false;
-            current_file.clear();
+            paths.update(line);
             continue;
         }
-        if !in_hunk && line.starts_with("+++ b/") {
-            current_file = line[6..].trim().to_string();
-            continue;
+        if !in_hunk {
+            paths.update(line);
         }
         if let Some(start) = shit_interceptor::extract_hunk_line(line) {
             in_hunk = true;
@@ -56,28 +55,29 @@ pub fn triage_diff(
         if !in_hunk {
             continue;
         }
+        let current_file = paths.target();
         if let Some(added) = line.strip_prefix('+') {
-            for mut finding in LADDER_AUDITOR.audit_code(&current_file, added) {
+            for mut finding in LADDER_AUDITOR.audit_code(current_file, added) {
                 finding.line = line_no;
                 findings.push(finding);
             }
-            if let Some(mut finding) = COMMENT_AUDITOR.audit_line(&current_file, line_no, added) {
+            if let Some(mut finding) = COMMENT_AUDITOR.audit_line(current_file, line_no, added) {
                 finding.line = line_no;
                 findings.push(finding);
             }
-            if let Some(mut finding) = ATTENTION_AUDITOR.audit_line(&current_file, line_no, added) {
+            if let Some(mut finding) = ATTENTION_AUDITOR.audit_line(current_file, line_no, added) {
                 finding.line = line_no;
                 findings.push(finding);
             }
-            if let Some(mut finding) = DEMOCK_AUDITOR.audit_line(&current_file, line_no, added) {
+            if let Some(mut finding) = DEMOCK_AUDITOR.audit_line(current_file, line_no, added) {
                 finding.line = line_no;
                 findings.push(finding);
             }
-            if let Some(mut finding) = STYLESEED_AUDITOR.audit_line(&current_file, line_no, added) {
+            if let Some(mut finding) = STYLESEED_AUDITOR.audit_line(current_file, line_no, added) {
                 finding.line = line_no;
                 findings.push(finding);
             }
-            if let Some(mut finding) = TAGORE_AUDITOR.audit_line(&current_file, line_no, added) {
+            if let Some(mut finding) = TAGORE_AUDITOR.audit_line(current_file, line_no, added) {
                 finding.line = line_no;
                 findings.push(finding);
             }
@@ -96,6 +96,9 @@ mod regression_tests {
     fn ladder_triage_reports_actual_new_file_line() {
         let diff = "diff --git a/src/app.js b/src/app.js\n--- a/src/app.js\n+++ b/src/app.js\n@@ -40,0 +41,2 @@\n+const x = 1;\n+const clone = JSON.parse(JSON.stringify(value));\n";
         let report = super::triage_diff(diff, None, false);
-        assert!(report.findings.iter().any(|f| f.code == "BORING-KISS-03" && f.line == 42));
+        assert!(report
+            .findings
+            .iter()
+            .any(|f| f.code == "BORING-KISS-03" && f.line == 42));
     }
 }
