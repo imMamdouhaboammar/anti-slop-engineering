@@ -27,3 +27,25 @@ def retrieve(tenant, revision, scope, schema, cache):
             return {"status": "no_evidence"}
         cache[key] = {"status": "ok", "days": source["days"], "source": source["source"]}
     return cache[key]
+
+
+def main():
+    import json
+
+    cache = {}
+    baseline = retrieve("tenant-a", "r1", "refund:read", "refund-v1", cache)
+    candidate = retrieve("tenant-a", "r2", "refund:read", "refund-v1", cache)
+    revoked = retrieve("tenant-a", "r2", "revoked", "refund-v1", cache)
+    source = POLICIES[("tenant-a", "r2")]
+    report = {
+        "before_revision": baseline,
+        "current_revision": candidate,
+        "after_revocation": revoked,
+        "full_context_units": len(render_context(source, include_full_policy=True).split()),
+        "narrow_context_units": len(render_context(source, include_full_policy=False).split()),
+    }
+    print(json.dumps(report, indent=2))
+
+
+if __name__ == "__main__":
+    main()

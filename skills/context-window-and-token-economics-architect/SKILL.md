@@ -37,7 +37,7 @@ metadata:
 
 ## Offline verification
 
-Run the [paired workflow](examples/paired-workflow.md) and its fixture tests with `python3 -m unittest discover -s tests -p test_context_token_economics.py -v`. The scenario verifies evidence coverage and invalidation. For provider token counts and latency, replace synthetic estimates with captured telemetry for the selected API.
+Run `python3 examples/refund_workflow.py` from the skill directory to reproduce the [paired workflow](examples/paired-workflow.md). In a source checkout, contributors can run the fixture tests with `python3 -m unittest discover -s tests -p test_context_token_economics.py -v`. The scenario verifies evidence coverage and invalidation. For provider token counts and latency, replace synthetic estimates with captured telemetry for the selected API.
 
 - [OpenAI prompt caching](https://developers.openai.com/api/docs/guides/prompt-caching)
 - [Claude prompt caching](https://platform.claude.com/docs/en/build-with-claude/prompt-caching)
