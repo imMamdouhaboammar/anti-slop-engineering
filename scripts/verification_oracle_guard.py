@@ -718,7 +718,10 @@ def _run_unittest_selected(filename: Path, report: Path):
         return 1
 
     outcome = unittest.TextTestRunner(verbosity=2).run(suite)
-    failures = {getattr(test, "test_case", test).id() for test, _ in outcome.failures}
+    if any(hasattr(test, "test_case") for test, _ in outcome.failures):
+        print("Unittest did not report passing subtest identities", file=sys.stderr)
+        return 1
+    failures = {test.id() for test, _ in outcome.failures}
     skipped = {
         getattr(test, "test_case", test).id()
         for test, _ in outcome.skipped + outcome.expectedFailures
