@@ -52,8 +52,14 @@ const styleseedGuardScript = resolve(rootDir, "scripts", "styleseed_guard.py");
 const tagoreGuardScript = resolve(rootDir, "scripts", "tagore_guard.py");
 const auditRunnerScript = resolve(rootDir, "scripts", "audit_runner.py");
 const installerScript = resolve(rootDir, "scripts", "installer.mjs");
-const installOxlintScript = resolve(rootDir, "skills", "install-anti-slop", "scripts", "install.mjs");
-const updateOxlintScript = resolve(rootDir, "skills", "install-anti-slop", "scripts", "update.mjs");
+const bundledOxlint = resolve(rootDir, "skills", "install-anti-slop");
+const installedOxlint = resolve(rootDir, "..", "install-anti-slop");
+const oxlintSkill = !existsSync(bundledOxlint) && existsSync(resolve(rootDir, ".anti-slop-managed.json"))
+  && existsSync(resolve(installedOxlint, ".anti-slop-managed.json"))
+  ? installedOxlint
+  : bundledOxlint;
+const installOxlintScript = resolve(oxlintSkill, "scripts", "install.mjs");
+const updateOxlintScript = resolve(oxlintSkill, "scripts", "update.mjs");
 const nativeSuffix = process.platform === "win32" ? ".exe" : "";
 const rustExecutable = "anti-slop-rust" + nativeSuffix;
 const goExecutable = "toil-guard" + nativeSuffix;
@@ -516,13 +522,13 @@ if (cmd === "build") {
   });
 } else if (cmd === "update-oxlint") {
   if (!existsSync(updateOxlintScript)) {
-    console.error(`Error: update script not found at ${updateOxlintScript}`);
+    console.error("Error: update-oxlint requires the install-anti-slop optional skill.");
     process.exit(1);
   }
   spawnProcess("node", [updateOxlintScript, ...args.slice(1)], "update_oxlint");
 } else if (cmd === "install-oxlint" || cmd === "install-anti-slop") {
   if (!existsSync(installOxlintScript)) {
-    console.error(`Error: install script not found at ${installOxlintScript}`);
+    console.error("Error: install-oxlint requires the install-anti-slop optional skill.");
     process.exit(1);
   }
   spawnProcess("node", [installOxlintScript, ...args.slice(1)], "install_oxlint");
@@ -533,16 +539,15 @@ if (cmd === "build") {
   process.exit(0);
 } else if (cmd === "contribute") {
   console.log(`
-🤝 How to Contribute "Noted Slop" to Anti-Slop Engineering:
+🤝 Contributing to Anti-Slop Engineering:
 
-Path A: Report Observed Slop (No code required)
-  Spotted a new recurring AI slop pattern in Claude, Cursor, Copilot, etc.?
+Reporting Slop:
   Open an issue: https://github.com/imMamdouhaboammar/anti-slop-engineering/issues/new?template=noted_slop.yml
 
-Path B: Submit a PR (Problem + Solution Integrated)
+Submitting Contributions:
   1. Add diagnostic pattern to references/anti-pattern-catalog.md
   2. Update SKILL.md & AGENTS.md with concise agent directives
-  3. (Optional) Add heuristic to scripts/diff_guard.py or scripts/sre_guard.py or native Rust/Go services
+  3. Optional: Add a heuristic to scripts/diff_guard.py, scripts/sre_guard.py, or native services
   4. Run verification: make check-all
   5. Open a Pull Request: https://github.com/imMamdouhaboammar/anti-slop-engineering/pulls
 `);
