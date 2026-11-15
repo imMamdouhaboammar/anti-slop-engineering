@@ -1,5 +1,110 @@
 {
   "schema_version": 1,
+  "capabilities": [
+    {
+      "runtime": "node",
+      "owns": [
+        "CLI routing",
+        "installer",
+        "native engine dispatch"
+      ],
+      "evidence": [
+        "tests/test_cli.mjs",
+        "tests/test_installer_setup.mjs"
+      ]
+    },
+    {
+      "runtime": "python",
+      "owns": [
+        "portable Git diff and SRE checks",
+        "unified audit",
+        "record validation"
+      ],
+      "evidence": [
+        "tests/test_diff_guard.py",
+        "tests/test_sre_guard.py",
+        "tests/test_audit_runner.py"
+      ]
+    },
+    {
+      "runtime": "rust",
+      "owns": [
+        "native structural triage",
+        "path scope and read-only intent"
+      ],
+      "evidence": [
+        "services/anti-slop-rust/tests/interceptor_test.rs"
+      ]
+    },
+    {
+      "runtime": "go",
+      "owns": [
+        "native SRE audit",
+        "error-budget reports",
+        "opt-in daemon and stream"
+      ],
+      "evidence": [
+        "services/toil-guard-go/cmd/toil-guard/main_test.go",
+        "services/toil-guard-go/pkg/sre/toil_test.go"
+      ]
+    }
+  ],
+  "shared_rules": [
+    {
+      "rule_id": "error_swallow",
+      "fixture": "blocker_error_swallow",
+      "owner": {
+        "engine": "python-sre",
+        "id": "SCALE_TOIL_ERROR_SWALLOW",
+        "severity": "blocker",
+        "fixture_key": "sre_guard_id"
+      },
+      "fallbacks": [
+        {
+          "engine": "python-diff",
+          "id": "ERROR_SWALLOW_CANDIDATE",
+          "severity": "review",
+          "fixture_key": "diff_guard_id"
+        },
+        {
+          "engine": "rust-triage",
+          "id": "STS-H02",
+          "severity": "blocker",
+          "fixture_key": "rust_code"
+        },
+        {
+          "engine": "go-audit",
+          "id": "SRE-SCALE-SWALLOW",
+          "severity": "blocker",
+          "fixture_key": "go_code"
+        }
+      ]
+    },
+    {
+      "rule_id": "blind_sleep",
+      "fixture": "blind_sleep",
+      "owner": {
+        "engine": "python-sre",
+        "id": "SCALE_SLEEP_BAND_AID",
+        "severity": "review",
+        "fixture_key": "sre_guard_id"
+      },
+      "fallbacks": [
+        {
+          "engine": "python-diff",
+          "id": "SRE_SCALE_SLEEP_BAND_AID",
+          "severity": "review",
+          "fixture_key": "diff_guard_id"
+        },
+        {
+          "engine": "go-audit",
+          "id": "SRE-SCALE-SLEEP",
+          "severity": "blocker",
+          "fixture_key": "go_code"
+        }
+      ]
+    }
+  ],
   "pairs": {
     "triage": {
       "native": "anti-slop-rust triage",
@@ -79,6 +184,20 @@
         "diff_guard_exit": 0,
         "go_exit": 0,
         "sre_guard_exit": 0
+      }
+    },
+    "blind_sleep": {
+      "diff": "blind_sleep.diff",
+      "shared": {
+        "diff_guard_id": "SRE_SCALE_SLEEP_BAND_AID",
+        "diff_guard_id_exit": 0,
+        "diff_guard_id_severity": "review",
+        "sre_guard_id": "SCALE_SLEEP_BAND_AID",
+        "sre_guard_id_exit": 0,
+        "sre_guard_id_severity": "review",
+        "go_code": "SRE-SCALE-SLEEP",
+        "go_code_exit": 1,
+        "go_code_severity": "blocker"
       }
     }
   }

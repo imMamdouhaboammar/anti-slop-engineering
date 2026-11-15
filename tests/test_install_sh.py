@@ -1,3 +1,4 @@
+import json
 import os
 import shutil
 import stat
@@ -122,11 +123,36 @@ class BashInstallerSafetyTests(unittest.TestCase):
             result = subprocess.run(["bash", "install.sh", "--project"], cwd=source,
                                     env=env, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertIn("No executable CLI target", result.stderr)
+            self.assertIn("cat .agents/skills/anti-slop-engineering/SKILL.md", result.stdout)
         local = source / ".agents/skills/anti-slop-engineering"
         self.assertEqual((local / "SKILL.md").read_text(), "fixture\n")
         self.assertFalse((local / ".agents").exists())
         self.assertFalse((self.home / "home/.local/bin/anti-slop-engineering").exists())
+
+    def test_local_flag_as_second_argument_installs_locally_only(self):
+        """Verify --local passed as second argument installs only locally and leaves HOME untouched."""
+        source = self.home / "source"
+        (source / "scripts").mkdir(parents=True)
+        shutil.copy2(REPO / "install.sh", source / "install.sh")
+        shutil.copy2(REPO / "scripts/safe_install.py", source / "scripts/safe_install.py")
+        (source / "SKILL.md").write_text("fixture\n", encoding="utf-8")
+        cli = source / "bin/cli.js"
+        cli.parent.mkdir()
+        cli.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        cli.chmod(0o755)
+        home_dir = self.home / "home"
+        (home_dir / ".claude").mkdir(parents=True)
+        env = {**os.environ, "HOME": str(home_dir), "PATH": SAFE_PATH}
+        for args in (("--skills=core", "--local"), ("--local", "--skills=core"), ("--project",)):
+            with self.subTest(args=args):
+                result = subprocess.run(["bash", "install.sh", *args], cwd=source,
+                                        env=env, capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                local = source / ".agents/skills/anti-slop-engineering"
+                self.assertTrue((local / "SKILL.md").is_file())
+                self.assertTrue(os.access(local / "bin/cli.js", os.X_OK))
+                for target in (".agents", ".claude/skills", ".codex", ".gemini", ".local/bin"):
+                    self.assertFalse((home_dir / target).exists(), target)
 
     @unittest.skipUnless(HAS_NODE, "Node.js required for plugin catalog selection")
     def test_bundled_module_conflicts_are_printed_as_readable_paths(self):
@@ -299,6 +325,70 @@ class BashInstallerSafetyTests(unittest.TestCase):
         skills = self.home / ".agents/skills"
         self.assertTrue((skills / "anti-slop-engineering/SKILL.md").exists())
         self.assertFalse((skills / "decision-guard").exists())
+        self.assertFalse((skills / "anti-slop-engineering/skills").exists())
+
+    def test_bash_core_install_leaves_no_optional_skills_leaked(self):
+        """Verify core-only install keeps native build sources and excludes optional skills and dev directories."""
+        env = {**os.environ, "HOME": str(self.home), "PATH": SAFE_PATH}
+        result = subprocess.run(
+            ["bash", str(REPO / "install.sh"), "--skills=core"],
+            cwd=self.home, env=env, capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        core_dir = self.home / ".agents/skills/anti-slop-engineering"
+        self.assertTrue((core_dir / "SKILL.md").is_file())
+        self.assertFalse((core_dir / "skills").exists())
+        for relative in (
+            "services/anti-slop-rust/Cargo.toml", "services/anti-slop-rust/Cargo.lock",
+            "services/anti-slop-rust/src/lib.rs", "services/toil-guard-go/go.mod",
+            "services/toil-guard-go/cmd/toil-guard/main.go",
+        ):
+            self.assertTrue((core_dir / relative).is_file(), relative)
+        for dev_dir in ("tests", "test", "cases", "docs", ".github", "submission"):
+            self.assertFalse((core_dir / dev_dir).exists(), f"Dev directory {dev_dir} leaked into core install")
+
+    @unittest.skipUnless(HAS_NODE, "Node.js required for plugin catalog selection")
+    def test_installed_cli_resolves_only_explicit_oxlint_plugin(self):
+        env = {**os.environ, "HOME": str(self.home), "PATH": SAFE_PATH, "CI": "true"}
+        setup = ["bash", str(REPO / "install.sh")]
+        installed = self.home / ".agents/skills/anti-slop-engineering/bin/cli.js"
+        plugin_dir = self.home / "project-plugin"
+
+        def run(args):
+            return subprocess.run(args, cwd=self.home, env=env, capture_output=True, text=True)
+
+        core = run([*setup, "--skills=core"])
+        self.assertEqual(core.returncode, 0, core.stderr)
+        missing = run(["node", str(installed), "install-oxlint", str(plugin_dir)])
+        self.assertNotEqual(missing.returncode, 0)
+        self.assertIn("install-anti-slop optional skill", missing.stderr)
+        self.assertFalse(plugin_dir.exists())
+
+        selected = run([*setup, "--skills=install-anti-slop"])
+        self.assertEqual(selected.returncode, 0, selected.stderr)
+        copied = run(["node", str(installed), "install-oxlint", str(plugin_dir)])
+        self.assertEqual(copied.returncode, 0, copied.stderr)
+        self.assertTrue((plugin_dir / "index.ts").is_file())
+        updated = run(["node", str(installed), "update-oxlint", str(plugin_dir)])
+        self.assertEqual(updated.returncode, 0, updated.stderr)
+        self.assertFalse((installed.parent.parent / "skills").exists())
+
+    @unittest.skipUnless(HAS_NODE, "Node.js required for plugin catalog selection")
+    def test_bash_optional_plugin_install_does_not_leak_unselected_skills_into_core(self):
+        """Verify installing one optional plugin installs only that plugin and leaves core unpolluted."""
+        result = subprocess.run(
+            ["bash", str(REPO / "install.sh"), "--skills=decision-guard"],
+            cwd=self.home, env={**os.environ, "HOME": str(self.home), "PATH": SAFE_PATH},
+            capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        skills = self.home / ".agents/skills"
+        self.assertTrue((skills / "anti-slop-engineering/SKILL.md").exists())
+        self.assertFalse((skills / "anti-slop-engineering/skills").exists())
+        self.assertTrue((skills / "decision-guard/SKILL.md").exists())
+        self.assertTrue((skills / "decision-guard/references/decision-method.md").exists())
+        self.assertFalse((skills / "root-fix-gate").exists())
+        self.assertFalse((skills / "future-scale-gate").exists())
 
     @unittest.skipUnless(HAS_NODE, "Node.js required for plugin catalog selection")
     def test_bash_accepts_any_catalog_plugin_and_does_not_install_unselected_ones(self):
@@ -312,6 +402,43 @@ class BashInstallerSafetyTests(unittest.TestCase):
         self.assertTrue((skills / "anti-slop-engineering/SKILL.md").exists())
         self.assertTrue((skills / "api-ergonomics-and-contract-governor/SKILL.md").exists())
         self.assertFalse((skills / "decision-guard").exists())
+
+    @unittest.skipUnless(HAS_NODE, "Node.js required for plugin catalog selection")
+    def test_bash_project_selection_records_installed_and_preserved_siblings(self):
+        project = self.home / "project"
+        project.mkdir()
+        env = {**os.environ, "HOME": str(self.home), "PATH": SAFE_PATH, "CI": "true"}
+
+        def install(selection):
+            result = subprocess.run(
+                ["bash", str(REPO / "install.sh"), "--project", f"--skills={selection}"],
+                cwd=project, env=env, capture_output=True, text=True, timeout=25,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+
+        skills = project / ".agents/skills"
+        selection_file = skills / ".anti-slop-selection.json"
+        install("decision-guard")
+        state = json.loads(selection_file.read_text(encoding="utf-8"))
+        package = json.loads((REPO / "package.json").read_text(encoding="utf-8"))
+        self.assertEqual((state["format"], state["scope"], state["version"]), (1, "project", package["version"]))
+        self.assertIn("antigravity", state["agents"])
+        self.assertEqual(state["skills"], ["anti-slop-engineering", "decision-guard"])
+        self.assertTrue((skills / "decision-guard/SKILL.md").is_file())
+        self.assertFalse((self.home / ".agents/skills/.anti-slop-selection.json").exists())
+
+        user_skill = skills / "my-own-skill"
+        user_skill.mkdir()
+        (user_skill / "SKILL.md").write_text("local skill", encoding="utf-8")
+        install("core")
+        self.assertEqual(json.loads(selection_file.read_text(encoding="utf-8")), state)
+        self.assertEqual((user_skill / "SKILL.md").read_text(encoding="utf-8"), "local skill")
+
+        (skills / "decision-guard/SKILL.md").unlink()
+        install("core")
+        repaired = json.loads(selection_file.read_text(encoding="utf-8"))
+        self.assertEqual(repaired["skills"], ["anti-slop-engineering"])
+        self.assertEqual((user_skill / "SKILL.md").read_text(encoding="utf-8"), "local skill")
 
     def test_bash_rejects_unknown_plugin_before_creating_targets(self):
         result = subprocess.run(
@@ -344,6 +471,23 @@ class BashInstallerSafetyTests(unittest.TestCase):
         for entry in (REPO / "skills").iterdir():
             if entry.is_dir() and (entry / "SKILL.md").is_file():
                 self.assertTrue((self.home / ".agents/skills" / entry.name / "SKILL.md").is_file(), entry.name)
+
+    def test_bash_rejects_explicit_preset_without_node_before_writes(self):
+        no_node_bin = self.home / "no-node-bin"
+        no_node_bin.mkdir()
+        for command in ("bash", "dirname"):
+            target = shutil.which(command)
+            self.assertIsNotNone(target, command)
+            (no_node_bin / command).symlink_to(target)
+        env = {**os.environ, "HOME": str(self.home), "PATH": str(no_node_bin)}
+        self.assertIsNone(shutil.which("node", path=env["PATH"]))
+        for flags in (("--preset=backend",), ("--pack", "core-decisions")):
+            with self.subTest(flags=flags):
+                result = subprocess.run(["bash", str(REPO / "install.sh"), *flags],
+                                        cwd=self.home, env=env, capture_output=True, text=True)
+                self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+                self.assertIn("Node.js is needed", result.stderr)
+                self.assertFalse((self.home / ".agents").exists())
 
     def test_bash_core_flags_succeed_even_without_node(self):
         """Verify --skills=core and -s core succeed even without Node.js in PATH."""

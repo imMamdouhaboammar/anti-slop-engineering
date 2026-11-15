@@ -38,6 +38,6 @@ Run the [two-session reservation schedule](examples/reservation_schedule.py) dir
 | Two transactions see one free slot and each tries to insert a distinct reservation. | The invariant admits one reservation. If a transaction is retried, it repeats the original read and decision on fresh state. |
 | A three-replica cluster loses connectivity between its leader and the other two replicas. | The isolated leader cannot acknowledge a new quorum-committed write. A new leader preserves previously acknowledged entries. |
 
-Catalog: [CON-01, CON-12, DAT-12](../../references/anti-pattern-catalog.md). For larger schedules use [deterministic simulation](../deterministic-simulation-and-property-testing/SKILL.md).
+Catalog: [CON-01, CON-12, DAT-12](../anti-slop-engineering/references/anti-pattern-catalog.md). For larger schedules use deterministic simulation with the optional `deterministic-simulation-and-property-testing` skill.
 
 Sources: [PostgreSQL transaction isolation](https://www.postgresql.org/docs/current/transaction-iso.html), [PostgreSQL serialization failure handling](https://www.postgresql.org/docs/current/mvcc-serialization-failure-handling.html), [etcd concurrency reference](https://etcd.io/docs/v3.4/dev-guide/api_concurrency_reference_v3/), [Raft paper](https://raft.github.io/raft.pdf).
