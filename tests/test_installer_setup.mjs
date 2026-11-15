@@ -387,3 +387,67 @@ test('Setup: updateAll scopes instruction pointer updates to installed project s
     fs.rmSync(project, { recursive: true, force: true })
   }
 })
+
+const claudeSettings = '.claude/settings.local.json'
+
+function inClaudeWorkspace(callback) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ase-hook-plan-'))
+  try {
+    callback(dir)
+  } finally {
+    fs.rmSync(dir, {recursive: true, force: true})
+  }
+}
+
+function runClaudePreview(dir, args) {
+  return spawnSync(process.execPath, [installer, ...args], {
+    cwd: dir, encoding: 'utf8', env: {...process.env, HOME: dir, CI: 'true'},
+  })
+}
+
+test('default project skill setup leaves Claude hook settings untouched', () => {
+  inClaudeWorkspace((dir) => {
+    const result = runClaudePreview(dir, ['--agent=claude', '--skills=core', '--json'])
+    assert.equal(result.status, 0, result.stderr)
+    assert.equal(fs.existsSync(path.join(dir, claudeSettings)), false)
+    assert.equal(Object.hasOwn(JSON.parse(result.stdout), 'hookPlan'), false)
+  })
+})
+
+test('explicit project selection previews real Claude settings without writing', { skip: process.platform === 'win32' }, () => {
+  inClaudeWorkspace((dir) => {
+    const result = runClaudePreview(dir, ['--agent=claude,cursor', '--claude-hooks', '--dry-run', '--json'])
+    assert.equal(result.status, 0, result.stderr)
+    const {hookPlan} = JSON.parse(result.stdout)
+    assert.equal(hookPlan.status, 'would_change')
+    assert.equal(hookPlan.settings, fs.realpathSync(dir) + '/' + claudeSettings)
+    assert.deepEqual(hookPlan.tools, ['Read', 'Edit', 'Write'])
+    assert.equal(fs.existsSync(path.join(dir, '.claude')), false)
+  })
+})
+
+test('hook preview requires dry run and cannot be used to modify project settings', () => {
+  inClaudeWorkspace((dir) => {
+    const result = runClaudePreview(dir, ['--agent=claude', '--skills=core', '--claude-hooks', '--json'])
+    assert.notEqual(result.status, 0, result.stderr)
+    assert.match(result.stderr, /standalone Claude adapter/)
+    assert.equal(fs.existsSync(path.join(dir, '.claude')), false)
+  })
+})
+
+test('unsupported scope and invalid settings fail before installation writes', () => {
+  inClaudeWorkspace((dir) => {
+    for (const args of [['--agent=cursor', '--claude-hooks', '--dry-run'], ['--scope=global', '--agent=claude', '--claude-hooks', '--dry-run']]) {
+      const result = runClaudePreview(dir, args)
+      assert.notEqual(result.status, 0, result.stderr)
+      assert.equal(fs.existsSync(path.join(dir, '.claude')), false)
+      assert.equal(fs.existsSync(path.join(dir, '.cursor')), false)
+    }
+    fs.mkdirSync(path.join(dir, '.claude'))
+    fs.writeFileSync(path.join(dir, claudeSettings), 'fixture invalid JSON')
+    const result = runClaudePreview(dir, ['--agent=claude', '--skills=core', '--claude-hooks', '--dry-run', '--json'])
+    assert.notEqual(result.status, 0)
+    assert.equal(fs.existsSync(path.join(dir, '.claude/skills')), false)
+    assert.equal(fs.readFileSync(path.join(dir, claudeSettings), 'utf8'), 'fixture invalid JSON')
+  })
+})
