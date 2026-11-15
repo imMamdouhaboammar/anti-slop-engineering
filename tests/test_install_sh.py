@@ -472,6 +472,23 @@ class BashInstallerSafetyTests(unittest.TestCase):
             if entry.is_dir() and (entry / "SKILL.md").is_file():
                 self.assertTrue((self.home / ".agents/skills" / entry.name / "SKILL.md").is_file(), entry.name)
 
+    def test_bash_rejects_explicit_preset_without_node_before_writes(self):
+        no_node_bin = self.home / "no-node-bin"
+        no_node_bin.mkdir()
+        for command in ("bash", "dirname"):
+            target = shutil.which(command)
+            self.assertIsNotNone(target, command)
+            (no_node_bin / command).symlink_to(target)
+        env = {**os.environ, "HOME": str(self.home), "PATH": str(no_node_bin)}
+        self.assertIsNone(shutil.which("node", path=env["PATH"]))
+        for flags in (("--preset=backend",), ("--pack", "core-decisions")):
+            with self.subTest(flags=flags):
+                result = subprocess.run(["bash", str(REPO / "install.sh"), *flags],
+                                        cwd=self.home, env=env, capture_output=True, text=True)
+                self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+                self.assertIn("Node.js is needed", result.stderr)
+                self.assertFalse((self.home / ".agents").exists())
+
     def test_bash_core_flags_succeed_even_without_node(self):
         """Verify --skills=core and -s core succeed even without Node.js in PATH."""
         env = {**os.environ, "HOME": str(self.home), "PATH": "/usr/bin:/bin"}

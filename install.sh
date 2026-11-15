@@ -45,7 +45,7 @@ for argument in "$@"; do
       echo "Installer error: use 'anti-slop-engineering install --json' for structured JSON output" >&2
       exit 2 ;;
     --agent*|--scope*)
-      echo "Installer error: agent/scope flags require 'anti-slop-engineering setup'; the Bash installer keeps its legacy target locations" >&2
+      echo "Installer error: agent/scope flags require 'anti-slop-engineering setup'" >&2
       exit 2 ;;
   esac
 done
@@ -78,6 +78,13 @@ for skill in data["skills"]:
         print(skill)
 ' "$setup_selection")"
 else
+  for argument in "$@"; do
+    case "$argument" in
+      --preset|--preset=*|--pack|--pack=*)
+        echo "Installer error: Node.js is needed to select a preset; use --skills=core without Node.js" >&2
+        exit 2 ;;
+    esac
+  done
   case " $* " in
     *--skills=core*|*"-s core"*|*--plugins=core*|*--modules=core*) : ;;
     *--skills*|*--plugins*|*--modules*|*"-s "*|*--all*)

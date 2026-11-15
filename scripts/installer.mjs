@@ -96,6 +96,75 @@ export function listAvailableModules() {
   })
 }
 
+function readDomainGroups() {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(rootDir, 'skills.sh.json'), 'utf8')).groupings
+  } catch (error) {
+    if (error.code === 'ENOENT') return []
+    throw error
+  }
+}
+
+const domainGroups = readDomainGroups()
+export const DOMAIN_PACKS = Object.fromEntries(domainGroups.map(({ title, skills }) => [
+  title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''), skills,
+]))
+
+const BACKEND = [
+  'decision-guard', 'root-fix-gate', 'future-scale-gate',
+  ...(DOMAIN_PACKS['systems-architecture'] ?? []),
+  ...(DOMAIN_PACKS['performance-diagnostics'] ?? []),
+  'deterministic-simulation-and-property-testing', 'verification-oracle-architect',
+  'demock-guard', 'api-ergonomics-and-contract-governor',
+]
+const FRONTEND = [
+  ...(DOMAIN_PACKS['ui-motion-craft'] ?? []),
+  'type-level-and-ast-slop-gate', 'comment-budget-guard', 'mechanical-sympathy-and-perf-gate',
+]
+const LEAD = [
+  ...(DOMAIN_PACKS['core-decisions'] ?? []),
+  'api-ergonomics-and-contract-governor', 'type-level-and-ast-slop-gate',
+  'comment-budget-guard', 'pr-boundary-guard', 'demock-guard', 'mandela-guard', 'honeypot-trap-guard',
+  ...(DOMAIN_PACKS['discourse-handoffs'] ?? []),
+]
+
+export const PRESETS = {
+  minimal: [CORE_SKILL],
+  core: [CORE_SKILL],
+  full: 'all',
+  all: 'all',
+  ci: [
+    'decision-guard', 'root-fix-gate', 'pr-boundary-guard', 'type-level-and-ast-slop-gate',
+    'comment-budget-guard', 'cognitive-load-and-attention-governor', 'demock-guard',
+    'mandela-guard', 'honeypot-trap-guard',
+  ],
+  backend: BACKEND,
+  'backend-sre': BACKEND,
+  frontend: FRONTEND,
+  'frontend-ui': FRONTEND,
+  lead: LEAD,
+  'lead-review': LEAD,
+  ...DOMAIN_PACKS,
+}
+
+export function resolvePreset(presetName, available = listAvailableSkills()) {
+  const normalized = String(presetName || '').trim().toLowerCase()
+  if (!normalized) {
+    throw new Error('Preset name cannot be empty. Available presets: minimal, full, ci, backend, frontend, lead')
+  }
+  if (!Object.prototype.hasOwnProperty.call(PRESETS, normalized)) {
+    throw new Error(`Unknown or invalid preset: ${presetName}. Available presets: ${Object.keys(PRESETS).join(', ')}`)
+  }
+  const selection = PRESETS[normalized]
+  if (selection === 'all') {
+    return available
+  }
+  const availableSet = new Set(available)
+  const missing = [...new Set(selection.filter((id) => !availableSet.has(id)))]
+  if (missing.length > 0) console.error(`Preset "${normalized}" has unavailable skills: ${missing.join(', ')}`)
+  return resolveSkillSelection(selection.filter((id) => availableSet.has(id)), available)
+}
+
 export function resolveSkillSelection(requested, available = listAvailableSkills()) {
   const requestedIds = requested === 'all' ? available
     : requested === 'core' || requested === '' ? []
@@ -468,6 +537,8 @@ export async function promptForSkills(modules, targets, input = process.stdin, o
     while (true) {
       output.write('\nAnti-Slop Engineering setup (Core is required)\n')
       output.write('  1. Core only\n  2. Select plugins\n  3. Install everything\n')
+      output.write('  p. Role presets\n')
+      output.write('  g. Domain packs\n')
       if (setup.allowTargetChange) output.write('  t. Change agents/scope\n')
       output.write('  q. Cancel\n')
       const mode = (await ask('Choose installation: '))?.trim().toLowerCase()
@@ -494,12 +565,54 @@ export async function promptForSkills(modules, targets, input = process.stdin, o
         activeTargets = resolveTargets(activeScope, activeAgents)
         continue
       }
-      if (!['1', '2', '3'].includes(mode)) {
-        output.write('Enter 1, 2, 3, t, or q\n')
+      if (!['1', '2', '3', 'p', 'g'].includes(mode)) {
+        output.write('Enter 1, 2, 3, p, g, t, or q\n')
         continue
       }
       let skills = [CORE_SKILL]
       if (mode === '3') skills = resolveSkillSelection('all')
+      if (mode === 'p') {
+        output.write('\nRole presets:\n')
+        output.write('  1. backend   (Backend, SRE, Architecture & Scaled Systems)\n')
+        output.write('  2. frontend  (Frontend, UI, HIG Physics & Design Systems)\n')
+        output.write('  3. lead      (Lead, Review, Contracts & Gate Governance)\n')
+        output.write('  4. ci        (CI Pipeline, AST & Diff Automation)\n')
+        output.write('  b. Back\n')
+        const presetChoice = (await ask('Choose role preset [1-4, or b]: '))?.trim().toLowerCase()
+        if (presetChoice == null || presetChoice === 'q') return null
+        if (presetChoice === 'b') continue
+        const map = {
+          '1': 'backend', '2': 'frontend', '3': 'lead', '4': 'ci',
+          backend: 'backend', frontend: 'frontend', lead: 'lead', ci: 'ci',
+        }
+        const chosen = map[presetChoice]
+        if (!chosen) {
+          output.write(`Unknown preset selection: ${presetChoice}\n`)
+          continue
+        }
+        skills = resolvePreset(chosen, listAvailableSkills())
+      }
+      if (mode === 'g') {
+        output.write('\nGrouped domain packs (from skills.sh.json):\n')
+        const packKeys = Object.keys(DOMAIN_PACKS)
+        packKeys.forEach((key, idx) => {
+          output.write(`  ${idx + 1}. ${key} (${DOMAIN_PACKS[key].length} skills)\n`)
+        })
+        const packChoice = (await ask(`Domain pack [1-${packKeys.length}, name, or b]: `))?.trim().toLowerCase()
+        if (packChoice == null || packChoice === 'q') return null
+        if (packChoice === 'b') continue
+        let chosenPack = null
+        if (/^\d+$/.test(packChoice)) {
+          chosenPack = packKeys[Number(packChoice) - 1]
+        } else if (Object.hasOwn(DOMAIN_PACKS, packChoice)) {
+          chosenPack = packChoice
+        }
+        if (!chosenPack) {
+          output.write(`Unknown domain pack: ${packChoice}\n`)
+          continue
+        }
+        skills = resolvePreset(chosenPack, listAvailableSkills())
+      }
       if (mode === '2') {
         output.write('\nSelect optional plugins (Core remains installed):\n')
         optional.forEach((module, index) => {
@@ -562,9 +675,7 @@ export async function runInstallerCLI(args = process.argv.slice(2)) {
 📦 Anti-Slop Engineering Universal Multi-Agent Installer (v${VERSION})
 
 Core is required in every installation. Optional skill plugins are discovered
-from bundled SKILL.md definitions; native guards are still shipped together.
-An interactive terminal prompts when no explicit skill selection was given.
-CI, piped input, --json and --dry-run default to core only.
+from bundled skill definitions. Non-interactive executions default to core only.
 
 Usage:
   bunx anti-slop-engineering install [options]
@@ -574,6 +685,7 @@ Usage:
 Options:
   --agent <names>     Target agents (comma-separated, or 'all'). Default: detected agents
   --scope <scope>     Install scope: 'project' (default) or 'global'
+  --preset <preset>   Preset: 'full', 'minimal', 'ci', 'backend', 'frontend', 'lead', or domain pack
   --skills <skills>   Optional skill IDs: 'all', 'core', or comma-separated names
   --plugins <names>   Alias for --skills; core is always included
   --all               Select every available optional skill
@@ -609,6 +721,7 @@ Options:
 
   const scopeArg = optionValue(args, ['scope']) || (args.includes('--global') ? 'global' : 'project')
   const agentArg = optionValue(args, ['agent'])
+  const presetArg = optionValue(args, ['preset', 'pack'])
   const skillsArg = args.includes('--all') ? 'all' : optionValue(args, ['skills', 'plugins', 'modules'])
   const overwrite = args.includes('--overwrite')
   const dryRun = args.includes('--dry-run')
@@ -631,14 +744,25 @@ Options:
   }
 
   const availableSkills = listAvailableSkills()
-  let selectedSkills = resolveSkillSelection(skillsArg ?? 'core', availableSkills)
+  let selectedSkills
+  if (presetArg !== null) {
+    const presetSkills = resolvePreset(presetArg, availableSkills)
+    if (skillsArg) {
+      const explicitSkills = resolveSkillSelection(skillsArg, availableSkills)
+      selectedSkills = [CORE_SKILL, ...new Set([...presetSkills, ...explicitSkills].filter((s) => s !== CORE_SKILL))]
+    } else {
+      selectedSkills = presetSkills
+    }
+  } else {
+    selectedSkills = resolveSkillSelection(skillsArg ?? 'core', availableSkills)
+  }
 
   let targets = resolveTargets(scopeArg, selectedAgents)
   let resolvedScope = scopeArg
 
   const promptOutput = selectionOnly ? process.stderr : process.stdout
   const canPrompt = !dryRun && !jsonMode && !process.env.CI && !args.includes('--no-interactive')
-    && skillsArg == null && promptOutput.isTTY
+    && skillsArg == null && presetArg == null && promptOutput.isTTY
   let terminalInput
   if (canPrompt && !process.stdin.isTTY && process.platform !== 'win32') {
     const ttyPath = process.env.ANTI_SLOP_TTY_PATH || '/dev/tty'

@@ -484,3 +484,22 @@ test("verification contract: check/diff exits 0 on clean diff while audit catche
     rmSync(tmpDir, { recursive: true, force: true });
   }
 });
+
+test("CLI: help banner contains the release version and zero dev-notes leakage", () => {
+  const result = invoke("anti-slop-engineering", ["--help"]);
+  assert.equal(result.status, 0);
+  const helpText = result.stdout;
+  assert.doesNotMatch(helpText, /\b(todo|fixme|dev[- ]note|developer[- ]note|agent[- ]note|mock data)\b/i);
+  assert.match(helpText, /Anti-Slop Engineering CLI \(v\d+\.\d+\.\d+\)/);
+});
+
+test("CLI: contribute command output is clean and free of internal dev-notes", () => {
+  const result = invoke("anti-slop-engineering", ["contribute"]);
+  assert.equal(result.status, 0);
+  const text = result.stdout;
+  assert.doesNotMatch(text, /\b(todo|fixme|dev[- ]note|developer[- ]note|agent[- ]note|mock data)\b/i);
+  assert.match(text, /Contributing to Anti-Slop Engineering/);
+  assert.match(text, /Reporting Slop/);
+  assert.match(text, /Submitting Contributions/);
+  assert.match(text, /Optional: Add a heuristic/);
+});
