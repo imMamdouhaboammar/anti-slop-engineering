@@ -199,3 +199,13 @@ func TestCheckToilAndScale_MultilineCatchKeepsRecoveryBeforeFinally(t *testing.T
 		}
 	}
 }
+
+func TestCheckToilAndScale_EmptyCatchBeforeFinallyIsReported(t *testing.T) {
+	code := "try {\n    run();\n} catch (error) {\n} finally {\n    cleanup();\n}"
+	for _, f := range CheckToilAndScale("worker.ts", code) {
+		if f.Code == "SRE-SCALE-SWALLOW" && f.Line == 3 {
+			return
+		}
+	}
+	t.Fatal("expected the empty catch at line 3")
+}

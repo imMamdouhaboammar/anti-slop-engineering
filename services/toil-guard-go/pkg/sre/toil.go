@@ -3,6 +3,7 @@ package sre
 import (
 	"regexp"
 	"strings"
+	"unicode"
 
 	"github.com/imMamdouhaboammar/anti-slop-engineering/services/toil-guard-go/pkg/model"
 )
@@ -164,67 +165,44 @@ func checkCommentDocGo(line string) (bool, bool) {
 }
 
 func isSwallowedBraceBlock(startIdx int, lines []string) bool {
-	limit := startIdx + 25
-	if limit > len(lines) {
-		limit = len(lines)
-	}
-
-	braceCount := 0
-	foundOpen := false
-	hasStatements := false
+	limit := min(startIdx+25, len(lines))
+	depth := 0
 	hasDocumented := false
 
 	for j := startIdx; j < limit; j++ {
 		line := strings.TrimSpace(lines[j])
-		if line == "" {
+		if depth == 0 {
+			_, afterOpen, found := strings.Cut(line, "{")
+			if !found {
+				continue
+			}
+			depth = 1
+			if afterOpen = strings.TrimSpace(afterOpen); afterOpen != "" {
+				return strings.HasPrefix(afterOpen, "}")
+			}
 			continue
 		}
 
 		if isComment, isDoc := checkCommentDocGo(line); isComment {
-			if isDoc {
-				hasDocumented = true
-			}
+			hasDocumented = hasDocumented || isDoc
 			continue
 		}
 
-		if !foundOpen {
-			line = strings.TrimSpace(strings.TrimPrefix(line, "}"))
-		}
-		openCount := strings.Count(line, "{")
-		closeCount := strings.Count(line, "}")
-
-		if !foundOpen {
-			if openCount > 0 {
-				foundOpen = true
-				braceCount += openCount - closeCount
-				stripped := line
-				if idx := strings.Index(stripped, "{"); idx != -1 {
-					after := strings.TrimSpace(stripped[idx+1:])
-					after = strings.TrimSuffix(after, "}")
-					if after != "" && !isCommentOrDocLine(after) {
-						hasStatements = true
-					}
+		for _, c := range line {
+			switch {
+			case c == '{':
+				depth++
+			case c == '}':
+				depth--
+				if depth == 0 {
+					return !hasDocumented
 				}
-				if braceCount <= 0 {
-					return !hasStatements && !hasDocumented
-				}
+			case unicode.IsSpace(c):
+			default:
+				return false
 			}
-			continue
-		}
-
-		braceCount += openCount - closeCount
-
-		cleaned := strings.ReplaceAll(strings.ReplaceAll(line, "{", ""), "}", "")
-		cleaned = strings.TrimSpace(cleaned)
-		if cleaned != "" {
-			hasStatements = true
-		}
-
-		if braceCount <= 0 {
-			return !hasStatements && !hasDocumented
 		}
 	}
-
 	return false
 }
 

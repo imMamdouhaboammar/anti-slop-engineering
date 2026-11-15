@@ -226,3 +226,22 @@ diff --git a/worker.ts b/worker.ts
     let findings = ShitInterceptor::new().audit_diff(diff, None, false);
     assert!(!findings.iter().any(|f| f.code == "STS-H02"));
 }
+
+#[test]
+fn test_empty_catch_before_finally_is_reported() {
+    let diff = r#"
+diff --git a/worker.ts b/worker.ts
+--- a/worker.ts
++++ b/worker.ts
+@@ -8,4 +8,7 @@
+     try {
+         run();
++    } catch (error) {
++    } finally {
++        cleanup();
+     }
+ }
+"#;
+    let findings = ShitInterceptor::new().audit_diff(diff, None, false);
+    assert!(findings.iter().any(|f| f.code == "STS-H02" && f.line == 10));
+}

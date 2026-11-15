@@ -166,62 +166,44 @@ impl ShitInterceptor {
 
     fn is_swallowed_brace_block(&self, start_idx: usize, lines: &[(usize, char, String)]) -> bool {
         let limit = (start_idx + 25).min(lines.len());
-        let mut brace_count: i32 = 0;
-        let mut found_open = false;
-        let mut has_statements = false;
+        let mut depth = 0;
         let mut has_documented = false;
 
         for j in start_idx..limit {
-            let Some((_raw, line)) = get_active_hunk_line(lines, j) else {
+            let Some((_, line)) = get_active_hunk_line(lines, j) else {
                 continue;
             };
+            if depth == 0 {
+                let Some((_, after_open)) = line.split_once('{') else {
+                    continue;
+                };
+                depth = 1;
+                if !after_open.trim().is_empty() {
+                    return after_open.trim_start().starts_with('}');
+                }
+                continue;
+            }
 
             let (is_comment, is_doc) = check_comment_doc(line);
             if is_comment {
-                if is_doc {
-                    has_documented = true;
-                }
+                has_documented |= is_doc;
                 continue;
             }
 
-            let line = if found_open {
-                line
-            } else {
-                line.strip_prefix('}').unwrap_or(line).trim_start()
-            };
-            let open_count = line.chars().filter(|&c| c == '{').count() as i32;
-            let close_count = line.chars().filter(|&c| c == '}').count() as i32;
-
-            if !found_open {
-                if open_count > 0 {
-                    found_open = true;
-                    brace_count += open_count - close_count;
-                    if let Some(idx) = line.find('{') {
-                        let after = line[idx + 1..].trim().trim_end_matches('}').trim();
-                        if !after.is_empty() && !is_comment_or_doc_line(after) {
-                            has_statements = true;
+            for c in line.chars() {
+                match c {
+                    '{' => depth += 1,
+                    '}' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            return !has_documented;
                         }
                     }
-                    if brace_count <= 0 {
-                        return !has_statements && !has_documented;
-                    }
+                    c if c.is_whitespace() => (),
+                    _ => return false,
                 }
-                continue;
-            }
-
-            brace_count += open_count - close_count;
-
-            let cleaned: String = line.chars().filter(|&c| c != '{' && c != '}').collect();
-            let cleaned = cleaned.trim();
-            if !cleaned.is_empty() {
-                has_statements = true;
-            }
-
-            if brace_count <= 0 {
-                return !has_statements && !has_documented;
             }
         }
-
         false
     }
 
