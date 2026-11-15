@@ -38,6 +38,7 @@
     "SKILL.md",
     "marketplace.json",
     ".skills.json",
+    "skills.sh.json",
     "install.sh",
     "action.yml",
     "LICENSE",

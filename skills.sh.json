@@ -24,8 +24,10 @@
         "type-level-and-ast-slop-gate",
         "comment-budget-guard",
         "pr-boundary-guard",
+        "supply-chain-and-sbom-sentinel",
         "demock-guard",
-        "install-anti-slop"
+        "install-anti-slop",
+        "llm-eval-and-prompt-injection-fortress"
       ]
     },
     {
@@ -36,7 +38,9 @@
         "safe-evolution-and-rollout-choreographer",
         "chaos-and-degradation-choreographer",
         "zero-downtime-migration-gate",
+        "distributed-consensus-and-concurrency-gate",
         "privacy-and-data-lineage-gate",
+        "cryptographic-agility-and-secret-lifecycle-gate",
         "observability-and-slo-architect",
         "observability-and-slo-gate"
       ]
@@ -46,8 +50,10 @@
       "description": "Hardware-level mechanical sympathy, latency profiling, and scientific fault isolation.",
       "skills": [
         "mechanical-sympathy-and-perf-gate",
+        "finops-and-unit-economics-governor",
         "mechanical-sympathy-profiler",
-        "scientific-fault-isolation"
+        "scientific-fault-isolation",
+        "context-window-and-token-economics-architect"
       ]
     },
     {

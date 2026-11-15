@@ -29,6 +29,6 @@ metadata:
 
 The [offline schedule fixture](examples/degradation_cases.py) exercises the decisions above using injected states and an integer budget. It runs without network, subprocesses, or real services. The fixture is a policy model. Verify latency, cancellation, failure isolation, and recovery on the real component in a disposable integration environment.
 
-Catalog: [CON-09, CON-11, OPS-07, SRE-08](../../references/anti-pattern-catalog.md). See also [deterministic simulation](../deterministic-simulation-and-property-testing/SKILL.md).
+Catalog: [CON-09, CON-11, OPS-07, SRE-08](../anti-slop-engineering/references/anti-pattern-catalog.md). See also deterministic simulation with the optional `deterministic-simulation-and-property-testing` skill.
 
 References: [Google SRE on cascading failures](https://sre.google/sre-book/addressing-cascading-failures/), [AWS on timeouts, retries, and jitter](https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/).
