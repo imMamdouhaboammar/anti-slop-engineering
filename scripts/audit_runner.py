@@ -17,10 +17,16 @@ import datetime
 import json
 import os
 import re
+import stat
 import subprocess
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+
+if __package__:
+    from .rule_registry import finding_metadata
+else:
+    from rule_registry import finding_metadata
 
 GLOBAL_CONFIG_DIR = Path.home() / ".config" / "anti-slop-engineering"
 GLOBAL_SETTINGS_FILE = GLOBAL_CONFIG_DIR / "settings.json"
@@ -80,6 +86,7 @@ GUARD_REGISTRY: Dict[str, Dict[str, Any]] = {
         "description": "Audits test suites for 8 Mandela leakage patterns, tautologies, and circular mocks.",
     },
     "tagore_guard": {
+        "installed_skill": "tagore-guard",
         "title": "Tagore Discourse & Substance Guard",
         "script": "tagore_guard.py",
         "input_type": "git_diff",
@@ -160,6 +167,7 @@ GUARD_REGISTRY: Dict[str, Dict[str, Any]] = {
         "description": "Enforces physical Gate 0 commit-sheet and agent reflex habit breaking.",
     },
     "re0_handoff_guard": {
+        "installed_skill": "re0-handoff-guard",
         "title": "Re0 State-Note Guard",
         "script": "re0_handoff_guard.py",
         "input_type": "ledger_record",
@@ -168,6 +176,7 @@ GUARD_REGISTRY: Dict[str, Dict[str, Any]] = {
         "description": "Audits 1500-token RSI context reset and cold-read Shower Test.",
     },
     "reduction_guard": {
+        "installed_skill": "reduction-guard",
         "title": "Musk Reduction & Add-Back Governor",
         "script": "reduction_guard.py",
         "input_type": "ledger_record",
@@ -438,6 +447,7 @@ CLI_COMMAND_TO_GUARD_MAP: Dict[str, str] = {
 EXCLUDED_CLI_COMMANDS: Dict[str, str] = {
     "serve-rust": "Daemon lifecycle command for background Rust HTTP microservice (:9091)",
     "serve-go": "Daemon lifecycle command for background Go HTTP microservice (:9092)",
+    "explain": "Catalog entry and remediation lookup",
     "build": "Build orchestration compiling native Rust and Go microservice binaries",
     "audit": "Unified multi-guard orchestrator entrypoint (invokes canonical registry)",
     "mode": "Execution mode governor setting active inline vs post-hoc audit behavior",
@@ -704,6 +714,7 @@ def normalize_finding(name: str, finding: Dict[str, Any], report: Dict[str, Any]
     return {
         "guard": name,
         "rule": str(rule),
+        **finding_metadata(str(rule), name),
         "severity": level,
         "file": str(finding.get("file") or default_targets.get(name, "")),
         "line": finding.get("line", 1 if name in default_targets else 0),
@@ -912,10 +923,48 @@ def evaluate_guard(
     return result, findings
 
 
+def read_installed_skills(manifest: Path) -> set[str]:
+    if manifest.name != ".anti-slop-selection.json" or manifest.is_symlink():
+        raise ValueError("Expected a regular .anti-slop-selection.json installer manifest")
+    flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_NOFOLLOW", 0)
+    descriptor = os.open(manifest, flags)
+    try:
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            raise ValueError("The installer selection must be a regular file")
+        with open(descriptor, encoding="utf-8", closefd=False) as source:
+            state = json.load(source)
+    finally:
+        os.close(descriptor)
+    if (
+        not isinstance(state, dict)
+        or type(state.get("format")) is not int
+        or state["format"] != 1
+        or state.get("scope") not in ("project", "global")
+        or not isinstance(state.get("version"), str)
+        or not isinstance(state.get("agents"), list)
+    ):
+        raise ValueError("Expected an installer selection in format 1")
+    skills = state.get("skills")
+    if (
+        not isinstance(skills, list)
+        or "anti-slop-engineering" not in skills
+        or any(not isinstance(skill, str) or not re.fullmatch(r"[a-z0-9][a-z0-9-]*", skill) for skill in skills)
+    ):
+        raise ValueError("Expected explicit skill IDs including anti-slop-engineering")
+    installed = {
+        skill for skill in skills
+        if (manifest.parent / skill / "SKILL.md").is_file()
+    }
+    if "anti-slop-engineering" not in installed:
+        raise ValueError("Required core skill is absent beside the installer manifest")
+    return installed
+
+
 def collect_audit_findings(
     base: str = "HEAD", pr_title: str = "", pr_body_file: str = "",
     template_file: str = "", canary_token: str = "",
     records: Optional[Dict[str, str]] = None,
+    installed_skills: Optional[set[str]] = None,
     **extra_records: Any,
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Dict[str, Any]]]:
     records_map: Dict[str, str] = {}
@@ -937,6 +986,11 @@ def collect_audit_findings(
         if spec.get("excluded_from_audit"):
             reason = spec.get("exclusion_reason", "Excluded from static audit runner")
             guards[name] = _make_inactive_guard_entry(spec, "not-applicable", reason)
+            continue
+
+        skill = spec.get("installed_skill")
+        if skill and installed_skills is not None and skill not in installed_skills and not spec.get("mandatory"):
+            guards[name] = _make_inactive_guard_entry(spec, "not-selected", f"Skill not installed: {skill}")
             continue
 
         record_path: Optional[str] = None
@@ -1154,6 +1208,10 @@ def _render_detailed_dossiers(
             f"- **Target:** `{target}`",
             f"- **Severity:** {f['severity']}",
             f"- **Guard:** `{f['guard']}`",
+        ])
+        if f.get("catalog_id"):
+            lines.append(f"- **Catalog:** `{f['catalog_id']}` · `{f['skill_path']}`")
+        lines.extend([
             "",
             "```text",
             f.get("snippet", "(no snippet available)").strip(),
@@ -1220,18 +1278,25 @@ def run_audit(
     base: str = "HEAD", json_output: bool = False, pr_title: str = "",
     pr_body_file: str = "", template_file: str = "", canary_token: str = "",
     mode: Optional[str] = None, records: Optional[Dict[str, str]] = None,
+    installed_selection: Optional[Path] = None,
     **extra_records: Any,
 ) -> int:
+    installed_skills = None
+    audit_error = None
+    if installed_selection is not None:
+        try:
+            installed_skills = read_installed_skills(installed_selection)
+        except (OSError, ValueError) as exc:
+            audit_error = f"Unable to read installed skill selection: {exc}"
     findings, guards = collect_audit_findings(
         base, pr_title=pr_title, pr_body_file=pr_body_file,
         template_file=template_file, canary_token=canary_token,
-        records=records, **extra_records
+        records=records, installed_skills=installed_skills, **extra_records
     )
     blockers = sum(1 for finding in findings if finding["severity"] == "BLOCKER")
     has_error = any(result.get("status") == "ERROR" or result.get("error") for result in guards.values())
-    status = "ERROR" if has_error else ("BLOCKED" if blockers else "PASS")
+    status = "ERROR" if has_error or audit_error else ("BLOCKED" if blockers else "PASS")
     audit_file = None
-    audit_error = None
     effective_mode = mode if mode is not None else load_settings().get("mode", "during")
     try:
         audit_file = get_next_audit_file()
@@ -1290,6 +1355,8 @@ def main() -> int:
         parser = argparse.ArgumentParser(description="Run the unified Anti-Slop audit")
         parser.add_argument("--base", default="HEAD")
         parser.add_argument("--json", action="store_true")
+        parser.add_argument("--installed-selection", type=Path,
+                            help="Opt in to installed optional review skills using a format-1 selection manifest")
         parser.add_argument("--pr-title", default="")
         parser.add_argument("--pr-body-file", default="")
         parser.add_argument("--template-file", default="")
@@ -1313,6 +1380,7 @@ def main() -> int:
             options.base, options.json, options.pr_title,
             options.pr_body_file, options.template_file, options.canary_token,
             mode=options.mode,
+            installed_selection=options.installed_selection,
             decision_record=options.decision_record,
             root_fix_record=options.root_fix_record,
             future_scale_record=options.future_scale_record,
