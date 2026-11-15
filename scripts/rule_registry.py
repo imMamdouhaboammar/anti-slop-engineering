@@ -212,9 +212,8 @@ def explain_cli(argv):
             entries = search_catalog(query, args.limit)
             if args.json:
                 print(json.dumps({"query": query, "count": len(entries), "results": entries}, indent=2))
-            else:
-                for entry in entries:
-                    print(f"{entry['catalog_id']} | {entry['title']}")
+            elif entries:
+                print("\n".join(f"{entry['catalog_id']} | {entry['title']}" for entry in entries))
             return 0
         result = lookup(query)
     except (OSError, ValueError) as error:
