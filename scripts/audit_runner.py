@@ -22,9 +22,10 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-if str(Path(__file__).resolve().parent) not in sys.path:
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-from rule_registry import explain_rule, print_rule_explanation, resolve_rule_mapping
+if __package__:
+    from .rule_registry import finding_metadata
+else:
+    from rule_registry import finding_metadata
 
 GLOBAL_CONFIG_DIR = Path.home() / ".config" / "anti-slop-engineering"
 GLOBAL_SETTINGS_FILE = GLOBAL_CONFIG_DIR / "settings.json"
@@ -442,10 +443,10 @@ CLI_COMMAND_TO_GUARD_MAP: Dict[str, str] = {
 EXCLUDED_CLI_COMMANDS: Dict[str, str] = {
     "serve-rust": "Daemon lifecycle command for background Rust HTTP microservice (:9091)",
     "serve-go": "Daemon lifecycle command for background Go HTTP microservice (:9092)",
+    "explain": "Catalog entry and remediation lookup",
     "build": "Build orchestration compiling native Rust and Go microservice binaries",
     "audit": "Unified multi-guard orchestrator entrypoint (invokes canonical registry)",
     "mode": "Execution mode governor setting active inline vs post-hoc audit behavior",
-    "explain": "Explain an engine code or rule with catalog and skill resolution",
     "install": "Skills installation across AI coding agent configurations",
     "setup": "Alias for install command",
     "update": "Skills update and pointer block synchronization across AI coding agents",
@@ -706,21 +707,10 @@ def normalize_finding(name: str, finding: Dict[str, Any], report: Dict[str, Any]
         or "AUDIT-FINDING"
     )
 
-    mapping = resolve_rule_mapping(str(rule), fallback_guard=name, fallback_severity=level)
-    catalog_id = mapping.get("catalog_id")
-    skill = mapping.get("skill")
-    skill_path = mapping.get("skill_path")
-    mapped = mapping.get("mapped", False)
-    if not remediation:
-        remediation = mapping.get("remediation")
-
     return {
         "guard": name,
         "rule": str(rule),
-        "catalog_id": catalog_id,
-        "skill": skill,
-        "skill_path": skill_path,
-        "mapped": mapped,
+        **finding_metadata(str(rule), name),
         "severity": level,
         "file": str(finding.get("file") or default_targets.get(name, "")),
         "line": finding.get("line", 1 if name in default_targets else 0),
@@ -1171,6 +1161,10 @@ def _render_detailed_dossiers(
             f"- **Target:** `{target}`",
             f"- **Severity:** {f['severity']}",
             f"- **Guard:** `{f['guard']}`",
+        ])
+        if f.get("catalog_id"):
+            lines.append(f"- **Catalog:** `{f['catalog_id']}` · `{f['skill_path']}`")
+        lines.extend([
             "",
             "```text",
             f.get("snippet", "(no snippet available)").strip(),
@@ -1343,15 +1337,6 @@ def main() -> int:
             observability_record=options.observability_record,
             motion_record=options.motion_record,
         )
-    elif command == "explain":
-        if len(args) < 2:
-            print("Error: Missing rule or engine code to explain", file=sys.stderr)
-            return 2
-        code = args[1]
-        json_mode = "--json" in args
-        diag = explain_rule(code)
-        print_rule_explanation(diag, json_mode=json_mode)
-        return 0
     elif command == "fix":
         print(
             "Error: 'fix' command is not supported. Anti-slop engineering requires "

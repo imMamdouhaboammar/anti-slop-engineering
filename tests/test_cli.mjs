@@ -45,6 +45,19 @@ test("Rust triage fallback reports an invalid base instead of silently auditing 
   assert.match(result.stdout + result.stderr, /ERROR:/);
 });
 
+test("explain resolves catalog IDs and raw engine codes through one command", () => {
+  const catalog = invoke("anti-slop-engineering", ["explain", "OPS-01", "--json"]);
+  const native = invoke("anti-slop-engineering", ["explain", "STS-H02", "--json"]);
+  assert.equal(catalog.status, 0, catalog.stderr);
+  assert.equal(native.status, 0, native.stderr);
+  const catalogEntry = JSON.parse(catalog.stdout);
+  const nativeEntry = JSON.parse(native.stdout);
+  assert.equal(nativeEntry.engine_code, "STS-H02");
+  assert.equal(nativeEntry.catalog_id, catalogEntry.catalog_id);
+  assert.equal(nativeEntry.remediation, catalogEntry.remediation);
+  assert.ok(existsSync(resolve(nativeEntry.skill_path)));
+});
+
 test("decision audit command routes to the stdlib decision guard", () => {
   const example = resolve("skills/decision-guard/examples/architecture-record.json");
   const result = invoke("anti-slop-engineering", ["decision", "audit", example, "--json"]);

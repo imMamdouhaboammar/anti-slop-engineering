@@ -584,6 +584,11 @@ Package installation does not automatically download skills or build native exec
 
 The catalog in [`references/anti-pattern-catalog.md`](references/anti-pattern-catalog.md) documents 217 diagnostic patterns across 14 engineering domains, each with a canonical ID, symptom, root cause, and remediation.
 
+Use `bunx anti-slop-engineering explain OPS-01` for catalog guidance or `bunx anti-slop-engineering explain STS-H02 --json` for a raw engine rule. Exact lookup returns the entry, related mapped rules, remediation and the evidence rubric. An unmapped catalog entry still returns its guidance. An unknown ID exits 1. Invalid input exits 2.
+
+The `catalog-coverage` CI artifact measures selected Rust, Go and Python detectors against positive and negative fixtures. `automatic` means at least one mapped detector observed the expected positive case and ran a negative control. `manual-review` means automated coverage has not been established by those fixtures. The counts describe the reviewed mapping and fixture set. Other detectors may exist, and fixture precision cannot estimate production precision. Use the [severity and evidence rubric](references/engineering-judgment.md#how-to-classify-a-suspected-smell) to assess impact. Existing engine severity and exit behavior are preserved.
+
+
 **Domains covered:**
 
 Requirements and scope · Architecture and abstractions · Duplication and code organization · Data, state, and persistence · Security and trust boundaries · Concurrency and async · APIs and contracts · Testing and oracles · Frontend and UI · Operations and reliability · CI, builds, and release · Workflow and review hygiene · Agent autonomy · Google SRE invariants

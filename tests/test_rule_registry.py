@@ -1,173 +1,132 @@
-#!/usr/bin/env python3
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2026 Mamdouh Aboammar <mamdouhfces1997@gmail.com> and contributors
-"""Tests for versioned rule registry and engine-to-catalog-to-skill feedback loop."""
-
+import contextlib
+import io
 import json
-import re
+from pathlib import Path
 import subprocess
 import sys
+import tempfile
 import unittest
-from pathlib import Path
 
-ROOT_DIR = Path(__file__).resolve().parent.parent
-SCRIPTS_DIR = ROOT_DIR / "scripts"
-sys.path.insert(0, str(SCRIPTS_DIR))
+from scripts import rule_registry
 
-import rule_registry
-from rule_registry import (
-    RULE_REGISTRY_VERSION,
-    explain_rule,
-    export_rule_catalog_mapping,
-    get_all_rule_mappings,
-    resolve_rule_mapping,
-)
+ROOT = Path(__file__).resolve().parents[1]
 
 
 class RuleRegistryTests(unittest.TestCase):
-    def setUp(self):
-        self.catalog_path = ROOT_DIR / "references" / "anti-pattern-catalog.md"
-        self.assertTrue(self.catalog_path.is_file(), "references/anti-pattern-catalog.md must exist")
-        catalog_text = self.catalog_path.read_text(encoding="utf-8")
-        self.catalog_ids = set(re.findall(r"^\- \*\*([A-Z]+-[0-9]+)", catalog_text, re.MULTILINE))
-        self.assertTrue(len(self.catalog_ids) >= 200, "Catalog must define at least 200 patterns")
-
-    def test_version_string(self):
-        """Rule registry must declare a semantic version."""
-        self.assertRegex(RULE_REGISTRY_VERSION, r"^\d+\.\d+\.\d+$")
-
-    def test_every_mapped_catalog_id_exists_in_markdown_catalog(self):
-        """Every mapped catalog ID in the registry must exist in references/anti-pattern-catalog.md."""
-        mappings = get_all_rule_mappings()
-        self.assertTrue(len(mappings) >= 40, "Registry must map at least 40 canonical engine codes")
-        for key, entry in mappings.items():
-            catalog_id = entry.get("catalog_id")
-            if catalog_id:
-                self.assertIn(
-                    catalog_id,
-                    self.catalog_ids,
-                    f"Rule {key} references catalog ID {catalog_id} which does not exist in anti-pattern-catalog.md",
-                )
-
-    def test_every_mapped_skill_path_exists_on_disk(self):
-        """Every mapped skill_path in the registry must point to an existing SKILL.md."""
-        mappings = get_all_rule_mappings()
-        for key, entry in mappings.items():
-            skill_path_rel = entry.get("skill_path")
-            if skill_path_rel:
-                abs_path = ROOT_DIR / skill_path_rel
-                self.assertTrue(
-                    abs_path.is_file(),
-                    f"Rule {key} references skill path '{skill_path_rel}' which does not exist on disk",
-                )
-
-    def test_native_rust_codes_resolution(self):
-        """Native Rust engine codes (BORING-*, DEMOCK-*, ATTENTION-*, TAGORE-*, STYLESEED-*) resolve accurately."""
-        sample_codes = [
-            ("BORING-KISS-01", "SIM-08", "anti-slop-engineering"),
-            ("BORING-DRY-01", "SIM-01", "anti-slop-engineering"),
-            ("DEMOCK-001", "TST-01", "demock-guard"),
-            ("ATTENTION-WRAPPER-01", "AGT-01", "cognitive-load-and-attention-governor"),
-            ("TAGORE-INFLATION-01", "REV-01", "tagore-guard"),
-            ("STYLESEED-001", "UI-01", "styleseed-guard"),
-            ("COMMENT-NARRATION-01", "SIM-08", "comment-budget-guard"),
-        ]
-        for code, expected_cat, expected_skill in sample_codes:
-            resolved = resolve_rule_mapping(code)
-            self.assertTrue(resolved["mapped"], f"Code {code} must be mapped")
-            self.assertEqual(resolved["catalog_id"], expected_cat)
-            self.assertEqual(resolved["skill"], expected_skill)
-            self.assertTrue(resolved["remediation"])
-            self.assertTrue((ROOT_DIR / resolved["skill_path"]).is_file())
-
-    def test_native_go_codes_resolution(self):
-        """Native Go engine codes (SRE-KISS-*, SRE-DRY-*, SRE-SCALE-*) resolve accurately."""
-        sample_codes = [
-            ("SRE-KISS-FUNC-LEN", "SRE-01", "anti-slop-engineering"),
-            ("SRE-KISS-NESTING", "SRE-01", "anti-slop-engineering"),
-            ("SRE-DRY-DUPLICATE", "SRE-03", "anti-slop-engineering"),
-            ("SRE-SCALE-FLAT-RETRY", "SRE-08", "anti-slop-engineering"),
-            ("SRE-SCALE-SWALLOWED-EXCEPTION", "SRE-10", "anti-slop-engineering"),
-        ]
-        for code, expected_cat, expected_skill in sample_codes:
-            resolved = resolve_rule_mapping(code)
-            self.assertTrue(resolved["mapped"], f"Code {code} must be mapped")
-            self.assertEqual(resolved["catalog_id"], expected_cat)
-            self.assertEqual(resolved["skill"], expected_skill)
-
-    def test_python_guard_rules_resolution(self):
-        """Python guard rules across diff, SRE, AST, and record gates resolve accurately."""
-        sample_rules = [
-            ("KISS_FUNCTION_BLOAT", "SRE-01", "anti-slop-engineering"),
-            ("CHAINED_TYPE_ASSERTION", "ARC-10", "type-level-and-ast-slop-gate"),
-            ("WCAG_CONTRAST_FAIL", "UI-04", "ui-and-copy-discipline"),
-            ("BLOCKING_ASK_PLACEMENT", "AGT-01", "cognitive-load-and-attention-governor"),
-            ("CCR_BUDGET_EXCEEDED", "SIM-08", "comment-budget-guard"),
-            ("PY-04", "SEC-05", "paranoid-principal-architect"),
-        ]
-        for rule, expected_cat, expected_skill in sample_rules:
-            resolved = resolve_rule_mapping(rule)
-            self.assertTrue(resolved["mapped"], f"Rule {rule} must be mapped")
-            self.assertEqual(resolved["catalog_id"], expected_cat)
-            self.assertEqual(resolved["skill"], expected_skill)
-
-    def test_unmapped_finding_fallback(self):
-        """Unmapped finding gracefully returns mapped=False and explicit fallback without hallucination."""
-        resolved = resolve_rule_mapping("COMPLETELY_UNKNOWN_CUSTOM_RULE_999")
-        self.assertFalse(resolved["mapped"])
-        self.assertIsNone(resolved["catalog_id"])
-        self.assertIn("Unmapped", resolved["remediation"])
-
-        # With fallback guard supplied
-        resolved_guard = resolve_rule_mapping(
-            "COMPLETELY_UNKNOWN_RULE_IN_DIFF",
-            fallback_guard="diff_guard",
-            fallback_severity="BLOCKER",
-        )
-        self.assertFalse(resolved_guard["mapped"])
-        self.assertIsNone(resolved_guard["catalog_id"])
-        self.assertEqual(resolved_guard["skill"], "anti-slop-engineering")
-        self.assertEqual(resolved_guard["severity"], "BLOCKER")
-
-    def test_explain_rule_function(self):
-        """explain_rule produces diagnostic dossier with catalog and skill details."""
-        explained = explain_rule("SRE-KISS-FUNC-LEN")
-        self.assertTrue(explained["mapped"])
-        self.assertEqual(explained["engine_code"], "SRE-KISS-FUNC-LEN")
-        self.assertEqual(explained["catalog_id"], "SRE-01")
-        self.assertEqual(explained["skill"], "anti-slop-engineering")
-        self.assertIn("Decompose", explained["remediation"])
-        self.assertTrue(len(explained["catalog_entry"]) > 0)
-
-    def test_audit_runner_normalize_finding_enriches_catalog_and_skill(self):
-        """audit_runner normalize_finding enriches findings with catalog_id, skill, and skill_path."""
-        import audit_runner
-        raw_finding = {
-            "rule": "KISS_FUNCTION_BLOAT",
-            "file": "src/utils.ts",
-            "line": 15,
-            "snippet": "function big() { ... }",
+    def test_engine_id_calibration_preserves_raw_rule_and_catalog(self):
+        expected = {
+            "ERROR_SWALLOW_CANDIDATE": "OPS-01",
+            "SCALE_TOIL_ERROR_SWALLOW": "OPS-01",
+            "STS-H02": "OPS-01",
+            "SRE-SCALE-SWALLOW": "OPS-01",
+            "KISS_DEEP_NESTING": "SRE-01",
         }
-        normalized = audit_runner.normalize_finding("sre_guard", raw_finding, {})
-        self.assertEqual(normalized["rule"], "KISS_FUNCTION_BLOAT")
-        self.assertEqual(normalized["catalog_id"], "SRE-01")
-        self.assertEqual(normalized["skill"], "anti-slop-engineering")
-        self.assertEqual(normalized["skill_path"], "skills/anti-slop-engineering/SKILL.md")
-        self.assertTrue(normalized["mapped"])
+        for raw, target in expected.items():
+            with self.subTest(raw=raw):
+                result = rule_registry.lookup(raw)
+                self.assertEqual(result["engine_code"], raw)
+                self.assertEqual(result["catalog_id"], target)
+                self.assertTrue((ROOT / result["skill_path"]).is_file())
 
-    def test_cli_explain_command(self):
-        """audit_runner explain CLI command outputs structured JSON and text."""
-        script = str(SCRIPTS_DIR / "audit_runner.py")
-        res = subprocess.run([sys.executable, script, "explain", "SRE-KISS-FUNC-LEN", "--json"], capture_output=True, text=True)
-        self.assertEqual(res.returncode, 0)
-        data = json.loads(res.stdout)
-        self.assertEqual(data["catalog_id"], "SRE-01")
-        self.assertEqual(data["skill"], "anti-slop-engineering")
+    def test_all_catalog_ids_can_be_explained_and_copies_match(self):
+        path = ROOT / "references" / "anti-pattern-catalog.md"
+        mirror = ROOT / "skills" / "anti-slop-engineering" / "references" / path.name
+        self.assertEqual(path.read_bytes(), mirror.read_bytes())
+        entries = list(rule_registry.iter_catalog())
+        self.assertEqual(len(entries), 217)
+        for entry in entries:
+            explained = rule_registry.lookup(entry["catalog_id"])
+            self.assertTrue(explained["found"])
+            self.assertEqual(explained["remediation"], entry["remediation"])
+            self.assertTrue((ROOT / explained["evidence_rubric"]).is_file())
+        self.assertEqual(rule_registry.lookup("con-12")["related_rules"], [])
+        self.assertFalse(rule_registry.lookup("CON-12")["mapped"])
+        self.assertFalse(rule_registry.lookup("NO-SUCH-99")["found"])
 
-        res_text = subprocess.run([sys.executable, script, "explain", "CHAINED_TYPE_ASSERTION"], capture_output=True, text=True)
-        self.assertEqual(res_text.returncode, 0)
-        self.assertIn("Catalog ID:", res_text.stdout)
-        self.assertIn("Skill:", res_text.stdout)
+    def test_catalog_rejects_malformed_and_duplicate_entries(self):
+        valid = "- **OPS-01 | Empty catch.** Surface the failure.\n"
+        for text in (valid + valid, "- **OPS-01 | broken entry\n"):
+            with tempfile.TemporaryDirectory() as directory:
+                path = Path(directory) / "catalog.md"
+                path.write_text(text, encoding="utf-8")
+                with self.assertRaises(ValueError):
+                    list(rule_registry.iter_catalog(path))
+
+    def test_catalog_exact_query_can_stop_at_matching_entry(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "catalog.md"
+            path.write_text(
+                "- **OPS-01 | Empty catch.** Surface the failure.\n- **OPS-02 | incomplete\n",
+                encoding="utf-8",
+            )
+            self.assertEqual(rule_registry.lookup("ops-01", path)["catalog_id"], "OPS-01")
+
+    def test_cli_invalid_and_missing_queries_have_distinct_status(self):
+        script = [sys.executable, str(ROOT / "scripts" / "rule_registry.py")]
+        known = subprocess.run([*script, "OPS-01", "--json"], capture_output=True, text=True)
+        self.assertEqual(known.returncode, 0, known.stderr)
+        self.assertIn("STS-H02", {r["engine_code"] for r in json.loads(known.stdout)["related_rules"]})
+        missing = subprocess.run([*script, "NO-SUCH-99", "--json"], capture_output=True, text=True)
+        self.assertEqual(missing.returncode, 1, missing.stderr)
+        self.assertFalse(json.loads(missing.stdout)["found"])
+        invalid = subprocess.run([*script, "--search", "  "], capture_output=True, text=True)
+        self.assertEqual(invalid.returncode, 2)
+        self.assertEqual(invalid.stdout, "")
+
+    def test_no_automatic_coverage_without_fixture_observation(self):
+        report = rule_registry.build_coverage({})
+        self.assertEqual(report["total_patterns"], 217)
+        self.assertEqual(report["counts"]["automatic"], 0)
+        self.assertEqual(report["counts"]["manual-review"], 217)
+
+    def test_report_requires_positive_and_negative_evidence(self):
+        fixture = {"diff_guard:ERROR_SWALLOW_CANDIDATE": {"tp": 1, "fp": 0, "tn": 1, "fn": 0}}
+        report = rule_registry.build_coverage(fixture)
+        self.assertEqual(report["counts"]["automatic"], 1)
+        self.assertEqual(report["patterns"]["OPS-01"]["status"], "automatic")
+        self.assertEqual(report["patterns"]["OPS-01"]["fixtures"], fixture)
+        fixture["diff_guard:ERROR_SWALLOW_CANDIDATE"]["tn"] = 0
+        self.assertEqual(rule_registry.build_coverage(fixture)["counts"]["automatic"], 0)
+
+    def test_duplicate_rules_or_dangling_catalog_mappings_fail_validation(self):
+        entry = rule_registry.Rule("engine", "REUSED", "OPS-01")
+        with self.assertRaisesRegex(ValueError, "Duplicate"):
+            rule_registry.validate_registry((entry, entry))
+        dangling = rule_registry.Rule("engine", "DANGLING", "NO-SUCH")
+        with self.assertRaisesRegex(ValueError, "catalog"):
+            rule_registry.validate_registry((dangling,))
+        unknown_skill = rule_registry.Rule("engine", "UNKNOWN", "OPS-01", "unavailable")
+        with self.assertRaisesRegex(ValueError, "skill"):
+            rule_registry.validate_registry((unknown_skill,))
+        rule_registry.validate_registry(rule_registry.RULES)
+
+    def test_report_does_not_infer_precision_from_only_positive_cases(self):
+        fixture = {"diff_guard:ERROR_SWALLOW_CANDIDATE": {"tp": 1, "fp": 0, "tn": 0, "fn": 0}}
+        report = rule_registry.build_coverage(fixture)
+        self.assertIsNone(report["fixture_precision"]["diff_guard:ERROR_SWALLOW_CANDIDATE"])
+
+    def test_engine_output_preserves_severity_and_explicit_unmapped_fields(self):
+        from scripts import audit_runner
+
+        mapped = audit_runner.normalize_finding(
+            "sre_guard", {"id": "KISS_DEEP_NESTING", "severity": "review", "message": "dense"}, {}
+        )
+        unmapped = audit_runner.normalize_finding(
+            "sre_guard", {"id": "UNVERIFIED_CODE", "severity": "review", "message": "unmapped"}, {}
+        )
+        self.assertEqual(mapped["rule"], "KISS_DEEP_NESTING")
+        self.assertEqual(mapped["severity"], unmapped["severity"])
+        self.assertTrue(mapped["mapped"])
+        self.assertFalse(unmapped["mapped"])
+        self.assertIsNone(unmapped["catalog_id"])
+        self.assertIsNone(unmapped["skill_path"])
+
+    def test_text_includes_evidence_and_remediation(self):
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            self.assertEqual(rule_registry.explain_cli(["STS-H02"]), 0)
+        for value in ("OPS-01", "STS-H02", "engineering-judgment.md", "Failures swallowed"):
+            self.assertIn(value, output.getvalue())
 
 
 if __name__ == "__main__":
