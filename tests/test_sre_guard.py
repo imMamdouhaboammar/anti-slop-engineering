@@ -2,6 +2,7 @@
 # Copyright (c) 2026 Mamdouh Aboammar <mamdouhfces1997@gmail.com> and contributors
 """Behavioral tests for the Google SRE Guard."""
 import json
+import os
 import pathlib
 import subprocess
 import sys
@@ -186,6 +187,88 @@ class SreGuardTests(unittest.TestCase):
         res, report = self.run_sre('--base', 'HEAD', '--json')
         finding_ids = [f['id'] for f in report['findings']]
         self.assertIn('SCALE_MISLEADING_HEALTH_CHECK', finding_ids)
+
+    def test_git_diff_marks_findings_for_quoted_and_spaced_paths(self):
+        git(self.repo, 'config', 'diff.noprefix', 'true')
+        sources = ['src/café.py', 'src/wait for job.py', 'src/job\tname.py']
+        for name in sources:
+            (self.repo / name).write_text('import time\ntime.sleep(1)\n', encoding='utf-8')
+        git(self.repo, 'add', '--', *sources)
+        git(self.repo, 'commit', '-qm', 'existing callers')
+
+        for name in sources:
+            (self.repo / name).write_text(
+                'import time\ntime.sleep(1)\nready = True\ntime.sleep(2)\n', encoding='utf-8'
+            )
+
+        res, report = self.run_sre('--base', 'HEAD', '--json')
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertEqual(report['summary']['scanned_files'], 3)
+        self.assertEqual(
+            {(f['file'], f['line'], f['in_active_diff']) for f in report['findings']
+             if f['id'] == 'SCALE_SLEEP_BAND_AID'},
+            {(name, line, active) for name in sources for line, active in [(2, False), (4, True)]},
+        )
+
+    def test_git_diff_preserves_rename_and_deletion_line_attribution(self):
+        files = {
+            'src/previous.py': 'import time\n' + ''.join(f'entry_{i} = {i}\n' for i in range(12)),
+            'src/removal.py': 'import time\nobsolete = None\ntime.sleep(3)\n',
+            'src/metadata.py': 'import time\ntime.sleep(4)\n',
+        }
+        for name, source in files.items():
+            (self.repo / name).write_text(source, encoding='utf-8')
+        git(self.repo, 'add', '--', *files)
+        git(self.repo, 'commit', '-qm', 'tracked inputs')
+        git(self.repo, 'mv', 'src/previous.py', 'src/renamed task.py')
+        (self.repo / 'src/renamed task.py').write_text(
+            files['src/previous.py'] + 'time.sleep(2)\n', encoding='utf-8'
+        )
+        (self.repo / 'src/removal.py').write_text('import time\ntime.sleep(3)\n', encoding='utf-8')
+        git(self.repo, 'update-index', '--chmod=+x', 'src/metadata.py')
+        (self.repo / 'src/metadata.py').chmod(0o755)
+
+        res, report = self.run_sre('--base', 'HEAD', '--json')
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertEqual(
+            {(f['file'], f['line'], f['in_active_diff']) for f in report['findings']
+             if f['id'] == 'SCALE_SLEEP_BAND_AID'},
+            {('src/metadata.py', 2, False), ('src/removal.py', 2, False), ('src/renamed task.py', 14, True)},
+        )
+
+    def test_git_diff_does_not_mark_unchanged_lines_between_hunks(self):
+        git(self.repo, 'config', 'diff.interHunkContext', '2')
+        source = self.repo / 'src/worker.py'
+        source.write_text('import time\nfirst = 1\ntime.sleep(2)\nlast = 3\n', encoding='utf-8')
+        git(self.repo, 'add', 'src/worker.py')
+        git(self.repo, 'commit', '-qm', 'with existing delay')
+        source.write_text('import time\nfirst = 2\ntime.sleep(2)\nlast = 4\n', encoding='utf-8')
+
+        res, report = self.run_sre('--base', 'HEAD', '--json')
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertEqual(
+            [(f['line'], f['in_active_diff']) for f in report['findings'] if f['id'] == 'SCALE_SLEEP_BAND_AID'],
+            [(3, False)],
+        )
+
+    def test_git_diff_reports_unreadable_path_encoding_and_checks_other_files(self):
+        if sys.platform != 'linux':
+            self.skipTest('Requires a Linux filesystem with byte-encoded filenames')
+        undecodable = os.fsdecode(b'src/legacy-\xff.py')
+        sources = ['src/worker.py', undecodable]
+        for name in sources:
+            (self.repo / name).write_text('import time\ntime.sleep(2)\n', encoding='utf-8')
+        git(self.repo, 'add', '--', *sources)
+
+        res, report = self.run_sre('--base', 'HEAD', '--json')
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertIn('skipping non-UTF-8 Git path', res.stderr)
+        self.assertEqual(report['summary']['scanned_files'], 1)
+        self.assertEqual(
+            [(f['file'], f['line'], f['in_active_diff']) for f in report['findings']
+             if f['id'] == 'SCALE_SLEEP_BAND_AID'],
+            [('src/worker.py', 2, True)],
+        )
 
     def test_scan_paths_direct(self):
         file_path = self.repo / 'src' / 'direct.py'

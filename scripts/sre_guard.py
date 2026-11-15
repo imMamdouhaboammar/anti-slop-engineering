@@ -13,6 +13,7 @@ Enforces Google SRE principles in code and Git diffs:
 Zero external dependencies: Python 3.9+ standard library only.
 """
 import argparse
+import codecs
 import collections
 import hashlib
 import json
@@ -113,9 +114,10 @@ SRE_PATTERNS = [
 
 def git_exec(repo, *args):
     """Execute git command in repo directory."""
-    p = subprocess.run(['git', '-C', str(repo), *args], capture_output=True, text=True)
+    p = subprocess.run(['git', '-C', str(repo), *args], capture_output=True)
     if p.returncode != 0:
-        raise RuntimeError(p.stderr.strip() or f"git {' '.join(args)} failed with code {p.returncode}")
+        error = p.stderr.decode('utf-8', 'replace').strip()
+        raise RuntimeError(error or f"git {' '.join(args)} failed with code {p.returncode}")
     return p.stdout
 
 
@@ -379,46 +381,61 @@ def build_sre_summary(file_count, findings, base=None):
     return report
 
 
+def added_lines_by_path(patch):
+    paths = collections.defaultdict(set)
+    destination = None
+    in_header = False
+    for line in patch.split(b'\n'):
+        if line.startswith(b'diff --git '):
+            destination = None
+            in_header = True
+        elif in_header and line.startswith(b'+++ '):
+            target = line[4:].removesuffix(b'\t')
+            if target.startswith(b'"') and target.endswith(b'"'):
+                target = codecs.escape_decode(target[1:-1])[0]
+            if target.startswith(b'b/'):
+                destination = target[2:]
+        elif line.startswith(b'@@ '):
+            in_header = False
+            match = re.match(rb'@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@', line)
+            if destination is not None and match:
+                start = int(match[1])
+                count = int(match[2]) if match[2] is not None else 1
+                paths[destination].update(range(start, start + count))
+    return paths
+
+
 def scan_git_diff(repo, base='HEAD', max_nesting=4, min_dup_lines=4, max_function_lines=80):
     """Analyze Git diff against base commit for SRE violations."""
     git_exec(repo, 'rev-parse', '--verify', f'{base}^{{commit}}')
-
-    diff_stat = git_exec(repo, 'diff', '--no-ext-diff', '--name-only', base, '--').splitlines()
-    changed_files = [f for f in diff_stat if any(f.endswith(ext) for ext in CODE_EXTENSIONS)]
+    records = git_exec(repo, 'diff', '--no-ext-diff', '--name-only', '-z', base, '--').split(b'\0')
+    extensions = tuple(ext.encode() for ext in CODE_EXTENSIONS)
 
     file_contents = {}
-    for f in changed_files:
-        full_path = pathlib.Path(repo) / f
-        if full_path.is_file() and not GENERATED_PATH_RE.search(f):
+    for name in records:
+        if not name.endswith(extensions):
+            continue
+        try:
+            path = name.decode('utf-8')
+        except UnicodeDecodeError:
+            print(f"[sre-guard] Warning: skipping non-UTF-8 Git path {name!r}", file=sys.stderr)
+            continue
+        full_path = pathlib.Path(repo) / path
+        if full_path.is_file() and not GENERATED_PATH_RE.search(path):
             content = safe_read_file(full_path)
             if content is not None:
-                file_contents[f] = content
+                file_contents[path] = content
 
     findings = scan_contents_map(file_contents, max_nesting, min_dup_lines, max_function_lines)
-
-    # Parse diff patch to filter findings to changed/added lines
-    patch = git_exec(repo, 'diff', '--no-ext-diff', '--unified=0', base, '--')
-    diff_added_lines = collections.defaultdict(set)
-    current_file = None
-
-    for line in patch.splitlines():
-        if line.startswith('+++ b/'):
-            current_file = line[6:]
-        elif line.startswith('@@') and current_file:
-            m = re.search(r'\+(\d+)(?:,(\d+))?', line)
-            if m:
-                start = int(m.group(1))
-                count = int(m.group(2)) if m.group(2) else 1
-                for l in range(start, start + count):
-                    diff_added_lines[current_file].add(l)
-
-    for f in findings:
-        file_path = f.get('file')
-        line_num = f.get('line')
-        if file_path and line_num and file_path in diff_added_lines:
-            f['in_active_diff'] = line_num in diff_added_lines[file_path]
-        else:
-            f['in_active_diff'] = False
+    patch = git_exec(
+        repo, 'diff', '--no-ext-diff', '--no-textconv', '--no-color', '--src-prefix=a/', '--dst-prefix=b/',
+        '--unified=0', '--inter-hunk-context=0', base, '--',
+    )
+    changed_lines = added_lines_by_path(patch)
+    for finding in findings:
+        file_path = finding.get('file')
+        line = finding.get('line')
+        finding['in_active_diff'] = bool(file_path and line and line in changed_lines.get(file_path.encode(), ()))
 
     return build_sre_summary(len(file_contents), findings, base=base)
 
