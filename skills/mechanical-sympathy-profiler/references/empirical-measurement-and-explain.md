@@ -37,32 +37,50 @@ export function runAllocationBenchmark(
   warmupIterations = 100,
   sampleIterations = 500
 ): BenchmarkMetrics {
+  if (typeof (globalThis as { gc?: () => void }).gc === 'function') {
+    (globalThis as { gc?: () => void }).gc?.();
+  }
+
   for (let i = 0; i < warmupIterations; i++) {
     fn();
   }
 
+  if (typeof (globalThis as { gc?: () => void }).gc === 'function') {
+    (globalThis as { gc?: () => void }).gc?.();
+  }
+
   const samplesMs = new Float64Array(sampleIterations);
-  const heapBefore = process.memoryUsage().heapUsed;
+  let totalAllocatedBytes = 0;
+  let allocEventCount = 0;
+  let prevHeap = process.memoryUsage().heapUsed;
 
   for (let i = 0; i < sampleIterations; i++) {
     const startNs = Bun.nanoseconds();
     fn();
     const elapsedNs = Bun.nanoseconds() - startNs;
     samplesMs[i] = elapsedNs / 1_000_000;
+
+    const currentHeap = process.memoryUsage().heapUsed;
+    if (currentHeap > prevHeap) {
+      totalAllocatedBytes += (currentHeap - prevHeap);
+      allocEventCount++;
+    }
+    prevHeap = currentHeap;
   }
 
-  const heapAfter = process.memoryUsage().heapUsed;
   samplesMs.sort();
 
   const p50Index = Math.floor(sampleIterations * 0.5);
   const p99Index = Math.floor(sampleIterations * 0.99);
-  const netBytes = Math.max(0, heapAfter - heapBefore);
+  const allocBytesPerOp = allocEventCount > 0
+    ? Math.round(totalAllocatedBytes / allocEventCount)
+    : 0;
 
   return {
     iterations: sampleIterations,
     p50Ms: Number(samplesMs[p50Index].toFixed(4)),
     p99Ms: Number(samplesMs[p99Index].toFixed(4)),
-    allocBytesPerOp: Math.round(netBytes / sampleIterations),
+    allocBytesPerOp,
   };
 }
 ```

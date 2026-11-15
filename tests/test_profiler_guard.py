@@ -2,6 +2,7 @@
 # Unit tests for scripts/profiler_guard.py
 
 import json
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -121,6 +122,41 @@ class ProfilerGuardTests(unittest.TestCase):
             self.assertEqual(payload["record_status"], "complete")
         finally:
             tmp_path.unlink(missing_ok=True)
+
+    def test_batched_streaming_benchmark_allocations_handles_gc(self):
+        clean_ts = TS_EXAMPLE.read_text(encoding="utf-8")
+        self.assertIn("allocEventCount", clean_ts)
+        self.assertIn("totalAllocatedBytes", clean_ts)
+        self.assertNotIn("Math.max(0, heapEnd - heapStart)", clean_ts)
+
+    def test_benchmark_executes_with_bun_if_available(self):
+        bun = shutil.which("bun")
+        if not bun:
+            self.skipTest("bun not installed")
+        test_script = """
+import { runPercentileAndAllocBenchmark } from './skills/mechanical-sympathy-profiler/examples/batched-streaming-hot-path.ts';
+let allocations = 0;
+let heap = 1000;
+const res = runPercentileAndAllocBenchmark(
+  () => { allocations++; },
+  () => 1000,
+  () => {
+    if (allocations % 20 === 0) {
+      heap = 500;
+    } else {
+      heap += 100;
+    }
+    return heap;
+  },
+  10,
+  50
+);
+if (res.allocBytesPerOp <= 0) {
+  throw new Error('Expected positive allocBytesPerOp despite GC');
+}
+"""
+        proc = subprocess.run([bun, "-e", test_script], cwd=str(ROOT), capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
 
 
 if __name__ == "__main__":
