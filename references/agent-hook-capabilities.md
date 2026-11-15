@@ -42,3 +42,14 @@ python3 /path/to/anti-slop/scripts/gemini_hooks.py uninstall --project /path/to/
 ```
 
 [Codex hooks documentation](https://learn.chatgpt.com/docs/hooks) · [Gemini CLI hooks](https://geminicli.com/docs/hooks/reference/) · [Antigravity plugin hooks](https://antigravity.google/docs/build-plugins) · [Cursor hooks](https://cursor.com/docs/hooks) · [OpenCode plugin hooks](https://opencode.ai/docs/build/plugins/server)
+
+## Preview from setup
+
+From a durable POSIX checkout, run either preview from the project directory.
+
+```sh
+node /path/to/anti-slop/bin/cli.js setup --agent=codex --codex-hooks --dry-run --json
+node /path/to/anti-slop/bin/cli.js setup --agent=gemini --gemini-hooks --dry-run --json
+```
+
+The preview reports the project settings path, supported tool, and host trust requirement. Use the standalone adapter to apply or remove the hooks.
