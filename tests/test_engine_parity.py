@@ -240,6 +240,31 @@ class EngineParityContractTests(unittest.TestCase):
             self.assertEqual(ga_data["sli"]["status"], expected["go_status"])
             self.assertTrue(any(f["code"] == expected["go_code"] for f in ga_data["findings"]))
 
+    def _assert_catalog_normalization(self, engine, output, field):
+        for finding in output["findings"]:
+            rule = rule_registry.BY_CODE.get(finding[field])
+            if rule is None:
+                continue
+            normalized = audit_runner.normalize_finding(engine, finding, output)
+            self.assertEqual(normalized["rule"], finding[field])
+            self.assertEqual(normalized["catalog_id"], rule.catalog_id)
+            self.assertTrue((ROOT / normalized["skill_path"]).is_file())
+
+    def _catalog_fixture_codes(self, fixture_name, source, runs):
+        repo, _ = self._create_repo({"worker.py": "def baseline():\n    return None\n"})
+        (repo / "worker.py").write_text(source, encoding="utf-8")
+        codes = {}
+        for engine, (run, field) in runs.items():
+            proc = run(repo)
+            with self.subTest(fixture=fixture_name, engine=engine):
+                self.assertIn(proc.returncode, (0, 1, 2), proc.stderr)
+                output = json.loads(proc.stdout)
+                self.assertIsInstance(output["findings"], list)
+                codes[fixture_name, engine] = {finding[field] for finding in output["findings"]}
+                if engine in {"diff_guard", "sre_guard"}:
+                    self._assert_catalog_normalization(engine, output, field)
+        return codes
+
     def test_catalog_detector_fixture_receipt(self):
         cases = {
             "swallow_bad": "def work(job):\n    try:\n        job.run()\n    except Exception: pass\n",
@@ -276,23 +301,7 @@ class EngineParityContractTests(unittest.TestCase):
 
         outputs = {}
         for fixture_name, source in cases.items():
-            repo, _ = self._create_repo({"worker.py": "def baseline():\n    return None\n"})
-            (repo / "worker.py").write_text(source, encoding="utf-8")
-            for engine, (run, field) in runs.items():
-                proc = run(repo)
-                with self.subTest(fixture=fixture_name, engine=engine):
-                    self.assertIn(proc.returncode, (0, 1, 2), proc.stderr)
-                    output = json.loads(proc.stdout)
-                    self.assertIsInstance(output["findings"], list)
-                    outputs[fixture_name, engine] = {finding[field] for finding in output["findings"]}
-                    if engine in {"diff_guard", "sre_guard"}:
-                        for finding in output["findings"]:
-                            if finding[field] not in rule_registry.BY_CODE:
-                                continue
-                            normalized = audit_runner.normalize_finding(engine, finding, output)
-                            self.assertEqual(normalized["rule"], finding[field])
-                            self.assertEqual(normalized["catalog_id"], rule_registry.BY_CODE[finding[field]].catalog_id)
-                            self.assertTrue((ROOT / normalized["skill_path"]).is_file())
+            outputs.update(self._catalog_fixture_codes(fixture_name, source, runs))
 
         fixtures = {
             "OPS-01": ("swallow_bad", "swallow_handled"),
