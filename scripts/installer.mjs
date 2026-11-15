@@ -15,10 +15,16 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const rootDir = path.resolve(__dirname, '..')
 
-const pkgPath = path.join(rootDir, 'package.json')
-export const VERSION = fs.existsSync(pkgPath)
-  ? JSON.parse(fs.readFileSync(pkgPath, 'utf8')).version
-  : '1.6.0'
+function readPackageVersion() {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(rootDir, 'package.json'), 'utf8')).version
+  } catch (error) {
+    if (error.code === 'ENOENT') return '1.6.0'
+    throw error
+  }
+}
+
+export const VERSION = readPackageVersion()
 
 export const CORE_SKILL = 'anti-slop-engineering'
 
@@ -631,30 +637,27 @@ Options:
   let resolvedScope = scopeArg
 
   const promptOutput = selectionOnly ? process.stderr : process.stdout
-  const ttyPath = process.env.ANTI_SLOP_TTY_PATH || '/dev/tty'
-  let ttyFd = null
-  let ttyStream = null
-  let interactiveInput = process.stdin.isTTY ? process.stdin : null
-
-  if (!interactiveInput && !dryRun && !jsonMode && !process.env.CI && !args.includes('--no-interactive')
-      && skillsArg == null && promptOutput.isTTY && process.platform !== 'win32') {
+  const canPrompt = !dryRun && !jsonMode && !process.env.CI && !args.includes('--no-interactive')
+    && skillsArg == null && promptOutput.isTTY
+  let terminalInput
+  if (canPrompt && !process.stdin.isTTY && process.platform !== 'win32') {
+    const ttyPath = process.env.ANTI_SLOP_TTY_PATH || '/dev/tty'
+    let fd
     try {
-      const fd = fs.openSync(ttyPath, 'r')
+      fd = fs.openSync(ttyPath, 'r')
       if (tty.isatty(fd)) {
-        ttyFd = fd
-        ttyStream = new tty.ReadStream(fd)
-        interactiveInput = ttyStream
-      } else {
-        fs.closeSync(fd)
+        terminalInput = new tty.ReadStream(fd)
+        fd = undefined
       }
-    } catch {
-      interactiveInput = null
-      ttyStream = null
-      ttyFd = null
+    } catch (error) {
+      if (!['EACCES', 'ENXIO', 'ENODEV', 'ENOENT', 'ENOTTY'].includes(error.code)) throw error
+    } finally {
+      if (fd !== undefined) fs.closeSync(fd)
     }
   }
 
-  const interactive = interactiveInput != null && promptOutput.isTTY
+  const interactiveInput = canPrompt && (terminalInput || (process.stdin.isTTY && process.stdin))
+  const interactive = Boolean(interactiveInput)
   if (interactive) {
     try {
       const response = await promptForSkills(listAvailableModules(), targets, interactiveInput, promptOutput,
@@ -668,16 +671,7 @@ Options:
       resolvedScope = response.scope
       selectedAgents = response.agents
     } finally {
-      if (ttyStream != null) {
-        try {
-          ttyStream.destroy()
-        } catch {}
-      }
-      if (ttyFd != null) {
-        try {
-          fs.closeSync(ttyFd)
-        } catch {}
-      }
+      terminalInput?.destroy()
     }
   }
 
@@ -725,9 +719,9 @@ Options:
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
   runInstallerCLI().then((code) => {
-    process.exit(code ?? 0)
+    process.exitCode = code ?? 0
   }).catch((err) => {
     console.error(`Installer error: ${err.message}`)
-    process.exit(1)
+    process.exitCode = 1
   })
 }

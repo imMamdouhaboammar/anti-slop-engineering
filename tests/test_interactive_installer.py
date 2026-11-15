@@ -129,6 +129,26 @@ class InteractiveInstallerTests(unittest.TestCase):
         self.assertTrue((self.project / ".agents/skills/anti-slop-engineering/SKILL.md").exists())
         self.assertFalse((self.project / ".codex").exists())
 
+    def test_explicit_selection_does_not_prompt_when_stdin_is_terminal(self):
+        import json
+        import pty
+
+        master, slave = pty.openpty()
+        try:
+            proc = subprocess.run(
+                [shutil.which("node"), str(REPO / "scripts/installer.mjs"), "--selection-only",
+                 "--agent=codex", "--skills=decision-guard"],
+                stdin=slave, stdout=subprocess.PIPE, stderr=slave, cwd=self.project,
+                env={**os.environ, "HOME": str(self.project), "CI": "", "NO_COLOR": "1"},
+                timeout=5,
+            )
+            self.assertEqual(proc.returncode, 0)
+            self.assertEqual(json.loads(proc.stdout)["skills"], ["anti-slop-engineering", "decision-guard"])
+            self.assertFalse((self.project / ".codex").exists())
+        finally:
+            os.close(slave)
+            os.close(master)
+
     def test_piped_stdin_selection_only_reads_from_tty(self):
         import fcntl
         import json
