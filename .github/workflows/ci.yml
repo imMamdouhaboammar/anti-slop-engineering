@@ -210,9 +210,17 @@ jobs:
       - name: Native vs Python fallback differential contract tests
         env:
           REQUIRE_NATIVE_PARITY: "1"
+          CATALOG_OBSERVATIONS_OUT: catalog-observations.json
         run: |
           cargo build --manifest-path services/anti-slop-rust/Cargo.toml --locked
-          python3 -m unittest tests/test_engine_parity.py -v
+          python3 -m unittest discover -s tests -p test_engine_parity.py -v
+          python3 scripts/rule_registry.py coverage --observations catalog-observations.json --output catalog-coverage.json
+      - name: Upload catalog fixture coverage
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: catalog-coverage
+          path: catalog-coverage.json
+          if-no-files-found: error
       - name: Native CLI failure contracts
         run: |
           if cargo run --manifest-path services/anti-slop-rust/Cargo.toml --locked -- ladder-audit does-not-exist.rs; then exit 1; fi

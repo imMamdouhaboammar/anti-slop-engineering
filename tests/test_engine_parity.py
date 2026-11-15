@@ -12,6 +12,8 @@ import sys
 import tempfile
 import unittest
 
+from scripts import audit_runner, rule_registry
+
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 FIXTURES_DIR = ROOT / "tests" / "fixtures" / "engine-parity"
 DIFF_GUARD = ROOT / "scripts" / "diff_guard.py"
@@ -237,6 +239,66 @@ class EngineParityContractTests(unittest.TestCase):
             ga_data = json.loads(ga.stdout)
             self.assertEqual(ga_data["sli"]["status"], expected["go_status"])
             self.assertTrue(any(f["code"] == expected["go_code"] for f in ga_data["findings"]))
+
+    def test_catalog_detector_fixture_receipt(self):
+        cases = {
+            "swallow_bad": "def work(job):\n    try:\n        job.run()\n    except Exception: pass\n",
+            "swallow_handled": "def work(job):\n    try:\n        job.run()\n    except Exception as error:\n        raise RuntimeError('job failed') from error\n",
+            "nested_bad": "def choose(x):\n    if x > 0:\n        if x < 100:\n            if x % 2 == 0:\n                if x != 4:\n                    return x\n    return 0\n",
+            "nested_clear": "def choose(x):\n    if x <= 0 or x >= 100:\n        return 0\n    return x if x % 2 == 0 and x != 4 else 0\n",
+        }
+        runs = {
+            "diff_guard": (self._run_diff_guard, "id"),
+            "sre_guard": (self._run_sre_guard, "id"),
+        }
+        if self.rust_bin or self.require_native:
+            runs["rust"] = (self._run_rust_triage, "code")
+        if self.go_bin or self.require_native:
+            runs["go"] = (self._run_go_audit, "code")
+
+        if os.environ.get("CATALOG_OBSERVATIONS_OUT") and not self.require_native:
+            self.fail("A catalog coverage receipt requires REQUIRE_NATIVE_PARITY=1")
+
+        outputs = {}
+        for fixture_name, source in cases.items():
+            repo, _ = self._create_repo({"worker.py": "def baseline():\n    return None\n"})
+            (repo / "worker.py").write_text(source, encoding="utf-8")
+            for engine, (run, field) in runs.items():
+                proc = run(repo)
+                with self.subTest(fixture=fixture_name, engine=engine):
+                    self.assertIn(proc.returncode, (0, 1, 2), proc.stderr)
+                    output = json.loads(proc.stdout)
+                    self.assertIsInstance(output["findings"], list)
+                    outputs[fixture_name, engine] = {finding[field] for finding in output["findings"]}
+                    if engine in {"diff_guard", "sre_guard"}:
+                        for finding in output["findings"]:
+                            if finding[field] not in rule_registry.BY_CODE:
+                                continue
+                            normalized = audit_runner.normalize_finding(engine, finding, output)
+                            self.assertEqual(normalized["rule"], finding[field])
+                            self.assertEqual(normalized["catalog_id"], rule_registry.BY_CODE[finding[field]].catalog_id)
+                            self.assertTrue((ROOT / normalized["skill_path"]).is_file())
+
+        observations = {}
+        for rule in rule_registry.RULES:
+            if rule.engine not in runs:
+                continue
+            with self.subTest(detector=rule.evidence_key):
+                positive, negative = (
+                    ("swallow_bad", "swallow_handled") if rule.catalog_id == "OPS-01"
+                    else ("nested_bad", "nested_clear")
+                )
+                hit = rule.engine_code in outputs[positive, rule.engine]
+                false_alarm = rule.engine_code in outputs[negative, rule.engine]
+                self.assertTrue(hit, f"{rule.evidence_key} stopped detecting its positive fixture")
+                self.assertFalse(false_alarm, f"{rule.evidence_key} flags its negative fixture")
+                observations[rule.evidence_key] = {
+                    "tp": int(hit), "fn": int(not hit), "fp": int(false_alarm), "tn": int(not false_alarm),
+                }
+
+        receipt = os.environ.get("CATALOG_OBSERVATIONS_OUT")
+        if receipt:
+            pathlib.Path(receipt).write_text(json.dumps(observations, indent=2) + "\n", encoding="utf-8")
 
     def test_invalid_git_ref_rejected_by_all_engines(self):
         repo_dir, _ = self._create_repo()
