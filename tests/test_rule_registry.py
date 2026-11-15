@@ -49,6 +49,14 @@ class RuleRegistryTests(unittest.TestCase):
                 self.assertEqual(detector["source"], source)
                 self.assertIn(raw, (ROOT / source).read_text(encoding="utf-8"))
 
+    def test_health_calibration_reports_false_positive(self):
+        detector = "sre_guard:SCALE_MISLEADING_HEALTH_CHECK"
+        receipt = {detector: {"tp": 1, "fp": 1, "tn": 1, "fn": 0}}
+        report = rule_registry.build_coverage(receipt)
+        self.assertEqual(report["fixture_precision"][detector], 0.5)
+        self.assertEqual(report["patterns"]["SRE-12"]["fixtures"], receipt)
+        self.assertEqual(report["detectors"][detector]["source"], rule_registry.SRE_SOURCE)
+
     def test_all_catalog_ids_can_be_explained_and_copies_match(self):
         path = ROOT / "references" / "anti-pattern-catalog.md"
         mirror = ROOT / "skills" / "anti-slop-engineering" / "references" / path.name
