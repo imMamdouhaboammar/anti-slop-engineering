@@ -497,4 +497,65 @@ mod review_regression_tests {
             1
         );
     }
+
+    #[test]
+    fn prefix_collision_does_not_permit_unauthorized_files() {
+        let diff = "diff --git a/src/auth_bypass.rs b/src/auth_bypass.rs\n--- a/src/auth_bypass.rs\n+++ b/src/auth_bypass.rs\n@@ -1 +1,2 @@\n let a = 1;\n+let b = 2;\n";
+        let findings = ShitInterceptor::new().audit_diff(diff, Some(&["src/auth"]), false);
+        assert!(findings
+            .iter()
+            .any(|f| f.code == "STS-S01" && f.file == "src/auth_bypass.rs"));
+    }
+
+    #[test]
+    fn path_traversal_is_normalized_and_blocked() {
+        let diff = "diff --git a/src/auth/../../.github/workflows/ci.yml b/src/auth/../../.github/workflows/ci.yml\n--- a/src/auth/../../.github/workflows/ci.yml\n+++ b/src/auth/../../.github/workflows/ci.yml\n@@ -1 +1,2 @@\n name: CI\n+run: echo pwned\n";
+        let findings = ShitInterceptor::new().audit_diff(diff, Some(&["src/auth"]), false);
+        assert!(findings
+            .iter()
+            .any(|f| f.code == "STS-S01" && f.file == "src/auth/../../.github/workflows/ci.yml"));
+    }
+
+    #[test]
+    fn component_boundary_permits_valid_subpath() {
+        let diff = "diff --git a/src/auth/login.rs b/src/auth/login.rs\n--- a/src/auth/login.rs\n+++ b/src/auth/login.rs\n@@ -1 +1,2 @@\n let a = 1;\n+let b = 2;\n";
+        let findings = ShitInterceptor::new().audit_diff(diff, Some(&["src/auth"]), false);
+        assert!(!findings.iter().any(|f| f.code == "STS-S01"));
+    }
+
+    #[test]
+    fn scope_policy_rejects_untrusted_path_components() {
+        for path in [
+            "src/tmp/../auth/a.rs",
+            "src/auth/./a.rs",
+            "/src/auth/a.rs",
+            r"src\auth\a.rs",
+            "C:/src/auth/a.rs",
+        ] {
+            let diff = format!(
+                "diff --git a/{path} b/{path}\n--- a/{path}\n+++ b/{path}\n@@ -0,0 +1 @@\n+line\n"
+            );
+            let findings = ShitInterceptor::new().audit_diff(&diff, Some(&["src/auth/"]), false);
+            assert!(findings.iter().any(|f| f.code == "STS-S01"), "{path:?}");
+        }
+    }
+
+    #[test]
+    fn scope_policy_rejects_unusable_allowlist_entries() {
+        let diff = "diff --git a/src/auth/a.rs b/src/auth/a.rs\n--- a/src/auth/a.rs\n+++ b/src/auth/a.rs\n@@ -0,0 +1 @@\n+line\n";
+        for scope in ["", ".", "/", "/src/auth/", "src/tmp/../auth/", r"src\auth\"] {
+            let findings = ShitInterceptor::new().audit_diff(diff, Some(&[scope]), false);
+            assert!(findings.iter().any(|f| f.code == "STS-S01"), "{scope:?}");
+        }
+    }
+
+    #[test]
+    fn scope_policy_directory_suffix_requires_a_child_path() {
+        let diff = "diff --git a/src/auth b/src/auth\n--- a/src/auth\n+++ b/src/auth\n@@ -0,0 +1 @@\n+line\n";
+        let interceptor = ShitInterceptor::new();
+        let directory = interceptor.audit_diff(diff, Some(&["src/auth/"]), false);
+        let bare = interceptor.audit_diff(diff, Some(&["src/auth"]), false);
+        assert!(directory.iter().any(|f| f.code == "STS-S01"));
+        assert!(bare.is_empty());
+    }
 }

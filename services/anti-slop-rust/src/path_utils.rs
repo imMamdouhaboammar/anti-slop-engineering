@@ -144,3 +144,17 @@ fn unescape_git_path(quoted: &str) -> Option<String> {
     }
     String::from_utf8(bytes).ok()
 }
+
+pub(crate) fn is_relative_git_path(path: &str) -> bool {
+    let driven = path.as_bytes().get(1) == Some(&b':') && path.as_bytes()[0].is_ascii_alphabetic();
+    !driven && !path.contains('\0') && path.split('/').all(|part| !matches!(part, "" | "." | ".."))
+}
+
+pub(crate) fn scope_matches(path: &str, scope: &str) -> bool {
+    let prefix = scope.strip_suffix('/').unwrap_or(scope);
+    is_relative_git_path(prefix)
+        && ((path == prefix && !scope.ends_with('/'))
+            || path
+                .strip_prefix(prefix)
+                .is_some_and(|rest| rest.starts_with('/')))
+}
