@@ -67,6 +67,20 @@ class InstalledAuditTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(result.stdout)["guards"]["tagore_guard"]["skip_type"], "not-selected")
 
+    @unittest.skipUnless(hasattr(os, "mkfifo"), "FIFO fixtures require POSIX support")
+    def test_fifo_manifest_fails_without_waiting_for_a_writer(self):
+        self.manifest.unlink()
+        os.mkfifo(self.manifest)
+        result = subprocess.run(
+            [sys.executable, str(ROOT / "scripts" / "audit_runner.py"), "audit", "--json",
+             "--installed-selection", str(self.manifest)],
+            cwd=self.project, env=self.env, capture_output=True, text=True, timeout=8,
+        )
+        self.assertEqual(result.returncode, 2, result.stderr)
+        report = json.loads(result.stdout)
+        self.assertEqual(report["status"], "ERROR")
+        self.assertEqual(report["guards"]["tagore_guard"]["status"], "PASS")
+
     def test_invalid_selection_fails_with_json_error(self):
         self.manifest.write_text('{"format":1,"skills":["../forensic-hunter"]}', encoding="utf-8")
         result = self.run_audit("--installed-selection", str(self.manifest))

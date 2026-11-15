@@ -17,6 +17,7 @@ import datetime
 import json
 import os
 import re
+import stat
 import subprocess
 import sys
 from pathlib import Path
@@ -918,7 +919,15 @@ def evaluate_guard(
 def read_installed_skills(manifest: Path) -> set[str]:
     if manifest.name != ".anti-slop-selection.json" or manifest.is_symlink():
         raise ValueError("Expected a regular .anti-slop-selection.json installer manifest")
-    state = json.loads(manifest.read_text(encoding="utf-8"))
+    flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_NOFOLLOW", 0)
+    descriptor = os.open(manifest, flags)
+    try:
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            raise ValueError("The installer selection must be a regular file")
+        with open(descriptor, encoding="utf-8", closefd=False) as source:
+            state = json.load(source)
+    finally:
+        os.close(descriptor)
     if (
         not isinstance(state, dict)
         or type(state.get("format")) is not int
