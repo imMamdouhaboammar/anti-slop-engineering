@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 import { readFile } from "node:fs/promises";
+import { request } from "node:https";
 import { join } from "node:path";
 
 const dependencyGroups = ["dependencies", "optionalDependencies", "devDependencies"];
@@ -80,10 +81,101 @@ export function inspectDirectDependency(manifestText, lockText, packageName) {
   return { status: "locked", declared, resolved, release: resolved.split("+", 1)[0].includes("-") ? "prerelease" : "stable" };
 }
 
+
+const npmOrigin = "https://registry.npmjs.org";
+const maxRegistryBytes = 2_000_000;
+const npmNamePart = /^[a-z0-9][a-z0-9._-]*$/;
+
+function validNpmName(name) {
+  if (typeof name !== "string" || name.length > 214) {
+    return false;
+  }
+  if (name.startsWith("@")) {
+    const [scope, leaf, extra] = name.slice(1).split("/");
+    return extra === undefined && leaf !== undefined && npmNamePart.test(scope) && npmNamePart.test(leaf);
+  }
+  return npmNamePart.test(name);
+}
+
+function requestPublicNpm(url, options) {
+  // Node's HTTPS client makes one request, without fetch redirect or proxy discovery.
+  return new Promise((resolve, reject) => {
+    const outbound = request(url, { headers: options.headers, signal: options.signal }, resolve);
+    outbound.on("error", reject);
+    outbound.end();
+  });
+}
+
+async function readBoundedRegistryBody(body) {
+  const chunks = [];
+  let count = 0;
+  for await (const raw of body) {
+    const chunk = Buffer.from(raw);
+    count += chunk.length;
+    if (count > maxRegistryBytes) {
+      return null;
+    }
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks, count).toString("utf8");
+}
+
+function metadataEvidence(data, packageName, evidence) {
+  if (data?.name !== packageName || !data.versions || !data["dist-tags"]) {
+    return { status: "invalid_metadata" };
+  }
+  const selected = data.versions[evidence.resolved];
+  if (selected !== undefined && (selected?.name !== packageName || selected?.version !== evidence.resolved)) {
+    return { status: "invalid_metadata" };
+  }
+  const latest = data["dist-tags"].latest;
+  const latestIsVerified = typeof latest === "string" && releaseVersion(latest) &&
+    data.versions[latest]?.name === packageName && data.versions[latest]?.version === latest;
+  const latestIsStable = latestIsVerified && !latest.split("+", 1)[0].includes("-");
+  return {
+    status: "observed",
+    locked_version: selected ? "listed" : "unlisted",
+    deprecated: selected ? typeof selected.deprecated === "string" && selected.deprecated.length > 0 : null,
+    latest: latestIsVerified ? latest : null,
+    latest_satisfies_declared_range: latestIsStable ? Bun.semver.satisfies(latest, evidence.declared) : null,
+  };
+}
+
+export async function readPublicNpmEvidence(packageName, evidence, transport = requestPublicNpm) {
+  if (!validNpmName(packageName) || evidence.status !== "locked") {
+    return { status: "unsupported" };
+  }
+  const source = npmOrigin + "/" + encodeURIComponent(packageName);
+  const options = {
+    headers: { accept: "application/vnd.npm.install-v1+json" },
+    credentials: "omit", redirect: "error", signal: AbortSignal.timeout(4000),
+  };
+  try {
+    const response = await transport(source, options);
+    const code = response.statusCode ?? response.status;
+    const body = response.statusCode ? response : response.body;
+    if (code !== 200) {
+      if (response.statusCode) {
+        response.destroy();
+      } else {
+        await body?.cancel();
+      }
+      return { source, status: code === 404 ? "package_unlisted" : "unavailable" };
+    }
+    const raw = await readBoundedRegistryBody(body);
+    if (raw === null) {
+      return { source, status: "response_too_large" };
+    }
+    return { source, ...metadataEvidence(JSON.parse(raw), packageName, evidence) };
+  } catch (error) {
+    return { source, status: error instanceof SyntaxError ? "invalid_metadata" : "unavailable" };
+  }
+}
+
 if (import.meta.main) {
-  const [root, packageName] = process.argv.slice(2);
-  if (!root || !packageName) {
-    console.error("Usage: bun bun-lock-evidence.mjs <project-root> <package-name>");
+  const [root, packageName, mode, extra] = process.argv.slice(2);
+  if (!root || !packageName || (mode !== undefined && mode !== "--public-npm") || extra !== undefined) {
+    console.error("Usage: bun bun-lock-evidence.mjs <project-root> <package-name> [--public-npm]");
     process.exitCode = 2;
   } else {
     let evidence;
@@ -94,7 +186,13 @@ if (import.meta.main) {
     } catch {
       evidence = { status: "unreadable" };
     }
-    console.log(JSON.stringify(evidence));
-    process.exitCode = evidence.status === "locked" ? 0 : 1;
+    if (mode === "--public-npm") {
+      const registry = await readPublicNpmEvidence(packageName, evidence);
+      console.log(JSON.stringify({ ...evidence, registry: { ...registry, observed_at: new Date().toISOString() } }));
+      process.exitCode = registry.status === "observed" ? 0 : 2;
+    } else {
+      console.log(JSON.stringify(evidence));
+      process.exitCode = evidence.status === "locked" ? 0 : 1;
+    }
   }
 }
