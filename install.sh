@@ -39,7 +39,6 @@ BASH_DRY_RUN=0
 for argument in "$@"; do
   case "$argument" in
     --dry-run) BASH_DRY_RUN=1 ;;
-    --local|--project) LOCAL_INSTALL=1 ;;
     --json)
       echo "Installer error: use 'anti-slop-engineering install --json' for structured JSON output" >&2
       exit 2 ;;
@@ -53,15 +52,10 @@ done
 # A minimal Bash-only environment still gets the mandatory core.
 SELECTED_MODULES=""
 if command -v node >/dev/null 2>&1 && [ -f "$SOURCE_DIR/scripts/installer.mjs" ]; then
-  SCOPE_FLAG="--scope=global"
-  if [ "$LOCAL_INSTALL" -eq 1 ]; then
-    SCOPE_FLAG="--scope=project"
-  fi
-  set +e
-  setup_selection="$(node "$SOURCE_DIR/scripts/installer.mjs" --selection-only "$SCOPE_FLAG" "$@")"
-  node_status=$?
-  set -e
-  if [ "$node_status" -ne 0 ]; then
+  if setup_selection="$(node "$SOURCE_DIR/scripts/installer.mjs" --selection-only --scope=global "$@")"; then
+    :
+  else
+    node_status=$?
     if [ "$node_status" -eq 130 ]; then
       exit 130
     fi
