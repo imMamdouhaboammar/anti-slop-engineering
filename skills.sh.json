@@ -45,6 +45,7 @@
       "description": "Hardware-level mechanical sympathy, latency profiling, and scientific fault isolation.",
       "skills": [
         "mechanical-sympathy-and-perf-gate",
+        "finops-and-unit-economics-governor",
         "mechanical-sympathy-profiler",
         "scientific-fault-isolation"
       ]
