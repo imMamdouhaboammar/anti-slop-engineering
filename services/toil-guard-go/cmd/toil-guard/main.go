@@ -77,6 +77,8 @@ func executeAudit(args []string, stdout, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 	format := fs.String("format", "text", "Output format: text or json")
 	base := fs.String("base", "HEAD", "Git base reference to diff if no files specified")
+	worktreeChanges := fs.String("changeset", "", "Optional v1 worktree evidence file; requires --index-changeset")
+	indexChanges := fs.String("index-changeset", "", "Optional v1 index evidence file; requires --changeset")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return 0
@@ -84,7 +86,23 @@ func executeAudit(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	fileMap, err := collectAuditFiles(fs.Args(), *base)
+	var fileMap map[string]string
+	var err error
+	evidenceRequested := false
+	fs.Visit(func(option *flag.Flag) {
+		if option.Name == "changeset" || option.Name == "index-changeset" {
+			evidenceRequested = true
+		}
+	})
+	switch {
+	case !evidenceRequested:
+		fileMap, err = collectAuditFiles(fs.Args(), *base)
+	case *worktreeChanges == "" || *indexChanges == "" || fs.NArg() != 0:
+		fmt.Fprintln(stderr, "Supply both --changeset and --index-changeset without explicit source paths")
+		return 2
+	default:
+		fileMap, err = collectChangeSetSources(*base, *worktreeChanges, *indexChanges)
+	}
 	if err != nil {
 		fmt.Fprintln(stderr, "Audit failed:", err)
 		return 1
@@ -156,25 +174,31 @@ func readGitOutput(cmd *exec.Cmd) ([]byte, error) {
 	return out, err
 }
 
-func collectGitDiffFiles(base string) (map[string]string, error) {
+func resolveGitAuditBase(ctx context.Context, base string) (string, string, error) {
 	if strings.TrimSpace(base) == "" || strings.HasPrefix(base, "-") {
-		return nil, fmt.Errorf("invalid git base reference %q", base)
+		return "", "", fmt.Errorf("invalid git base reference %q", base)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
 	rawRoot, err := readGitOutput(exec.CommandContext(ctx, "git", "rev-parse", "--show-toplevel"))
 	if err != nil {
-		return nil, fmt.Errorf("locating Git repository root: %w", err)
+		return "", "", fmt.Errorf("locating Git repository root: %w", err)
 	}
 	rootPath := strings.TrimSuffix(string(rawRoot), "\n")
 	revision, err := readGitOutput(exec.CommandContext(ctx, "git", "-C", rootPath,
 		"rev-parse", "--verify", "--end-of-options", base+"^{commit}"))
 	if err != nil {
-		return nil, fmt.Errorf("invalid git base %q: %w", base, err)
+		return "", "", fmt.Errorf("invalid git base %q: %w", base, err)
+	}
+	return rootPath, strings.TrimSpace(string(revision)), nil
+}
+
+func collectGitDiffFiles(base string) (map[string]string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	rootPath, resolvedBase, err := resolveGitAuditBase(ctx, base)
+	if err != nil {
+		return nil, err
 	}
 
-	resolvedBase := strings.TrimSpace(string(revision))
 	tracked, err := readGitOutput(exec.CommandContext(ctx, "git", "-C", rootPath,
 		"diff", "--no-ext-diff", "--no-relative", "--name-only", "-z", "--diff-filter=d", resolvedBase, "--"))
 	if err != nil {
@@ -196,7 +220,7 @@ func collectGitDiffFiles(base string) (map[string]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	return readChangedSources(rootPath, paths)
+	return readChangedSources(rootPath, paths, 0, 0)
 }
 
 func parseGitPaths(output string) ([]string, error) {
@@ -216,7 +240,7 @@ func parseGitPaths(output string) ([]string, error) {
 	return paths, nil
 }
 
-func readChangedSources(rootPath string, paths []string) (map[string]string, error) {
+func readChangedSources(rootPath string, paths []string, fileLimit, totalLimit int64) (map[string]string, error) {
 	root, err := os.OpenRoot(rootPath)
 	if err != nil {
 		return nil, fmt.Errorf("opening repository root: %w", err)
@@ -224,6 +248,7 @@ func readChangedSources(rootPath string, paths []string) (map[string]string, err
 	defer root.Close()
 
 	files := make(map[string]string, len(paths))
+	remaining := totalLimit
 	for _, path := range paths {
 		if _, exists := files[path]; exists || !isAuditable(path) || isDocFile(path) {
 			continue
@@ -238,18 +263,14 @@ func readChangedSources(rootPath string, paths []string) (map[string]string, err
 		if !info.Mode().IsRegular() {
 			continue
 		}
-		file, err := root.OpenFile(path, os.O_RDONLY|auditSourceOpenFlags, 0)
+		content, err := readAuditSource(root, path, info, fileLimit, totalLimit, remaining)
 		if missingAuditSource(err) {
 			continue
 		}
 		if err != nil {
-			return nil, fmt.Errorf("opening %q: %w", path, err)
-		}
-		content, err := readRegularSource(file, info)
-		file.Close()
-		if err != nil {
 			return nil, fmt.Errorf("reading %q: %w", path, err)
 		}
+		remaining -= int64(len(content))
 		if bytes.IndexByte(content, 0) < 0 {
 			files[path] = string(content)
 		}
@@ -261,15 +282,15 @@ func missingAuditSource(err error) bool {
 	return errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ENOTDIR)
 }
 
-func readRegularSource(file *os.File, expected os.FileInfo) ([]byte, error) {
-	actual, err := file.Stat()
-	if err != nil {
-		return nil, err
+func readAuditSource(root *os.Root, path string, info os.FileInfo, fileLimit, totalLimit, remaining int64) ([]byte, error) {
+	if fileLimit <= 0 {
+		return readRegularEvidence(path, info, -1, root.OpenFile)
 	}
-	if !actual.Mode().IsRegular() || !os.SameFile(expected, actual) {
-		return nil, errors.New("source file changed before it could be read")
+	limit := min(fileLimit, remaining)
+	if info.Size() > limit || remaining <= 0 {
+		return nil, fmt.Errorf("source exceeds %d-byte per-file or %d-byte total audit budget", fileLimit, totalLimit)
 	}
-	return io.ReadAll(file)
+	return readRegularEvidence(path, info, limit, root.OpenFile)
 }
 
 func writeAuditReport(w io.Writer, report model.AuditReport, format string) error {

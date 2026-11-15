@@ -28,10 +28,13 @@ func TestReadRegularSourceRequiresOriginalFile(t *testing.T) {
 	for _, test := range []struct {
 		name    string
 		path    string
+		limit   int64
 		wantErr bool
 	}{
-		{name: "expected source", path: expectedPath},
-		{name: "different source", path: otherPath, wantErr: true},
+		{name: "expected source", path: expectedPath, limit: -1},
+		{name: "different source", path: otherPath, limit: -1, wantErr: true},
+		{name: "file within limit", path: expectedPath, limit: int64(len(expectedSource))},
+		{name: "file exceeding limit", path: expectedPath, limit: int64(len(expectedSource) - 1), wantErr: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			file, err := os.Open(test.path)
@@ -39,10 +42,10 @@ func TestReadRegularSourceRequiresOriginalFile(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer file.Close()
-			got, err := readRegularSource(file, expectedInfo)
+			got, err := readRegularSource(file, expectedInfo, test.limit)
 			if test.wantErr {
 				if err == nil || got != nil {
-					t.Fatalf("different file: got %q, error %v", got, err)
+					t.Fatalf("expected rejection: got %q, error %v", got, err)
 				}
 			} else if err != nil || string(got) != expectedSource {
 				t.Fatalf("expected file: got %q, error %v", got, err)

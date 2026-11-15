@@ -2,4 +2,4 @@
 
 package main
 
-const auditSourceOpenFlags = 0
+const evidenceOpenFlags = 0
