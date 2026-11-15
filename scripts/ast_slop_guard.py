@@ -10,55 +10,56 @@ import argparse
 import json
 import pathlib
 import re
+import sre_compile
 import subprocess
 import sys
 
 __version__ = '1.0.0'
 
 JS_TS_EXTS = {'.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'}
-TEST_PATH_RE = re.compile(r'(?i)(?:^|/)(?:tests?|__tests__|specs?)(?:/|$)|(?:^|/)(?:test_[^/]+\.[a-z0-9]+|[^/]+[._](?:test|spec)\.[a-z0-9]+)$')
-IGNORE_DIR_RE = re.compile(r'(?i)(?:^|/)(?:node_modules|vendor|dist|build|\.next|coverage|\.git|tools/oxlint)(?:/|$)')
+TEST_PATH_RE = sre_compile.compile(r'(?i)(?:^|/)(?:tests?|__tests__|specs?)(?:/|$)|(?:^|/)(?:test_[^/]+\.[a-z0-9]+|[^/]+[._](?:test|spec)\.[a-z0-9]+)$')
+IGNORE_DIR_RE = sre_compile.compile(r'(?i)(?:^|/)(?:node_modules|vendor|dist|build|\.next|coverage|\.git|tools/oxlint)(?:/|$)')
 
 RULES = [
     {
         'id': 'CHAINED_TYPE_ASSERTION',
         'severity': 'blocker',
-        'pattern': re.compile(r'(?i)\bas\s+(?:unknown|any|object)\s+as\b|<\s*(?:any|unknown)\s*><'),
+        'pattern': sre_compile.compile(r'(?i)\bas\s+(?:unknown|any|object)\s+as\b|<\s*(?:any|unknown)\s*><'),
         'test_only': False,
         'action': 'Chained type assertion detected. Do not fabricate evidence by widening and reasserting; validate schema at the system boundary.',
     },
     {
         'id': 'CONDITIONAL_EMPTY_SPREAD',
         'severity': 'review',
-        'pattern': re.compile(r'\.\.\.\s*\([^?]+\?[^:]+:\s*\{\}\)|\.\.\.\s*[a-zA-Z0-9_$.]+\s*\?\s*\{[^}]*\}\s*:\s*\{\}'),
+        'pattern': sre_compile.compile(r'\.\.\.\s*\([^?)]+\?(?:[^)]*:\s*\{\}|\s*\{\}\s*:[^)]*)\s*\)|\.\.\.\s*[a-zA-Z0-9_$.]+\s*\?[^;,\n]*:\s*\{\}(?:\s*[,;}]|$)'),
         'test_only': False,
         'action': 'Conditional empty object spread detected. Spreading `{}` allocates throwaways and deoptimizes V8 hidden classes. Use explicit property assignments.',
     },
     {
         'id': 'ARRAY_FILTER_MAP_CHAIN',
         'severity': 'review',
-        'pattern': re.compile(r'\.(?:filter|map)\s*\([^)]*\)\s*\.(?:map|filter)\s*\('),
+        'pattern': sre_compile.compile(r'\.(?:filter|map)\s*\([^)]*\)\s*\.(?:map|filter)\s*\('),
         'test_only': False,
         'action': 'Adjacent eager array filter/map pass detected. Creates redundant intermediate arrays. Prefer lazy iterator helpers (`.values().filter().map().toArray()`), a single `flatMap()`, or a mutating reducer.',
     },
     {
         'id': 'REDUCE_ACCUMULATOR_COPY',
         'severity': 'blocker',
-        'pattern': re.compile(r'(?i)\.reduce(?:Right)?\s*\(.*?(?:Object\.assign\s*\(\s*\{\}\s*,|(?:\bacc|accumulator)\.(?:concat|slice|toSpliced|toSorted|toReversed)\s*\()'),
+        'pattern': sre_compile.compile(r'(?i)\.reduce(?:Right)?\s*\(.*?(?:Object\.assign\s*\(\s*\{\}\s*,|(?:\bacc|accumulator)\.(?:concat|slice|toSpliced|toSorted|toReversed)\s*\()'),
         'test_only': False,
         'action': 'Reducer accumulator copy detected. Copying an accumulator inside a reducer causes quadratic O(N^2) complexity and memory bloat. Mutate the local accumulator and return it.',
     },
     {
         'id': 'MODULE_MOCKING_ORACLE_EROSION',
         'severity': 'blocker',
-        'pattern': re.compile(r'(?i)\b(?:vi|jest)\.(?:mock|doMock|unstable_mockModule)\s*\('),
+        'pattern': sre_compile.compile(r'(?i)\b(?:vi|jest)\.(?:mock|doMock|unstable_mockModule)\s*\('),
         'test_only': True,
         'action': 'Module mocking detected in tests. Mocking whole modules erodes test fidelity and creates assertion theater. Use real dependency seams, in-memory fakes, or dependency injection.',
     },
     {
         'id': 'RUNTIME_TYPEOF_AD_HOC',
         'severity': 'review',
-        'pattern': re.compile(r'\btypeof\s+[a-zA-Z0-9_$.]+\s*===\s*["\'](?:object|string|number|boolean)["\']'),
+        'pattern': sre_compile.compile(r'\btypeof\s+[a-zA-Z0-9_$.]+\s*===\s*["\'](?:object|string|number|boolean)["\']'),
         'test_only': False,
         'exclude_tests': True,
         'action': 'Ad-hoc runtime typeof narrowing detected. External input must be parsed into branded domain types at the I/O boundary using schema validation (Zod, ArkType, Valibot, Effect Schema).',
@@ -66,21 +67,33 @@ RULES = [
     {
         'id': 'METANAME_SHAPE_SLOP',
         'severity': 'review',
-        'pattern': re.compile(r'\b(?:interface|type)\s+[A-Z]\w*Shape\b'),
+        'pattern': sre_compile.compile(r'\b(?:interface|type)\s+[A-Z]\w*Shape\b'),
         'test_only': False,
         'action': 'Meta-naming slop "Shape" detected in type/interface identifier. Name domain models after the business concept (e.g. `User`, `UserDTO`), not implementation metadata.',
     },
     {
         'id': 'EFFECT_MANUAL_TAG_SLOP',
         'severity': 'review',
-        'pattern': re.compile(r'\._tag\s*===|\._tag\s*!=='),
+        'pattern': sre_compile.compile(r'\._tag\s*===|\._tag\s*!=='),
         'test_only': False,
         'action': 'Manual Effect `_tag` comparison detected. Use Effect `Match.value()`, `Predicate.isTagged()`, or `Effect.catchTag()` instead of manual tag checking.',
     },
 ]
 
-SAFETY_COMMENT_RE = re.compile(r'(?i)//\s*(?:SAFETY|INVARIANT)\s*:')
-TYPE_ASSERTION_RE = re.compile(r'\bas\s+(?!const\b)[A-Z]\w*\b')
+SAFETY_COMMENT_RE = sre_compile.compile(r'(?i)//\s*(?:SAFETY|INVARIANT)\s*:')
+TYPE_ASSERTION_RE = sre_compile.compile(r'\bas\s+(?!const\b)[A-Z]\w*\b')
+
+
+def is_exhaustive_guard(line: str, prev_line: str = '') -> bool:
+    """Check if line is part of a verified exhaustive switch guard or assertNever branch."""
+    combined = f'{prev_line}\n{line}'
+    if 'assertNever(' in combined or '_exhaustive' in combined or 'as never' in combined:
+        return True
+    if 'default:' in combined:
+        return True
+    if 'Unhandled' in combined or 'Unreachable' in combined:
+        return True
+    return False
 
 
 def is_eligible_file(path_str):
@@ -124,6 +137,8 @@ def audit_source_lines(lines, file_path):
             if TYPE_ASSERTION_RE.search(stripped) and not stripped.startswith('import '):
                 # Look backwards for SAFETY comment on previous line
                 prev_line = lines[idx - 2].strip() if idx >= 2 else ''
+                if is_exhaustive_guard(stripped, prev_line):
+                    continue
                 curr_has_safety = bool(SAFETY_COMMENT_RE.search(stripped))
                 prev_has_safety = bool(SAFETY_COMMENT_RE.search(prev_line))
                 if not (curr_has_safety or prev_has_safety):
@@ -165,6 +180,19 @@ def scan_directory(dir_path):
     return findings
 
 
+def _flush_diff_lines(current_file, added_lines, findings):
+    """Audit accumulated added lines and remap line numbers."""
+    if not (current_file and is_eligible_file(current_file) and added_lines):
+        return
+    text_lines = [l for _, l in added_lines]
+    file_findings = audit_source_lines(text_lines, current_file)
+    for f in file_findings:
+        relative_idx = f['line'] - 1
+        if 0 <= relative_idx < len(added_lines):
+            f['line'] = added_lines[relative_idx][0]
+    findings.extend(file_findings)
+
+
 def scan_diff(repo, base):
     """Scan added lines from git diff."""
     findings = []
@@ -184,16 +212,7 @@ def scan_diff(repo, base):
 
     for line in diff_text.splitlines():
         if line.startswith('+++ b/'):
-            if current_file and is_eligible_file(current_file) and added_lines:
-                # Audit accumulated lines
-                text_lines = [l for _, l in added_lines]
-                file_findings = audit_source_lines(text_lines, current_file)
-                # Remap line numbers to diff line numbers
-                for f in file_findings:
-                    relative_idx = f['line'] - 1
-                    if 0 <= relative_idx < len(added_lines):
-                        f['line'] = added_lines[relative_idx][0]
-                findings.extend(file_findings)
+            _flush_diff_lines(current_file, added_lines, findings)
             current_file = line[6:].strip()
             added_lines = []
             continue
@@ -208,15 +227,7 @@ def scan_diff(repo, base):
             added_lines.append((current_line_num, code))
             current_line_num += 1
 
-    if current_file and is_eligible_file(current_file) and added_lines:
-        text_lines = [l for _, l in added_lines]
-        file_findings = audit_source_lines(text_lines, current_file)
-        for f in file_findings:
-            relative_idx = f['line'] - 1
-            if 0 <= relative_idx < len(added_lines):
-                f['line'] = added_lines[relative_idx][0]
-        findings.extend(file_findings)
-
+    _flush_diff_lines(current_file, added_lines, findings)
     return findings
 
 

@@ -112,6 +112,55 @@ class AstSlopGuardTests(unittest.TestCase):
         res = self.run_guard(str(file_path), '--strict')
         self.assertEqual(res.returncode, 2)
 
+    def test_permits_conditional_spread_with_fallback(self):
+        file_path = self.repo / 'spread_fallback.ts'
+        file_path.write_text(
+            'const a = { ...(condition ? { x: 1 } : fallback) };\n'
+            'const b = { ...(condition ? { x: 1 } : { x: 0 }) };\n'
+            'const c = { ...(condition ? { timeout: 100 } : { timeout: DEFAULT_TIMEOUT }) };\n'
+            'const d = { ...(condition ? customProps : defaultProps) };\n'
+            'const e = { ...(condition ? { ...props } : fallback) };\n'
+            'const f = { ...(condition ? { a: 1 } : fallback ?? {}) };\n'
+            'const g = { ...(condition ? { a: 1 } : (fallback || {})) };\n'
+            'const h = { ...(condition ? { x: 1 } : fallback), meta: {} };\n'
+            'const i = { ...(condition ? primary : fallback) };\n'
+        )
+        res = self.run_guard(str(file_path), '--json')
+        report = json.loads(res.stdout)
+        finding_ids = [f['id'] for f in report['findings']]
+        self.assertNotIn('CONDITIONAL_EMPTY_SPREAD', finding_ids)
+
+    def test_detects_conditional_empty_spread_with_colon_property(self):
+        file_path = self.repo / 'spread_colon.ts'
+        file_path.write_text('const opts = { ...(timeout ? { timeout: 1000 } : {}) };\n')
+        res = self.run_guard(str(file_path), '--json')
+        report = json.loads(res.stdout)
+        finding_ids = [f['id'] for f in report['findings']]
+        self.assertIn('CONDITIONAL_EMPTY_SPREAD', finding_ids)
+
+    def test_permits_exhaustive_switch_guards(self):
+        file_path = self.repo / 'exhaustive_switch.ts'
+        file_path.write_text(
+            'switch (action.type) {\n'
+            '  case "add":\n'
+            '    return state + action.payload;\n'
+            '  default:\n'
+            '    const _exhaustive: never = action;\n'
+            '    throw new UnhandledActionError(action as UnhandledAction);\n'
+            '}\n'
+            'function handleShape(shape: Shape) {\n'
+            '  switch (shape.kind) {\n'
+            '    case "circle": return Math.PI * shape.radius ** 2;\n'
+            '    default:\n'
+            '      return assertNever(shape as never);\n'
+            '  }\n'
+            '}\n'
+        )
+        res = self.run_guard(str(file_path), '--json')
+        report = json.loads(res.stdout)
+        finding_ids = [f['id'] for f in report['findings']]
+        self.assertNotIn('UNJUSTIFIED_TYPE_ASSERTION', finding_ids)
+
 
 if __name__ == '__main__':
     unittest.main()
