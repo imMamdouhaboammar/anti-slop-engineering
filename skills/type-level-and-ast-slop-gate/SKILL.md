@@ -99,3 +99,16 @@ bunx anti-slop-engineering install-oxlint tools/oxlint/anti-slop
 # Reconcile vendored Oxlint installation with upstream (preserves local edits)
 bunx anti-slop-engineering update-oxlint tools/oxlint/anti-slop --apply
 ```
+
+
+## React ref API review
+
+The [React 19 advisory example](examples/react-ref-advisory.mjs) accepts an exact React lock receipt and a reviewed use of the React package's `forwardRef` export wrapping a function component. Provide the exact React releases covered by the component's support matrix. Include declared React 18 peer support even when local development runs React 19. Re-exports, compatibility shims, class components, and unknown support remain outside the example's automatic assumptions.
+
+```bash
+bun skills/type-level-and-ast-slop-gate/examples/react-ref-advisory.mjs react-lock-evidence.json reviewed-usage.json
+```
+
+The receipt uses `{"status":"locked","resolved":"19.0.0","release":"stable"}` for a confirmed direct React dependency. The reviewed usage record uses `{"module":"react","export":"forwardRef","kind":"function-component","supportedVersions":["19.0.0","19.1.0"]}`. Populate these fields from dependency and source evidence. The example gives a review advisory for the documented React 19 behavior. It does not infer package identity from a function name or change code.
+
+Read [React 19 ref-as-prop semantics](https://react.dev/blog/2024/12/05/react-19#ref-as-a-prop) and the [React v19.0.0 implementation](https://github.com/facebook/react/blob/7aa5dda3b3e4c2baa905a59b922ae7ec14734b24/packages/react/src/jsx/ReactJSXElement.js). Preserve the public ref type, callback-ref cleanup, and actual forwarding target during migration.
