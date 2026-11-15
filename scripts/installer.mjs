@@ -669,25 +669,31 @@ export async function promptForSkills(modules, targets, input = process.stdin, o
   }
 }
 
-function previewClaudeHooks(scope, agents) {
-  if (scope !== 'project' || !agents.includes('claude')) {
-    throw new Error('Claude hook preview requires project scope and the Claude Code agent')
+const hookPreviewAdapters = {
+  claude: ['Claude Code', 'references/claude-code-hooks.md', ['PreToolUse policy', 'PostToolUse feedback'],
+    'Claude Code 2.1.295 or later and a durable adapter checkout'],
+  codex: ['Codex', 'references/agent-hook-capabilities.md', ['PreToolUse policy', 'PostToolUse feedback'],
+    'Codex project hook trust and a durable adapter checkout'],
+  gemini: ['Gemini CLI', 'references/agent-hook-capabilities.md', ['BeforeTool policy', 'AfterTool feedback'],
+    'Gemini workspace trust, enabled hooks, and a durable adapter checkout'],
+}
+
+function previewAgentHooks(agent, scope, agents) {
+  const [label, docs, stages, requires] = hookPreviewAdapters[agent]
+  if (scope !== 'project' || !agents.includes(agent)) {
+    throw new Error(label + ' hook preview requires project scope and the ' + label + ' agent')
   }
   if (process.platform === 'win32' || !fs.existsSync(path.join(rootDir, '.git'))) {
-    throw new Error('Claude hook preview requires a durable POSIX checkout; see references/claude-code-hooks.md')
+    throw new Error(label + ' hook preview requires a durable POSIX checkout; see ' + docs)
   }
-  const adapter = path.join(rootDir, 'scripts', 'claude_hooks.py')
+  const adapter = path.join(rootDir, 'scripts', agent + '_hooks.py')
   const preview = spawnSync('python3', [adapter, 'install', '--dry-run'], {
     encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'pipe'],
   })
   if (preview.error || preview.status !== 0) {
-    throw new Error(preview.stderr?.trim() || preview.error?.message || 'Claude hook preview failed')
+    throw new Error(preview.stderr?.trim() || preview.error?.message || label + ' hook preview failed')
   }
-  return {
-    ...JSON.parse(preview.stdout),
-    stages: ['PreToolUse policy', 'PostToolUse feedback'],
-    requires: 'Claude Code 2.1.295 or later and a durable adapter checkout',
-  }
+  return { ...JSON.parse(preview.stdout), stages, requires }
 }
 
 export async function runInstallerCLI(args = process.argv.slice(2)) {
@@ -713,6 +719,8 @@ Options:
   --overwrite         Refresh managed files, preserving local edits and conflicts
   --dry-run           Simulate installation without writing files
   --claude-hooks      With --dry-run, preview local Claude hooks from this checkout
+  --codex-hooks       With --dry-run, preview local Codex hooks from this checkout
+  --gemini-hooks      With --dry-run, preview local Gemini hooks from this checkout
   --json              Output JSON result
   --no-interactive    Skip terminal selection (defaults to core only)
   --help, -h          Show this help menu
@@ -721,9 +729,12 @@ Options:
   }
 
   const isUpdate = args.includes('--update') || args[0] === 'update'
-  const previewHooks = args.includes('--claude-hooks')
-  if (previewHooks && (!args.includes('--dry-run') || args.includes('--selection-only') || isUpdate)) {
-    throw new Error('--claude-hooks previews setup only; use --dry-run and the standalone Claude adapter to apply')
+  const hookPreviews = Object.keys(hookPreviewAdapters).filter((agent) => args.includes('--' + agent + '-hooks'))
+  if (hookPreviews.length > 1) throw new Error('Select one adapter for the hook preview')
+  const [hookPreview] = hookPreviews
+  if (hookPreview && (!args.includes('--dry-run') || args.includes('--selection-only') || isUpdate)) {
+    const label = hookPreview === 'claude' ? 'Claude' : hookPreviewAdapters[hookPreview][0]
+    throw new Error('--' + hookPreview + '-hooks previews setup only; use --dry-run and the standalone ' + label + ' adapter to apply')
   }
   if (isUpdate) {
     const { results, pointers } = updateAll()
@@ -837,7 +848,7 @@ Options:
   if (dryRun) {
     const operations = installSkills({ skills: selectedSkills, targets, overwrite, dryRun: true })
     const plan = { scope: resolvedScope, agents: selectedAgents, skills: selectedSkills, targets: targets.map((t) => t.path), operations }
-    if (previewHooks) plan.hookPlan = previewClaudeHooks(resolvedScope, selectedAgents)
+    if (hookPreview) plan.hookPlan = previewAgentHooks(hookPreview, resolvedScope, selectedAgents)
     if (jsonMode) console.log(JSON.stringify(plan, null, 2))
     else console.log('Dry-run installation plan:', plan)
     return 0

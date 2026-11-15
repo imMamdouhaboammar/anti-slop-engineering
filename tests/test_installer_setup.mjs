@@ -525,3 +525,36 @@ test('unsupported scope and invalid settings fail before installation writes', (
     assert.equal(fs.readFileSync(path.join(dir, claudeSettings), 'utf8'), 'fixture invalid JSON')
   })
 })
+
+const additionalHookPreviews = [
+  ['codex', '.codex/hooks.json', 'apply_patch'],
+  ['gemini', '.gemini/settings.json', 'write_file'],
+]
+
+for (const [agent, settings, tool] of additionalHookPreviews) {
+  test('public setup previews ' + agent + ' adapter without writing', { skip: process.platform === 'win32' }, () => {
+    inClaudeWorkspace((dir) => {
+      const args = ['--agent=' + agent, '--skills=core', '--' + agent + '-hooks', '--json']
+      const run = (...options) => spawnSync(process.execPath, [cli, 'setup', ...args, ...options], {
+        cwd: dir, encoding: 'utf8', env: { ...process.env, HOME: dir, CI: 'true' }, timeout: 12000,
+      })
+      const preview = run('--dry-run')
+      assert.equal(preview.status, 0, preview.stderr)
+      const { hookPlan } = JSON.parse(preview.stdout)
+      assert.ok(hookPlan, 'Setup did not return a hook preview')
+      assert.equal(hookPlan.status, 'would_change')
+      assert.equal(hookPlan.settings, path.join(fs.realpathSync(dir), settings))
+      assert.deepEqual(hookPlan.tools, [tool])
+      assert.equal(hookPlan.requires_host_hook_trust, true)
+      assert.deepEqual(fs.readdirSync(dir), [])
+      assert.notEqual(run().status, 0)
+      assert.notEqual(run('--dry-run', '--scope=global').status, 0)
+      const otherAgent = spawnSync(process.execPath, [cli, 'setup', '--agent=cursor', '--' + agent + '-hooks', '--dry-run'], {
+        cwd: dir, encoding: 'utf8', env: { ...process.env, HOME: dir, CI: 'true' }, timeout: 12000,
+      })
+      assert.notEqual(otherAgent.status, 0)
+      assert.notEqual(run('--dry-run', '--claude-hooks').status, 0)
+      assert.deepEqual(fs.readdirSync(dir), [])
+    })
+  })
+}
