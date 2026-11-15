@@ -66,6 +66,13 @@ for skill in data["skills"]:
         print(skill)
 ' "$setup_selection")"
 else
+  for argument in "$@"; do
+    case "$argument" in
+      --preset|--preset=*|--pack|--pack=*)
+        echo "Installer error: Node.js is needed to select a preset; use --skills=core without Node.js" >&2
+        exit 2 ;;
+    esac
+  done
   case " $* " in
     *--skills=core*|*"-s core"*|*--plugins=core*|*--modules=core*) : ;;
     *--skills*|*--plugins*|*--modules*|*"-s "*|*--all*)
