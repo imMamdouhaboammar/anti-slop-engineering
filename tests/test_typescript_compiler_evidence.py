@@ -22,6 +22,10 @@ class TypeScriptCompilerEvidenceTests(unittest.TestCase):
             "path": "fixture.ts", "line": 1, "column": 7, "code": "TS2322",
             "message": "Type 'string' is not assignable to type 'number'.",
         }])
+        self.assertTrue(EVIDENCE.expected_type_error(observed))
+        self.assertFalse(EVIDENCE.expected_type_error([{**observed[0], "column": 8}]))
+        self.assertFalse(EVIDENCE.expected_type_error([{**observed[0], "line": 2}]))
+        self.assertFalse(EVIDENCE.expected_type_error([{**observed[0], "code": "TS5072"}]))
         self.assertEqual(EVIDENCE.parse_diagnostics(b"error TS5072: configuration error\n"), [])
 
     def test_missing_compiler_is_explicitly_not_checked(self):
@@ -47,8 +51,10 @@ class TypeScriptCompilerEvidenceTests(unittest.TestCase):
         tsc = os.environ.get("ANTI_SLOP_TEST_TSC_JS")
         node = shutil.which("node")
         if not (tsc and node and sys.platform == "darwin"):
-            return
+            self.skipTest("Live compiler proof requires macOS, Node, and ANTI_SLOP_TEST_TSC_JS")
         observed = EVIDENCE.collect(Path(node), Path(tsc))
         self.assertEqual(observed["status"], "passed", observed)
         self.assertEqual(observed["control"]["status"], "passed")
-        self.assertEqual(observed["type_error"]["diagnostics"][0]["code"], "TS2322")
+        diagnostic = observed["type_error"]["diagnostics"][0]
+        self.assertEqual((diagnostic["path"], diagnostic["code"], diagnostic["line"], diagnostic["column"]),
+                         ("fixture.ts", "TS2322", 1, 7))

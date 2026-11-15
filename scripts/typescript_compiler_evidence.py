@@ -27,11 +27,12 @@ def parse_diagnostics(output):
         path, opening, position = location.partition("(")
         line, comma, column = position.partition(",")
         code, colon, message = error.partition(": ")
-        if delimiter and opening and comma and colon and path == "fixture.ts":
-            if line.isascii() and line.isdecimal() and column.isascii() and column.isdecimal():
-                if code.startswith("TS") and code[2:].isascii() and code[2:].isdecimal():
-                    diagnostics.append({"path": path, "line": int(line), "column": int(column),
-                                        "code": code, "message": message})
+        fields = (line, column, code[2:])
+        if path != "fixture.ts" or not (delimiter and opening and comma and colon and code.startswith("TS")):
+            continue
+        if all(field.isascii() and field.isdecimal() and len(field) <= 6 for field in fields):
+            diagnostics.append({"path": path, "line": int(line), "column": int(column),
+                                "code": code, "message": message})
     return diagnostics
 
 
@@ -105,6 +106,13 @@ def _check_fixture(prefix, cwd, env, content):
     return {"status": "not_checked", "reason": "Compiler returned an unclassified outcome"}
 
 
+def expected_type_error(diagnostics):
+    return any(
+        item["path"] == "fixture.ts" and item["line"] == 1 and item["column"] == 7 and item["code"] == "TS2322"
+        for item in diagnostics
+    )
+
+
 def collect(node, compiler):
     result = {"toolchain": "typescript", "status": "not_checked", "scope": "fixed fixture"}
     if sys.platform != "darwin" or not SANDBOX.is_file():
@@ -129,7 +137,7 @@ def collect(node, compiler):
         result["control"] = _check_fixture(prefix, cwd, env, CONTROL)
         result["type_error"] = _check_fixture(prefix, cwd, env, TYPE_ERROR)
     errors = result["type_error"].get("diagnostics", [])
-    if result["control"]["status"] == "passed" and any(item["code"] == "TS2322" for item in errors):
+    if result["control"]["status"] == "passed" and expected_type_error(errors):
         result["status"] = "passed"
     else:
         result["reason"] = "Fixed fixture did not reproduce the expected TypeScript control and diagnostic"
