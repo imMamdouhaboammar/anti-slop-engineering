@@ -22,6 +22,7 @@ from audit_runner import (
     load_settings,
     save_settings,
 )
+from unittest.mock import patch
 
 
 def extract_bash_commands(markdown_text: str) -> list[str]:
@@ -439,3 +440,115 @@ class AuditRunnerTests(unittest.TestCase):
         with self.assertRaises(ValueError) as ctx:
             evaluate_report(report, audit_exit=0)
         self.assertIn("Mandatory guard diff_guard is incomplete", str(ctx.exception))
+
+    def test_check_engine_present(self):
+        """Engine check succeeds when toolchain binary exists on PATH."""
+        with patch("shutil.which", return_value="/usr/local/bin/cargo"):
+            avail, msg = audit_runner.check_engine("cargo", strict=False)
+            self.assertTrue(avail)
+            self.assertIn("Rust (Cargo) is available", msg)
+            self.assertIn("/usr/local/bin/cargo", msg)
+
+    def test_check_engine_missing_graceful_notice(self):
+        """Engine check returns informative notice and False when missing in non-strict mode."""
+        with patch("shutil.which", return_value=None):
+            avail, msg = audit_runner.check_engine("cargo", strict=False)
+            self.assertFalse(avail)
+            self.assertIn("[NOTICE] Optional engine 'cargo'", msg)
+            self.assertIn("https://rustup.rs", msg)
+
+    def test_check_engine_missing_strict_error(self):
+        """Engine check returns strict error message and False when missing in strict mode."""
+        with patch("shutil.which", return_value=None):
+            avail, msg = audit_runner.check_engine("cargo", strict=True)
+            self.assertFalse(avail)
+            self.assertIn("Error: Required engine 'cargo'", msg)
+            self.assertIn("In CI or strict mode, all polyglot engines are mandatory", msg)
+
+    def test_check_engine_aliases_and_unknown(self):
+        """Aliases (rust, golang, node/js/ts) map to canonical keys; unknown engines return descriptive error."""
+        with patch("shutil.which", return_value="/usr/local/bin/cargo"):
+            avail, msg = audit_runner.check_engine("rust", strict=False)
+            self.assertTrue(avail)
+            self.assertIn("Rust (Cargo)", msg)
+
+        with patch("shutil.which", return_value="/usr/local/bin/go"):
+            avail, msg = audit_runner.check_engine("golang", strict=False)
+            self.assertTrue(avail)
+            self.assertIn("Go", msg)
+
+        avail, msg = audit_runner.check_engine("nonexistent_engine_foo", strict=False)
+        self.assertFalse(avail)
+        self.assertIn("Unknown engine requirement: nonexistent_engine_foo", msg)
+
+    def test_is_strict_engine_mode_env_vars(self):
+        """Strict mode detects CI, GITHUB_ACTIONS, and STRICT_ENGINE_CHECK environment variables."""
+        with patch.dict("os.environ", {"CI": "true"}, clear=True):
+            self.assertTrue(audit_runner.is_strict_engine_mode())
+
+        with patch.dict("os.environ", {"GITHUB_ACTIONS": "1"}, clear=True):
+            self.assertTrue(audit_runner.is_strict_engine_mode())
+
+        with patch.dict("os.environ", {"STRICT_ENGINE_CHECK": "yes"}, clear=True):
+            self.assertTrue(audit_runner.is_strict_engine_mode())
+
+        with patch.dict("os.environ", {}, clear=True):
+            self.assertFalse(audit_runner.is_strict_engine_mode())
+
+    def test_check_engines_dictionary(self):
+        """check_engines reports on all canonical engines (cargo, go, node, bun)."""
+        with patch("shutil.which", return_value="/mock/bin"):
+            results = audit_runner.check_engines(strict=False)
+            self.assertIn("cargo", results)
+            self.assertIn("go", results)
+            self.assertIn("node", results)
+            self.assertIn("bun", results)
+            for eng, (avail, msg) in results.items():
+                self.assertTrue(avail)
+
+    def test_run_engine_command_graceful_skipping(self):
+        """run_engine_command prints notice and returns 0 when optional engine is missing locally."""
+        with patch("shutil.which", return_value=None):
+            # Capture output
+            with patch("builtins.print") as mock_print:
+                code = audit_runner.run_engine_command("cargo", ["cargo", "test"], strict=False)
+                self.assertEqual(code, 0)
+                mock_print.assert_called()
+                notice = str(mock_print.call_args[0][0])
+                self.assertIn("[NOTICE] Optional engine 'cargo'", notice)
+
+    def test_run_engine_command_strict_failure(self):
+        """run_engine_command prints error and returns 1 when engine is missing in strict mode."""
+        with patch("shutil.which", return_value=None):
+            with patch("builtins.print") as mock_print:
+                code = audit_runner.run_engine_command("cargo", ["cargo", "test"], strict=True)
+                self.assertEqual(code, 1)
+                mock_print.assert_called()
+                error_msg = str(mock_print.call_args[0][0])
+                self.assertIn("Error: Required engine 'cargo'", error_msg)
+
+    def test_run_engine_command_executes_when_available(self):
+        """run_engine_command delegates execution when engine is available."""
+        with patch("shutil.which", return_value="/usr/bin/node"):
+            with patch("subprocess.run") as mock_run:
+                mock_run.return_value.returncode = 0
+                code = audit_runner.run_engine_command("node", ["node", "-v"], strict=True, title="Node version")
+                self.assertEqual(code, 0)
+                mock_run.assert_called_once()
+                self.assertEqual(mock_run.call_args[0][0], ["node", "-v"])
+
+    def test_cli_engine_commands(self):
+        """audit_runner CLI check-engines and run-engine commands execute correctly."""
+        script = str(SCRIPTS_DIR / "audit_runner.py")
+        res = subprocess.run([sys.executable, script, "check-engines"], capture_output=True, text=True)
+        self.assertEqual(res.returncode, 0)
+        self.assertIn("Polyglot Engine Requirements Status:", res.stdout)
+
+        # run-engine with known system python
+        res_run = subprocess.run(
+            [sys.executable, script, "run-engine", "--engine", "node", "--no-strict", "--", "node", "-v"],
+            capture_output=True,
+            text=True,
+        )
+        # Should succeed (exit 0) either running node -v or skipping with notice if node missing
+        self.assertEqual(res_run.returncode, 0)

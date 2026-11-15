@@ -237,6 +237,7 @@ Commands:
   diff, diff-guard       Run single Diff Guard (narrow git diff triage against --base, default: HEAD)
   check                  Run single Diff Guard (backwards-compatible alias of diff for git diff triage)
   audit                  Run unified multi-guard audit and generate numbered markdown dossier (anti-slop/audit-NNN.md)
+  check-engines          Verify availability of polyglot engine toolchains (cargo, go, node, bun)
   check-all              Run full repository quality suite across guards and polyglot tests (make check-all)
   mode [during|after|ask] Configure anti-slop execution mode (active inline vs post-hoc audit)
   install, setup         Install required core and optional skill plugins (TTY wizard or explicit flags)
@@ -553,6 +554,8 @@ Path B: Submit a PR (Problem + Solution Integrated)
     stdio: "inherit",
   });
   pyTest.on("close", (code) => process.exit(code ?? 1));
+} else if (cmd === "check-engines") {
+  runPythonScript(auditRunnerScript, ["check-engines", ...args.slice(1)], "audit_runner");
 } else if (cmd === "test-all") {
   spawnProcess("make", ["test-all"], "test-all");
 } else if (cmd === "check-all") {
