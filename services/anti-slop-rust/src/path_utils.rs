@@ -17,207 +17,121 @@ pub fn is_test_file(path: &str) -> bool {
         || path.starts_with("test_")
 }
 
-/// Unquote and unescape a git diff path, resolving C-style octal escape sequences
-pub fn clean_git_path(raw: &str) -> String {
-    let trimmed = raw.trim();
-    if trimmed.is_empty() || trimmed == "/dev/null" {
-        return String::new();
+#[derive(Default)]
+pub(crate) struct DiffPaths {
+    source: Option<String>,
+    target: Option<String>,
+}
+
+impl DiffPaths {
+    pub(crate) fn update(&mut self, line: &str) {
+        if let Some(header) = line.strip_prefix("diff --git ") {
+            (self.source, self.target) = match parse_file_header(header) {
+                Some((source, target)) => (Some(source), Some(target)),
+                None => (None, None),
+            };
+        } else if let Some(operand) = line.strip_prefix("--- ") {
+            self.source = parse_path(operand.strip_suffix('\t').unwrap_or(operand), "a/");
+        } else if let Some(operand) = line.strip_prefix("+++ ") {
+            self.target = if operand == "/dev/null" {
+                self.source.clone()
+            } else {
+                parse_path(operand.strip_suffix('\t').unwrap_or(operand), "b/")
+            };
+        } else if let Some(operand) = line
+            .strip_prefix("rename from ")
+            .or_else(|| line.strip_prefix("copy from "))
+        {
+            self.source = parse_path(operand, "");
+        } else if let Some(operand) = line
+            .strip_prefix("rename to ")
+            .or_else(|| line.strip_prefix("copy to "))
+        {
+            self.target = parse_path(operand, "");
+        }
     }
 
-    let unquoted = if trimmed.starts_with('"') && trimmed.ends_with('"') && trimmed.len() >= 2 {
-        unescape_git_c_string(&trimmed[1..trimmed.len() - 1])
+    pub(crate) fn target(&self) -> &str {
+        self.target.as_deref().unwrap_or_default()
+    }
+}
+
+fn parse_file_header(header: &str) -> Option<(String, String)> {
+    let pair = if let Some(quoted) = header.strip_prefix('"') {
+        let mut chars = quoted.char_indices();
+        loop {
+            match chars.next()? {
+                (_, '\\') => {
+                    chars.next()?;
+                }
+                (index, '"') => break header.split_at(index + 2),
+                _ => {}
+            }
+        }
+    } else if let Some((source, _)) = header.split_once(" \"b/") {
+        (source, &header[source.len()..])
     } else {
-        trimmed.to_string()
+        // Git does not quote spaces. Prioritize equal operands for edits to
+        // the same path, and leave ambiguous renames to their metadata.
+        let middle = header.len() / 2;
+        if let (Some(source), Some(target)) = (header.get(..middle), header.get(middle + 1..)) {
+            if header.as_bytes().get(middle) == Some(&b' ')
+                && source.strip_prefix("a/") == target.strip_prefix("b/")
+            {
+                return Some((parse_path(source, "a/")?, parse_path(target, "b/")?));
+            }
+        }
+        let mut separators = header.match_indices(" b/");
+        let (offset, _) = separators.next()?;
+        if separators.next().is_some() {
+            return None;
+        }
+        header.split_at(offset)
     };
+    Some((
+        parse_path(pair.0, "a/")?,
+        parse_path(pair.1.strip_prefix(' ')?, "b/")?,
+    ))
+}
 
-    let stripped = if let Some(rest) = unquoted.strip_prefix("b/") {
-        rest
-    } else if let Some(rest) = unquoted.strip_prefix("a/") {
-        rest
+fn parse_path(raw: &str, prefix: &str) -> Option<String> {
+    let path = if let Some(quoted) = raw.strip_prefix('"') {
+        unescape_git_path(quoted.strip_suffix('"')?)?
     } else {
-        &unquoted
+        if raw.contains(['"', '\\', '\t']) {
+            return None;
+        }
+        raw.to_owned()
     };
-
-    normalize_path(stripped)
+    let path = path.strip_prefix(prefix)?;
+    (!path.is_empty() && !path.contains('\0')).then(|| path.to_owned())
 }
 
-fn parse_octal_byte(chars: &[char], start: usize) -> (u8, usize) {
-    let mut val = (chars[start] as u32) - ('0' as u32);
-    let mut idx = start;
-    let mut count = 1;
-    while count < 3 && idx + 1 < chars.len() && chars[idx + 1] >= '0' && chars[idx + 1] <= '7' {
-        idx += 1;
-        count += 1;
-        val = val * 8 + ((chars[idx] as u32) - ('0' as u32));
+fn unescape_git_path(quoted: &str) -> Option<String> {
+    let mut bytes = Vec::with_capacity(quoted.len());
+    let mut input = quoted.bytes();
+    while let Some(byte) = input.next() {
+        let decoded = match byte {
+            b'"' => return None,
+            b'\\' => match input.next()? {
+                b'a' => 7,
+                b'b' => 8,
+                b't' => b'\t',
+                b'n' => b'\n',
+                b'v' => 11,
+                b'f' => 12,
+                b'r' => b'\r',
+                byte @ (b'\\' | b'"') => byte,
+                first @ b'0'..=b'3' => {
+                    let second = input.next()?.checked_sub(b'0').filter(|n| *n < 8)?;
+                    let third = input.next()?.checked_sub(b'0').filter(|n| *n < 8)?;
+                    (first - b'0') * 64 + second * 8 + third
+                }
+                _ => return None,
+            },
+            _ => byte,
+        };
+        bytes.push(decoded);
     }
-    (val as u8, idx)
-}
-
-fn decode_escape_char(c: char) -> Option<u8> {
-    match c {
-        'n' => Some(b'\n'),
-        'r' => Some(b'\r'),
-        't' => Some(b'\t'),
-        'b' => Some(b'\x08'),
-        'f' => Some(b'\x0c'),
-        'a' => Some(b'\x07'),
-        'v' => Some(b'\x0b'),
-        '\\' => Some(b'\\'),
-        '"' => Some(b'"'),
-        _ => None,
-    }
-}
-
-/// Unescape Git's C-style quoted string (octal escapes \303\251 and standard \", \\, \n, \t, etc.)
-fn unescape_git_c_string(s: &str) -> String {
-    let mut bytes: Vec<u8> = Vec::with_capacity(s.len());
-    let chars: Vec<char> = s.chars().collect();
-    let mut i = 0;
-
-    while i < chars.len() {
-        if chars[i] != '\\' || i + 1 >= chars.len() {
-            let mut buf = [0u8; 4];
-            bytes.extend_from_slice(chars[i].encode_utf8(&mut buf).as_bytes());
-            i += 1;
-            continue;
-        }
-
-        i += 1;
-        let c = chars[i];
-        if matches!(c, '0'..='7') {
-            let (b, next_idx) = parse_octal_byte(&chars, i);
-            bytes.push(b);
-            i = next_idx + 1;
-            continue;
-        }
-
-        if let Some(b) = decode_escape_char(c) {
-            bytes.push(b);
-        } else {
-            let mut buf = [0u8; 4];
-            bytes.extend_from_slice(c.encode_utf8(&mut buf).as_bytes());
-        }
-        i += 1;
-    }
-
-    String::from_utf8(bytes).unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned())
-}
-
-/// Normalize path components, resolving "." and ".." and stripping leading slashes
-pub fn normalize_path(path: &str) -> String {
-    let trimmed = path.trim().replace('\\', "/");
-    let mut parts: Vec<&str> = Vec::new();
-
-    for seg in trimmed.split('/') {
-        if seg.is_empty() || seg == "." {
-            continue;
-        }
-        if seg != ".." {
-            parts.push(seg);
-            continue;
-        }
-        if matches!(parts.last(), Some(&last) if last != "..") {
-            parts.pop();
-        } else {
-            parts.push("..");
-        }
-    }
-
-    parts.join("/")
-}
-
-fn extract_binary_file(line: &str) -> Option<String> {
-    let rest = line.strip_prefix("Binary files ")?;
-    let and_idx = rest.find(" and ")?;
-    let target_part = &rest[and_idx + 5..];
-    let differ_idx = target_part.rfind(" differ")?;
-    let cleaned = clean_git_path(&target_part[..differ_idx]);
-    if cleaned.is_empty() {
-        None
-    } else {
-        Some(cleaned)
-    }
-}
-
-fn extract_target_part(trimmed: &str) -> &str {
-    if let Some(last_quote_start) = trimmed.rfind(" \"b/") {
-        &trimmed[last_quote_start + 1..]
-    } else if let Some(last_b) = trimmed.rfind(" b/") {
-        &trimmed[last_b + 1..]
-    } else {
-        trimmed
-    }
-}
-
-pub fn extract_target_file(line: &str) -> Option<String> {
-    if let Some(rest) = line.strip_prefix("diff --git ") {
-        let cleaned = clean_git_path(extract_target_part(rest.trim()));
-        if !cleaned.is_empty() {
-            return Some(cleaned);
-        }
-    }
-    if let Some(rest) = line.strip_prefix("+++ ") {
-        let cleaned = clean_git_path(rest);
-        if !cleaned.is_empty() {
-            return Some(cleaned);
-        }
-    }
-    if let Some(rest) = line.strip_prefix("rename to ") {
-        let cleaned = clean_git_path(rest);
-        if !cleaned.is_empty() {
-            return Some(cleaned);
-        }
-    }
-    if let Some(rest) = line.strip_prefix("copy to ") {
-        let cleaned = clean_git_path(rest);
-        if !cleaned.is_empty() {
-            return Some(cleaned);
-        }
-    }
-    if line.starts_with("Binary files ") {
-        return extract_binary_file(line);
-    }
-    None
-}
-
-fn extract_source_part(trimmed: &str) -> &str {
-    if trimmed.starts_with('"') {
-        if let Some(end_quote) = trimmed[1..].find('"') {
-            &trimmed[..end_quote + 2]
-        } else {
-            trimmed
-        }
-    } else if let Some(space_idx) = trimmed.find(' ') {
-        &trimmed[..space_idx]
-    } else {
-        trimmed
-    }
-}
-
-pub fn extract_source_file(line: &str) -> Option<String> {
-    if let Some(rest) = line.strip_prefix("--- ") {
-        let cleaned = clean_git_path(rest);
-        if !cleaned.is_empty() {
-            return Some(cleaned);
-        }
-    }
-    if let Some(rest) = line.strip_prefix("rename from ") {
-        let cleaned = clean_git_path(rest);
-        if !cleaned.is_empty() {
-            return Some(cleaned);
-        }
-    }
-    if let Some(rest) = line.strip_prefix("copy from ") {
-        let cleaned = clean_git_path(rest);
-        if !cleaned.is_empty() {
-            return Some(cleaned);
-        }
-    }
-    if let Some(rest) = line.strip_prefix("diff --git ") {
-        let cleaned = clean_git_path(extract_source_part(rest.trim()));
-        if !cleaned.is_empty() {
-            return Some(cleaned);
-        }
-    }
-    None
+    String::from_utf8(bytes).ok()
 }

@@ -1,5 +1,5 @@
 use crate::model::{Finding, Severity, ViolationCategory};
-use crate::path_utils::{extract_target_file, is_doc_file, is_test_file};
+use crate::path_utils::{is_doc_file, is_test_file, DiffPaths};
 use regex::Regex;
 
 #[derive(Debug)]
@@ -44,22 +44,19 @@ impl ShitInterceptor {
         read_only_intent: bool,
     ) -> Vec<Finding> {
         let mut findings = Vec::new();
-        let mut current_file = String::new();
+        let mut paths = DiffPaths::default();
         let mut line_no = 0;
         let mut in_hunk = false;
 
         for line in diff_text.lines() {
             if line.starts_with("diff --git") {
-                current_file = extract_target_file(line).unwrap_or_default();
+                paths.update(line);
                 line_no = 0;
                 in_hunk = false;
                 continue;
             }
             if !in_hunk {
-                if let Some(f) = extract_target_file(line) {
-                    current_file = f;
-                    continue;
-                }
+                paths.update(line);
             }
             if let Some(l) = extract_hunk_line(line) {
                 line_no = l;
@@ -69,21 +66,24 @@ impl ShitInterceptor {
             if !in_hunk {
                 continue;
             }
+            let current_file = paths.target();
             let is_change = line.starts_with('+') || line.starts_with('-');
-            if let Some(f) = check_scope_creep(&current_file, line_no, allowed_files, is_change) {
+            if let Some(f) = check_scope_creep(current_file, line_no, allowed_files, is_change) {
                 findings.push(f);
             }
 
-            if let Some(f) = check_intent_violation(&current_file, line_no, read_only_intent, is_change) {
+            if let Some(f) =
+                check_intent_violation(current_file, line_no, read_only_intent, is_change)
+            {
                 findings.push(f);
             }
 
             let is_addition = line.starts_with('+') && !line.starts_with("+++");
-            let is_ignored = is_doc_file(&current_file) || is_test_file(&current_file);
+            let is_ignored = is_doc_file(current_file) || is_test_file(current_file);
 
             if is_addition && !is_ignored {
                 let code_content = line[1..].trim();
-                let mut line_findings = self.audit_added_code(&current_file, line_no, code_content);
+                let mut line_findings = self.audit_added_code(current_file, line_no, code_content);
                 findings.append(&mut line_findings);
             }
 
@@ -133,11 +133,23 @@ impl ShitInterceptor {
         findings
     }
 
-    fn hardening_review(file: &str, line_no: usize, code: &str, msg: &str, suggestion: &str) -> Finding {
+    fn hardening_review(
+        file: &str,
+        line_no: usize,
+        code: &str,
+        msg: &str,
+        suggestion: &str,
+    ) -> Finding {
         Self::hardening_finding(file, line_no, Severity::Review, code, msg, suggestion)
     }
 
-    fn hardening_blocker(file: &str, line_no: usize, code: &str, msg: &str, suggestion: &str) -> Finding {
+    fn hardening_blocker(
+        file: &str,
+        line_no: usize,
+        code: &str,
+        msg: &str,
+        suggestion: &str,
+    ) -> Finding {
         Self::hardening_finding(file, line_no, Severity::Blocker, code, msg, suggestion)
     }
 
@@ -163,7 +175,13 @@ impl ShitInterceptor {
 
 pub(crate) fn extract_hunk_line(line: &str) -> Option<usize> {
     let start = line.strip_prefix("@@")?.split('+').nth(1)?;
-    start.split_whitespace().next()?.split(',').next()?.parse().ok()
+    start
+        .split_whitespace()
+        .next()?
+        .split(',')
+        .next()?
+        .parse()
+        .ok()
 }
 
 fn check_intent_violation(
@@ -242,7 +260,8 @@ mod review_regression_tests {
 
     #[test]
     fn metadata_and_changed_lines_are_separated() {
-        let diff = "diff --git a/a.rs b/a.rs\n--- a/a.rs\n+++ b/a.rs\n@@ -0,0 +1 @@\n+++not a header\n";
+        let diff =
+            "diff --git a/a.rs b/a.rs\n--- a/a.rs\n+++ b/a.rs\n@@ -0,0 +1 @@\n+++not a header\n";
         let findings = ShitInterceptor::new().audit_diff(diff, Some(&["src/"]), true);
         assert!(findings.iter().any(|f| f.code == "STS-I01"));
         assert!(findings.iter().any(|f| f.code == "STS-S01"));
@@ -252,20 +271,83 @@ mod review_regression_tests {
     fn quoted_paths_are_unquoted_and_audited() {
         let diff = "diff --git \"a/src/my file.rs\" \"b/src/my file.rs\"\n--- \"a/src/my file.rs\"\n+++ \"b/src/my file.rs\"\n@@ -1 +1,2 @@\n let a = 1;\n+let b = 2;\n";
         let findings = ShitInterceptor::new().audit_diff(diff, Some(&["other/"]), false);
-        assert!(findings.iter().any(|f| f.code == "STS-S01" && f.file == "src/my file.rs"));
+        assert!(findings
+            .iter()
+            .any(|f| f.code == "STS-S01" && f.file == "src/my file.rs"));
     }
 
     #[test]
     fn quoted_escaped_octal_paths_are_unquoted_and_audited() {
         let diff = "diff --git \"a/src/\\303\\251.rs\" \"b/src/\\303\\251.rs\"\n--- \"a/src/\\303\\251.rs\"\n+++ \"b/src/\\303\\251.rs\"\n@@ -1 +1,2 @@\n let a = 1;\n+let b = 2;\n";
         let findings = ShitInterceptor::new().audit_diff(diff, Some(&["other/"]), false);
-        assert!(findings.iter().any(|f| f.code == "STS-S01" && f.file == "src/é.rs"));
+        assert!(findings
+            .iter()
+            .any(|f| f.code == "STS-S01" && f.file == "src/é.rs"));
     }
 
     #[test]
     fn unparseable_path_with_allowed_scope_flags_scope_creep() {
         let diff = "@@ -1 +1,2 @@\n+change\n";
         let findings = ShitInterceptor::new().audit_diff(diff, Some(&["src/"]), false);
-        assert!(findings.iter().any(|f| f.code == "STS-S01" && f.file == "unknown"));
+        assert!(findings
+            .iter()
+            .any(|f| f.code == "STS-S01" && f.file == "unknown"));
+    }
+
+    #[test]
+    fn git_path_keeps_literal_filename_characters() {
+        for (operand, file) in [
+            (r#""src/has\"quote.rs""#, "src/has\"quote.rs"),
+            (r#""src/has\tab.rs""#, "src/has\tab.rs"),
+            (r#""space\\file.rs""#, r"space\file.rs"),
+            ("space/file.rs  \t", "space/file.rs  "),
+        ] {
+            let target = if let Some(quoted) = operand.strip_prefix('"') {
+                format!("\"b/{quoted}")
+            } else {
+                format!("b/{operand}")
+            };
+            let diff = format!("--- /dev/null\n+++ {target}\n@@ -0,0 +1 @@\n+line\n");
+            let findings = ShitInterceptor::new().audit_diff(&diff, Some(&["other/"]), false);
+            assert_eq!(findings[0].file, file);
+        }
+    }
+
+    #[test]
+    fn git_path_rejects_malformed_or_undecodable_targets() {
+        for header in [
+            "diff --git b/src/file.rs",
+            "diff --git a/src/file.rs b/src/file.rs\n+++ invalid",
+            r#"+++ "b/src/invalid\377.rs""#,
+            r#"+++ "b/src/invalid\q.rs""#,
+            r#"+++ "b/src/invalid\000.rs""#,
+        ] {
+            let diff = format!("{header}\n@@ -0,0 +1 @@\n+line\n");
+            let findings = ShitInterceptor::new().audit_diff(&diff, Some(&["src/"]), false);
+            assert!(
+                findings
+                    .iter()
+                    .any(|f| f.code == "STS-S01" && f.file == "unknown"),
+                "{header}"
+            );
+        }
+    }
+
+    #[test]
+    fn git_path_deletion_uses_the_complete_source() {
+        let diff = "diff --git a/archive b/src/file.rs b/archive b/src/file.rs\n--- a/archive b/src/file.rs\t\n+++ /dev/null\n@@ -1 +0,0 @@\n-line\n";
+        let findings = ShitInterceptor::new().audit_diff(diff, Some(&["src/"]), false);
+        assert!(findings
+            .iter()
+            .any(|f| f.code == "STS-S01" && f.file == "archive b/src/file.rs"));
+    }
+
+    #[test]
+    fn git_path_rename_metadata_keeps_real_prefix() {
+        let diff = "diff --git a/a/old.rs b/b/new.rs\nrename from a/old.rs\nrename to b/new.rs\n@@ -0,0 +1 @@\n+line\n";
+        let findings = ShitInterceptor::new().audit_diff(diff, Some(&["other/"]), false);
+        assert!(findings
+            .iter()
+            .any(|f| f.code == "STS-S01" && f.file == "b/new.rs"));
     }
 }
