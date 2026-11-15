@@ -51,6 +51,6 @@ The objective is independent test *signal*, not maximal test count. DAMP tests m
 
 Run `python3 scripts/verification_oracle_guard.py counterfactual --base <commit> --tests <path>` for a test command and checkout you trust. The command runs test code under your own account. Use an OS sandbox for untrusted code.
 
-- Baseline files come from the selected Git commit with the selected tests copied on top. Current files come from the working tree, including staged and unstaged edits and untracked files Git does not ignore. Each run uses a temporary checkout without Git metadata. Dependencies or fixtures missing from the snapshots may make the result inconclusive.
-- A verified result requires assertion-failure evidence from the baseline and a passing result from the current snapshot. A generic nonzero exit or missing dependency is inconclusive. A test that already passes on the baseline has no red-state evidence.
-- Use `--check-flaky` to compare two runs per snapshot. The snapshots are discarded on completion.
+- Baseline files come from the selected Git commit with the selected tests copied on top. Current files come from the working tree, including staged and unstaged edits and untracked files Git does not ignore. Each invocation starts in a fresh temporary checkout without Git metadata. Dependencies or fixtures missing from the snapshots may make the result inconclusive.
+- A verified result requires the selected test case to fail by assertion on the baseline and pass on the current snapshot. Default unittest, Go, and Bun runs attribute outcomes to the selected file. A missing dependency, no executed case, or a custom command without attributable evidence is inconclusive. A test that already passes on the baseline has no red-state evidence.
+- Use `--check-flaky` to compare two independent runs per snapshot. The snapshots are discarded on completion.

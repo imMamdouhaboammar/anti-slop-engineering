@@ -2,7 +2,8 @@
 """Check Verification Oracle Architect records and test/source files for Contract-Verified In-Memory Fakes, Property-Based & Metamorphic Oracles, Seeded Deterministic Chaos Testing, and Red-Green Mutation Falsification."""
 
 import argparse
-import glob
+import importlib.util
+import inspect
 import json
 import os
 import re
@@ -12,6 +13,8 @@ import subprocess
 import sys
 import tempfile
 import time
+import unittest
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 VALID_DOMAIN_CATEGORIES = {
@@ -81,6 +84,46 @@ ASSERTION_FAIL_RE = re.compile(
 )
 TEST_FILE_EXTENSIONS = {".py", ".ts", ".js", ".mjs", ".go", ".rs"}
 
+GO_TEST_NAMES = """
+package main
+
+import (
+	"encoding/json"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"os"
+	"strings"
+	"unicode"
+	"unicode/utf8"
+)
+
+func main() {
+	file, err := parser.ParseFile(token.NewFileSet(), os.Args[2], nil, parser.SkipObjectResolution)
+	if err != nil {
+		os.Exit(1)
+	}
+	names := []string{}
+	for _, declaration := range file.Decls {
+		fn, ok := declaration.(*ast.FuncDecl)
+		if !ok || fn.Recv != nil {
+			continue
+		}
+		name := fn.Name.Name
+		if name == "TestMain" || !(strings.HasPrefix(name, "Test") || strings.HasPrefix(name, "Example")) {
+			continue
+		}
+		suffix := strings.TrimPrefix(strings.TrimPrefix(name, "Test"), "Example")
+		first, _ := utf8.DecodeRuneInString(suffix)
+		if !unicode.IsLower(first) {
+			names = append(names, name)
+		}
+	}
+	if err := json.NewEncoder(os.Stdout).Encode(names); err != nil {
+		os.Exit(1)
+	}
+}
+"""
 
 def filled(value, min_len=1, depth=0, max_depth=100):
     if depth > max_depth:
@@ -372,11 +415,10 @@ def detect_test_cmd(test_file: str, custom_cmd=None):
 
     ext = Path(test_file).suffix.lower()
     if ext == ".py":
-        path = Path(test_file)
-        return [sys.executable, "-m", "unittest", "discover", "-s", str(path.parent), "-p", glob.escape(path.name)]
+        return [sys.executable, str(Path(__file__).resolve()), "_unittest_selected", test_file]
     if ext in (".ts", ".js", ".mjs"):
         if shutil.which("bun"):
-            return ["bun", "test", test_file]
+            return ["bun", "test", "./" + test_file]
         return ["npm", "test", "--", test_file]
     if ext == ".go":
         parent = str(Path(test_file).parent)
@@ -541,16 +583,208 @@ def _create_baseline(root: Path, target: Path, commit: str):
             _write_baseline_blob(objects, target / path, mode, oid)
 
 
+def _go_test_command(cwd: Path, test_file: str, env, timeout):
+    path = Path(test_file)
+    package = cwd / path.parent
+    listing_cmd = ["go", "list", "-json", "."]
+    listing = run_command_safe(listing_cmd, package, env=env, timeout=timeout)
+    names = set()
+    if listing["exit_code"] != 0:
+        return package, listing_cmd, listing, names
+    try:
+        metadata = json.loads(listing["stdout"])
+    except ValueError:
+        return package, listing_cmd, listing, names
+    if path.name not in metadata.get("TestGoFiles", []) + metadata.get("XTestGoFiles", []):
+        return package, listing_cmd, listing, names
+
+    helper = cwd.parent / "test_names.go"
+    helper.write_text(GO_TEST_NAMES, encoding="utf-8")
+    names_cmd = ["go", "run", str(helper), "--", "./" + path.name]
+    parsed = run_command_safe(names_cmd, package, env=env, timeout=timeout)
+    if parsed["exit_code"] != 0:
+        return package, names_cmd, parsed, names
+    try:
+        names = set(json.loads(parsed["stdout"]))
+    except (TypeError, ValueError):
+        return package, names_cmd, parsed, names
+    if not names:
+        return package, names_cmd, parsed, names
+    selected = "^(" + "|".join(sorted(re.escape(name) for name in names)) + ")$"
+    return package, ["go", "test", "-json", "-count=1", "-run", selected, "."], None, names
+
+
+def _go_test_evidence(result, selected):
+    cases = {}
+    named_failure = False
+    for line in result["stdout"].splitlines():
+        try:
+            event = json.loads(line)
+        except ValueError:
+            return None, {}
+        name = event.get("Test")
+        action = event.get("Action")
+        if name and name.split("/", 1)[0] not in selected:
+            return None, {}
+        if name and action in ("pass", "fail", "skip"):
+            cases[name] = action
+        if action == "output":
+            output = event.get("Output", "")
+            if output.startswith(("panic:", "fatal error:")):
+                return "test_failure", cases
+            named_failure |= bool(name and output.strip().startswith("--- FAIL:"))
+    if result["exit_code"] == 0 and "pass" in cases.values():
+        return "passed", cases
+    if result["exit_code"] == 1 and named_failure and "fail" in cases.values():
+        return "assertion_failure", cases
+    if not any(value in ("pass", "fail") for value in cases.values()):
+        return None, cases
+    return "test_failure", cases
+
+
+def _bun_test_evidence(report: Path, cwd: Path, test_file: str, exit_code):
+    try:
+        root = ET.parse(report).getroot()
+    except (OSError, ET.ParseError):
+        return None, {}
+    cases = {}
+    failed = []
+    for suite in root.findall("testsuite"):
+        for case in suite.findall("testcase"):
+            filename = case.get("file") or suite.get("file")
+            if not filename or (cwd / filename).resolve() != (cwd / test_file).resolve():
+                return None, {}
+            name = (case.get("classname"), case.get("name"))
+            if not name[1] or name in cases:
+                return None, {}
+            failure = case.find("failure")
+            if failure is not None:
+                failed.append(failure.get("type"))
+                cases[name] = "fail"
+            elif case.find("error") is not None:
+                return "test_failure", cases
+            elif case.find("skipped") is not None:
+                cases[name] = "skip"
+            else:
+                cases[name] = "pass"
+    if root.get("failures") != str(len(failed)) or root.get("errors", "0") != "0":
+        return "test_failure", cases
+    if exit_code == 0 and not failed and "pass" in cases.values():
+        return "passed", cases
+    if exit_code == 1 and failed and all(kind == "AssertionError" for kind in failed):
+        return "assertion_failure", cases
+    if not any(value in ("pass", "fail") for value in cases.values()):
+        return None, cases
+    return "test_failure", cases
+
+
+def _unittest_cases(suite):
+    pending = [iter(suite)]
+    while pending:
+        item = next(pending[-1], None)
+        if item is None:
+            pending.pop()
+        elif isinstance(item, unittest.TestSuite):
+            if len(pending) >= 100:
+                raise ValueError("Unittest suite nesting exceeds 100")
+            pending.append(iter(item))
+        else:
+            yield item
+
+
+def _run_unittest_selected(filename: Path, report: Path):
+    sys.argv[:] = [str(filename)]
+    name = filename.stem
+    parent = filename.parent
+    while (parent / "__init__.py").is_file():
+        name = parent.name + "." + name
+        parent = parent.parent
+    sys.path.insert(0, str(parent))
+    spec = importlib.util.spec_from_file_location(name, filename)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+
+    suite = unittest.defaultTestLoader.loadTestsFromModule(module)
+    selected = list(_unittest_cases(suite))
+    for case in selected:
+        method = getattr(case, getattr(case, "_testMethodName", ""), None)
+        origin = inspect.getsourcefile(inspect.unwrap(method)) if inspect.ismethod(method) else None
+        if not origin or Path(origin).resolve() != filename:
+            print("Unittest did not establish the selected test file", file=sys.stderr)
+            return 1
+    if len({case.id() for case in selected}) != len(selected):
+        print("Unittest reported duplicate selected test identities", file=sys.stderr)
+        return 1
+
+    outcome = unittest.TextTestRunner(verbosity=2).run(suite)
+    failures = {getattr(test, "test_case", test).id() for test, _ in outcome.failures}
+    skipped = {test.id() for test, _ in outcome.skipped + outcome.expectedFailures}
+    completed_all = outcome.testsRun == len(selected)
+    cases = {
+        test.id(): "fail" if test.id() in failures else "pass"
+        for test in selected if completed_all and test.id() not in skipped
+    }
+    report.write_text(json.dumps({
+        "cases": cases, "errors": len(outcome.errors),
+        "unexpected_successes": len(outcome.unexpectedSuccesses),
+    }), encoding="utf-8")
+    return 0 if outcome.wasSuccessful() else 1
+
+
+def _python_test_evidence(report: Path, exit_code):
+    try:
+        payload = json.loads(report.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None, {}
+    cases = payload["cases"]
+    if payload["errors"] or payload["unexpected_successes"]:
+        return "test_failure", cases
+    if exit_code == 0 and "pass" in cases.values():
+        return "passed", cases
+    if exit_code == 1 and "fail" in cases.values():
+        return "assertion_failure", cases
+    return None, cases
+
+
 def _execute_test_isolated(test_file: str, cwd: Path, custom_cmd=None, timeout: int = 30):
     cmd = detect_test_cmd(test_file, custom_cmd)
     env = os.environ.copy()
     env["PYTHONPATH"] = str(cwd)
-    res = run_command_safe(cmd, cwd=cwd, env=env, timeout=timeout)
-    cls_type, reason = classify_test_output(res)
-    res["classification"] = cls_type
-    res["reason"] = reason
-    res["command"] = cmd
-    return res
+    ext = Path(test_file).suffix.lower()
+    native_go = not custom_cmd and ext == ".go"
+    native_bun = not custom_cmd and cmd[:2] == ["bun", "test"]
+    native_python = not custom_cmd and ext == ".py"
+    report = cwd.parent / "results"
+    run = None
+    run_cwd = cwd
+    if native_go:
+        run_cwd, cmd, run, selected = _go_test_command(cwd, test_file, env, timeout)
+    if native_bun:
+        cmd += ["--reporter=junit", "--reporter-outfile=" + str(report)]
+    if native_python:
+        cmd += [str(report)]
+    if run is None:
+        run = run_command_safe(cmd, cwd=run_cwd, env=env, timeout=timeout)
+    classification, reason = classify_test_output(run)
+    cases = {}
+    if classification not in ("timed_out", "dependency_failure", "infrastructure_error"):
+        evidence = None
+        if native_go and cmd[:2] == ["go", "test"]:
+            evidence, cases = _go_test_evidence(run, selected)
+        elif native_bun:
+            evidence, cases = _bun_test_evidence(report, cwd, test_file, run["exit_code"])
+        elif native_python:
+            evidence, cases = _python_test_evidence(report, run["exit_code"])
+        if evidence is None:
+            classification = "unattributed"
+            reason = "The runner did not establish execution of the selected test"
+        elif evidence != classification:
+            classification = evidence
+            reason = "The selected runner reported %s" % evidence
+    run.update(classification=classification, reason=reason, command=cmd)
+    return run, cases
+
 
 
 def _evaluate_test_status(base_cls: str, curr_cls: str) -> str:
@@ -560,7 +794,7 @@ def _evaluate_test_status(base_cls: str, curr_cls: str) -> str:
         return "flaky_nondeterministic"
     if curr_cls in ("no_tests_ran", "infrastructure_error"):
         return "inconclusive_infrastructure"
-    if curr_cls == "timed_out":
+    if "unattributed" in (base_cls, curr_cls) or curr_cls == "timed_out":
         return "inconclusive"
     if curr_cls != "passed":
         return "failed_on_current"
@@ -648,27 +882,59 @@ def run_counterfactual_proof(
     }
 
 
+def _run_proof_test(test_file, snapshot, test_cmd, timeout):
+    with tempfile.TemporaryDirectory(prefix="run-", dir=snapshot.parent) as temp_dir:
+        checkout = Path(temp_dir) / "checkout"
+        shutil.copytree(snapshot, checkout)
+        return _execute_test_isolated(test_file, checkout, custom_cmd=test_cmd, timeout=timeout)
+
+
+def _proof_test_status(baseline, current):
+    base_run, baseline_cases = baseline
+    current_run, current_cases = current
+    status = _evaluate_test_status(base_run["classification"], current_run["classification"])
+    if status == "verified" and baseline_cases:
+        if any(
+            state == "fail" and current_cases.get(name) != "pass"
+            for name, state in baseline_cases.items()
+        ):
+            base_run["classification"] = "unattributed"
+            base_run["reason"] = "A failing baseline test did not pass in the current snapshot"
+            return "inconclusive"
+    return status
+
+
 def _run_proof_tests(test_files, baseline: Path, current: Path, test_cmd, timeout: int, check_flaky: bool):
     per_test_results = {}
-    for t_file in test_files:
-        base_run = _execute_test_isolated(t_file, cwd=baseline, custom_cmd=test_cmd, timeout=timeout)
-        curr_run = _execute_test_isolated(t_file, cwd=current, custom_cmd=test_cmd, timeout=timeout)
-
+    for test_file in test_files:
+        base_result = _run_proof_test(test_file, baseline, test_cmd, timeout)
+        current_result = _run_proof_test(test_file, current, test_cmd, timeout)
+        status = _proof_test_status(base_result, current_result)
+        base_run = base_result[0]
+        current_run = current_result[0]
         if check_flaky:
-            base_run2 = _execute_test_isolated(t_file, cwd=baseline, custom_cmd=test_cmd, timeout=timeout)
-            curr_run2 = _execute_test_isolated(t_file, cwd=current, custom_cmd=test_cmd, timeout=timeout)
-            if base_run["classification"] != base_run2["classification"] or curr_run["classification"] != curr_run2["classification"]:
+            base_repeat = _run_proof_test(test_file, baseline, test_cmd, timeout)
+            current_repeat = _run_proof_test(test_file, current, test_cmd, timeout)
+            repeat_status = _proof_test_status(base_repeat, current_repeat)
+            if (
+                base_result[1] != base_repeat[1]
+                or current_result[1] != current_repeat[1]
+                or status != repeat_status
+                or base_run["classification"] != base_repeat[0]["classification"]
+                or current_run["classification"] != current_repeat[0]["classification"]
+            ):
                 base_run["classification"] = "flaky_nondeterministic"
                 base_run["reason"] = "Test outcome varied across repeated executions"
+                status = "flaky_nondeterministic"
 
-        t_status = _evaluate_test_status(base_run["classification"], curr_run["classification"])
-        per_test_results[t_file] = {
-            "status": t_status,
+        per_test_results[test_file] = {
+            "status": status,
             "baseline": base_run,
-            "current": curr_run,
+            "current": current_run,
         }
 
     return per_test_results
+
 
 
 def main():
@@ -753,4 +1019,6 @@ def main():
 
 
 if __name__ == "__main__":
+    if len(sys.argv) == 4 and sys.argv[1] == "_unittest_selected":
+        sys.exit(_run_unittest_selected(Path(sys.argv[2]).resolve(), Path(sys.argv[3])))
     sys.exit(main())

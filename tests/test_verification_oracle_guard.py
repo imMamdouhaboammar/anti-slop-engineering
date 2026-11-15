@@ -3,6 +3,8 @@
 
 import json
 import os
+import shlex
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -355,6 +357,197 @@ class VerificationOracleGuardTests(unittest.TestCase):
             self.assertFalse(res["red_green_verified"])
             self.assertEqual(res["results"]["tests/test_new_service.py"]["baseline"]["classification"], "infrastructure_error")
 
+    def _proof_cli(self, root, *files, extra=()):
+        proc = subprocess.run(
+            [sys.executable, str(SCRIPT), "counterfactual", "--base", "HEAD",
+             "--tests", *files, *extra, "--json"],
+            cwd=root, capture_output=True, text=True, check=False,
+        )
+        return proc.returncode, json.loads(proc.stdout)
+
+    @unittest.skipUnless(shutil.which("go"), "Go toolchain is unavailable")
+    def test_counterfactual_go_runs_the_selected_file(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            git = _init_git_repo(root)
+            (root / "go.mod").write_text("module example.test/proof\n\ngo 1.23\n")
+            source = root / "value.go"
+            source.write_text("package proof\nfunc value() int { return 1 }\n")
+            (root / "prior_test.go").write_text(
+                'package proof\nimport "testing"\n'
+                'func TestPrior(t *testing.T) { if value() != 2 { t.Fatal("wrong prior value") } }\n'
+            )
+            git("add", ".")
+            git("commit", "-m", "add prior value contract")
+            source.write_text("package proof\nfunc value() int { return 2 }\n")
+            test_file = "selected_test.go"
+            for condition, code, status in (("value() < 1", 2, "tautological"), ("value() != 2", 0, "verified")):
+                with self.subTest(status=status):
+                    (root / test_file).write_text(
+                        'package proof\nimport "testing"\n'
+                        f'func TestSelected(t *testing.T) {{ if {condition} {{ t.Fatal("wrong selected value") }} }}\n'
+                    )
+                    exit_code, result = self._proof_cli(root, test_file)
+                    self.assertEqual(exit_code, code, result)
+                    self.assertEqual(result["status"], status, result)
+                    for side in ("baseline", "current"):
+                        output = result["results"][test_file][side]["stdout"]
+                        self.assertIn("=== RUN   TestSelected", output)
+                        self.assertNotIn("=== RUN   TestPrior", output)
+            (root / test_file).write_text("package proof\nfunc helper() {}\n")
+            exit_code, result = self._proof_cli(root, test_file)
+            self.assertNotEqual(exit_code, 0, result)
+            self.assertTrue(result["status"].startswith("inconclusive"), result)
+
+    @unittest.skipUnless(shutil.which("go"), "Go toolchain is unavailable")
+    def test_counterfactual_go_keeps_the_package_test_setup(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            git = _init_git_repo(root)
+            (root / "go.mod").write_text("module example.test/proof\n\ngo 1.23\n")
+            (root / "value.go").write_text("package proof\nfunc value() int { return 1 }\n")
+            (root / "setup_test.go").write_text(
+                'package proof\nimport ("os"; "testing")\n'
+                'var initialized bool\n'
+                'func TestMain(m *testing.M) { initialized = true; os.Exit(m.Run()) }\n'
+                'func TestUnrelated(t *testing.T) { t.Fatal("must not run") }\n'
+            )
+            git("add", ".")
+            git("commit", "-m", "add package test setup")
+            (root / "value.go").write_text("package proof\nfunc value() int { return 2 }\n")
+            name = "selected_test.go"
+            (root / name).write_text(
+                'package proof\nimport "testing"\n'
+                'func TestSelected(t *testing.T) {\n'
+                'if !initialized { t.Fatal("missing setup") }\n'
+                'if value() != 2 { t.Fatal("selected assertion") }\n'
+                '}\n'
+            )
+            exit_code, result = self._proof_cli(root, name)
+            self.assertEqual(exit_code, 0, result)
+            self.assertEqual(result["status"], "verified", result)
+            self.assertIn("selected assertion", result["results"][name]["baseline"]["stdout"])
+            self.assertNotIn("TestUnrelated", result["results"][name]["baseline"]["stdout"])
+
+    @unittest.skipUnless(shutil.which("bun"), "Bun toolchain is unavailable")
+    def test_counterfactual_bun_runs_the_selected_file(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            git = _init_git_repo(root)
+            test_file = "identity.test.js"
+            source = root / "value.js"
+            source.write_text("export const value = 1;\n")
+            (root / "unrelated").mkdir()
+            (root / "unrelated" / test_file).write_text(
+                "import {expect, test} from 'bun:test';\nimport {value} from '../value.js';\n"
+                "test('prior value', () => expect(value).toBe(2));\n"
+            )
+            git("add", ".")
+            git("commit", "-m", "add prior value contract")
+            source.write_text("export const value = 2;\n")
+            for assertion, code, status in (("toBeGreaterThan(0)", 2, "tautological"), ("toBe(2)", 0, "verified")):
+                with self.subTest(status=status):
+                    (root / test_file).write_text(
+                        "import {expect, test} from 'bun:test';\nimport {value} from './value.js';\n"
+                        f"test('selected value', () => expect(value).{assertion});\n"
+                    )
+                    exit_code, result = self._proof_cli(root, test_file)
+                    self.assertEqual(exit_code, code, result)
+                    self.assertEqual(result["status"], status, result)
+                    for side in ("baseline", "current"):
+                        output = result["results"][test_file][side]["stderr"]
+                        self.assertIn("selected value", output)
+                        self.assertNotIn("prior value", output)
+            (root / test_file).write_text(
+                "import {test} from 'bun:test';\n"
+                "test.skip('selected skip', () => { throw Error('skipped'); });\n"
+            )
+            exit_code, result = self._proof_cli(root, test_file)
+            self.assertNotEqual(exit_code, 0, result)
+            self.assertTrue(result["status"].startswith("inconclusive"), result)
+
+    def test_counterfactual_python_runs_the_selected_file(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            git = _init_git_repo(root)
+            value = root / "value.txt"
+            value.write_text("old")
+            (root / "unrelated").mkdir()
+            (root / "unrelated" / "__init__.py").touch()
+            (root / "unrelated" / "test_selected.py").write_text(
+                "import unittest\nfrom pathlib import Path\n"
+                "class Prior(unittest.TestCase):\n"
+                "    def test_prior_value(self):\n"
+                "        self.assertEqual(Path('value.txt').read_text(), 'new')\n"
+            )
+            git("add", ".")
+            git("commit", "-m", "add unrelated same-named test")
+            value.write_text("new")
+            (root / "test_selected.py").write_text(
+                "import unittest\nfrom pathlib import Path\n"
+                "class Selected(unittest.TestCase):\n"
+                "    def test_selected_value(self):\n"
+                "        self.assertTrue(Path('value.txt').read_text())\n"
+            )
+            exit_code, result = self._proof_cli(root, "test_selected.py")
+            self.assertEqual(exit_code, 2, result)
+            self.assertEqual(result["status"], "tautological", result)
+            for side in ("baseline", "current"):
+                output = result["results"]["test_selected.py"][side]["stderr"]
+                self.assertIn("test_selected_value", output)
+                self.assertNotIn("test_prior_value", output)
+
+    def test_counterfactual_cannot_attribute_an_opaque_runner(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            git = _init_git_repo(root)
+            (root / "value.txt").write_text("old")
+            (root / "wrapper.py").write_text(
+                "import unittest\nfrom pathlib import Path\n"
+                "class UnrelatedTest(unittest.TestCase):\n"
+                "    def test_unrelated_value(self):\n"
+                "        self.assertEqual(Path('value.txt').read_text(), 'new')\n"
+                "if __name__ == '__main__':\n"
+                "    unittest.main(argv=['wrapper.py'])\n"
+            )
+            git("add", ".")
+            git("commit", "-m", "add baseline and custom runner")
+            (root / "value.txt").write_text("new")
+            (root / "test_selected.py").write_text("raise RuntimeError('never executed')\n")
+            exit_code, result = self._proof_cli(
+                root, "test_selected.py",
+                extra=("--test-cmd", shlex.join((sys.executable, "wrapper.py", "{test_file}"))),
+            )
+            self.assertEqual(exit_code, 2, result)
+            self.assertEqual(result["status"], "inconclusive", result)
+            self.assertIn("test_unrelated_value", result["results"]["test_selected.py"]["baseline"]["stderr"])
+
+    def test_counterfactual_every_invocation_starts_from_a_fresh_snapshot(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            git = _init_git_repo(root)
+            (root / "value.txt").write_text("old")
+            git("add", ".")
+            git("commit", "-m", "add baseline value")
+            (root / "value.txt").write_text("new")
+            files = ("test_a.py", "test_b.py")
+            for name in files:
+                (root / name).write_text(
+                    "import unittest\nfrom pathlib import Path\n"
+                    "class FreshTest(unittest.TestCase):\n"
+                    "    def test_value(self):\n"
+                    "        marker = Path('marker.txt')\n"
+                    "        self.assertFalse(marker.exists(), 'another run left a marker')\n"
+                    "        marker.touch()\n"
+                    "        self.assertEqual(Path('value.txt').read_text(), 'new')\n"
+                )
+            exit_code, result = self._proof_cli(root, *files, extra=("--check-flaky",))
+            self.assertEqual(exit_code, 0, result)
+            self.assertEqual(result["status"], "verified", result)
+            for name in files:
+                self.assertIn("'old' != 'new'", result["results"][name]["baseline"]["stderr"])
+            self.assertFalse((root / "marker.txt").exists())
+
     def test_counterfactual_proof_dependency_failure(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_path = Path(tmp_dir)
@@ -449,7 +642,9 @@ class VerificationOracleGuardTests(unittest.TestCase):
 
     def test_counterfactual_compares_repeated_runs(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
-            root = Path(tmp_dir)
+            root = Path(tmp_dir) / "repo"
+            root.mkdir()
+            counter = root.parent / "variant"
             git = _init_git_repo(root)
             version = root / "version.txt"
             version.write_text("old", encoding="utf-8")
@@ -462,7 +657,7 @@ class VerificationOracleGuardTests(unittest.TestCase):
                 "class ToggleTest(unittest.TestCase):\n"
                 "    def test_toggle(self):\n"
                 "        if Path('version.txt').read_text() == 'old':\n"
-                "            marker = Path('run-marker.txt')\n"
+                f"            marker = Path({str(counter)!r})\n"
                 "            first_run = not marker.exists()\n"
                 "            marker.touch()\n"
                 "            self.assertFalse(first_run)\n",
