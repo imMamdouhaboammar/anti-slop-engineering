@@ -13,6 +13,15 @@ import sre_compile
 import subprocess
 import sys
 
+try:
+    from scripts.hook_dispatcher import dispatch_lifecycle_event, DEFAULT_HOOK_TIMEOUT
+except ImportError:
+    try:
+        from hook_dispatcher import dispatch_lifecycle_event, DEFAULT_HOOK_TIMEOUT
+    except ImportError:
+        dispatch_lifecycle_event = None
+        DEFAULT_HOOK_TIMEOUT = 5.0
+
 __version__ = '1.8.0'
 
 
@@ -164,7 +173,7 @@ def audit_patch_lines(patch):
     return findings
 
 
-def scan(repo, base, max_lines=400):
+def scan(repo, base, max_lines=400, hooks_dir=None, extra_hooks=None, hook_timeout=DEFAULT_HOOK_TIMEOUT):
     git(repo, 'rev-parse', '--verify', f'{base}^{{commit}}')
     diff_info = git(repo, 'diff', '--no-ext-diff', '--no-renames', '--numstat', '-z', base, '--')
     file_counts = {}
@@ -181,13 +190,41 @@ def scan(repo, base, max_lines=400):
     if untracked:
         limitations.append(f'Untracked files ({len(untracked)}) are excluded from diff scanning; stage them for complete analysis.')
 
+    hook_results = []
+    hook_findings = []
+    if dispatch_lifecycle_event:
+        pre_ev = dispatch_lifecycle_event(
+            'pre_scan', repo, base,
+            payload={'review_lines': max_lines},
+            hooks_dir=hooks_dir,
+            extra_hooks=extra_hooks.get('pre_scan') if extra_hooks else None,
+            timeout=hook_timeout,
+        )
+        hook_results.extend(pre_ev.get('results', []))
+        hook_findings.extend(pre_ev.get('findings', []))
+
     meta_findings, changed_test, new_test, added_total, deleted_total = audit_file_metadata(
         repo, base, file_counts, untracked, max_lines
     )
 
     patch = git(repo, 'diff', '--no-ext-diff', '--no-renames', '--unified=0', base, '--').decode('utf-8', 'replace')
     patch_findings = audit_patch_lines(patch)
-    findings = meta_findings + patch_findings
+    findings = meta_findings + patch_findings + hook_findings
+
+    if dispatch_lifecycle_event:
+        post_ev = dispatch_lifecycle_event(
+            'post_scan', repo, base,
+            payload={
+                'summary': {'changed_files': len(file_counts), 'added_lines': added_total, 'deleted_lines': deleted_total},
+                'findings': findings,
+            },
+            hooks_dir=hooks_dir,
+            extra_hooks=extra_hooks.get('post_scan') if extra_hooks else None,
+            timeout=hook_timeout,
+        )
+        hook_results.extend(post_ev.get('results', []))
+        if post_ev.get('findings'):
+            findings.extend(post_ev['findings'])
 
     return {
         'base': base,
@@ -195,6 +232,7 @@ def scan(repo, base, max_lines=400):
                     'changed_test_files': len(changed_test), 'new_test_files': len(new_test),
                     'untracked_files_not_scanned': len(untracked)},
         'findings': findings,
+        'hook_results': hook_results,
         'limitations': limitations,
         'status': 'review-required' if findings else 'no-heuristic-findings'
     }
@@ -208,9 +246,26 @@ def main():
     p.add_argument('--json', action='store_true', help='Machine-readable JSON output')
     p.add_argument('--review-lines', type=int, default=400, help='Added-line count prompting scope review, not failure')
     p.add_argument('--fail-on-blocker', action='store_true', help='Exit 2 for candidate test-disable patterns pending review')
+    p.add_argument('--hooks-dir', help='Path to directory containing lifecycle hooks')
+    p.add_argument('--hook', action='append', default=[], help='Register hook as event:cmd (e.g. post_scan:./hook.py)')
+    p.add_argument('--hook-timeout', type=float, default=DEFAULT_HOOK_TIMEOUT, help='Per-hook timeout in seconds')
     a = p.parse_args()
+
+    extra_hooks = {}
+    for h in a.hook:
+        if ':' in h:
+            evt, cmd = h.split(':', 1)
+            extra_hooks.setdefault(evt.strip(), []).append(cmd.strip())
+
     try:
-        report = scan(pathlib.Path(a.repo).resolve(), a.base, a.review_lines)
+        report = scan(
+            pathlib.Path(a.repo).resolve(),
+            a.base,
+            a.review_lines,
+            hooks_dir=a.hooks_dir,
+            extra_hooks=extra_hooks,
+            hook_timeout=a.hook_timeout,
+        )
     except (RuntimeError, ValueError) as exc:
         print(json.dumps({'error': str(exc)}) if a.json else f'ERROR: {exc}')
         return 1
@@ -223,7 +278,10 @@ def main():
             print(f"[{f['severity']}] {f['id']}: {f.get('file') or 'diff'}:{f.get('line') or '-'} | {f['evidence']}")
         for warning in report['limitations']:
             print(f'LIMITATION: {warning}')
-    return 2 if a.fail_on_blocker and any(f['severity'] == 'blocker' for f in report['findings']) else 0
+    has_blocker = any(f['severity'] == 'blocker' for f in report['findings']) or any(
+        h.get('decision') == 'block' for h in report.get('hook_results', [])
+    )
+    return 2 if a.fail_on_blocker and has_blocker else 0
 
 
 if __name__ == '__main__':
