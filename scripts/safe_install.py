@@ -25,7 +25,6 @@ EXCLUDED = {
     "skills",
     "tests",
     "test",
-    "services",
     "cases",
     "docs",
     ".github",

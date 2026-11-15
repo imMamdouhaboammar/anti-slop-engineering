@@ -224,7 +224,7 @@ class SafeFileInstallTests(unittest.TestCase):
         """Verify default exclusions prevent optional skills and dev-only folders from being installed."""
         (self.source / "skills" / "decision-guard").mkdir(parents=True)
         (self.source / "skills" / "decision-guard" / "SKILL.md").write_text("decision skill\n", encoding="utf-8")
-        for dev_dir in ("tests", "test", "services", "cases", "docs", ".github", "submission"):
+        for dev_dir in ("tests", "test", "cases", "docs", ".github", "submission"):
             target_dir = self.source / dev_dir
             target_dir.mkdir(parents=True, exist_ok=True)
             (target_dir / "internal.txt").write_text("dev artifact\n", encoding="utf-8")
@@ -233,7 +233,7 @@ class SafeFileInstallTests(unittest.TestCase):
         self.assertIn("SKILL.md", result["installed"])
         self.assertFalse((self.dest / "skills").exists())
         self.assertFalse((self.dest / "skills" / "decision-guard").exists())
-        for dev_dir in ("tests", "test", "services", "cases", "docs", ".github", "submission"):
+        for dev_dir in ("tests", "test", "cases", "docs", ".github", "submission"):
             self.assertFalse((self.dest / dev_dir).exists(), f"Dev directory {dev_dir} was leaked to destination")
 
     def test_custom_exclude_parameter_and_cli_flag_exclude_specified_paths(self):

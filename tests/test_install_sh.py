@@ -302,7 +302,7 @@ class BashInstallerSafetyTests(unittest.TestCase):
         self.assertFalse((skills / "anti-slop-engineering/skills").exists())
 
     def test_bash_core_install_leaves_no_optional_skills_leaked(self):
-        """Verify core-only install does not copy optional skills or dev directories into destination."""
+        """Verify core-only install keeps native build sources and excludes optional skills and dev directories."""
         env = {**os.environ, "HOME": str(self.home), "PATH": SAFE_PATH}
         result = subprocess.run(
             ["bash", str(REPO / "install.sh"), "--skills=core"],
@@ -312,7 +312,13 @@ class BashInstallerSafetyTests(unittest.TestCase):
         core_dir = self.home / ".agents/skills/anti-slop-engineering"
         self.assertTrue((core_dir / "SKILL.md").is_file())
         self.assertFalse((core_dir / "skills").exists())
-        for dev_dir in ("tests", "test", "services", "cases", "docs", ".github", "submission"):
+        for relative in (
+            "services/anti-slop-rust/Cargo.toml", "services/anti-slop-rust/Cargo.lock",
+            "services/anti-slop-rust/src/lib.rs", "services/toil-guard-go/go.mod",
+            "services/toil-guard-go/cmd/toil-guard/main.go",
+        ):
+            self.assertTrue((core_dir / relative).is_file(), relative)
+        for dev_dir in ("tests", "test", "cases", "docs", ".github", "submission"):
             self.assertFalse((core_dir / dev_dir).exists(), f"Dev directory {dev_dir} leaked into core install")
 
     @unittest.skipUnless(HAS_NODE, "Node.js required for plugin catalog selection")
