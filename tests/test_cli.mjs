@@ -501,4 +501,5 @@ test("CLI: contribute command output is clean and free of internal dev-notes", (
   assert.match(text, /Contributing to Anti-Slop Engineering/);
   assert.match(text, /Reporting Slop/);
   assert.match(text, /Submitting Contributions/);
+  assert.match(text, /Optional: Add a heuristic/);
 });

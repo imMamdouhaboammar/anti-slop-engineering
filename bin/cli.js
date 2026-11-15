@@ -541,7 +541,7 @@ Reporting Slop:
 Submitting Contributions:
   1. Add diagnostic pattern to references/anti-pattern-catalog.md
   2. Update SKILL.md & AGENTS.md with concise agent directives
-  3. Add heuristic to scripts/diff_guard.py or native services
+  3. Optional: Add a heuristic to scripts/diff_guard.py, scripts/sre_guard.py, or native services
   4. Run verification: make check-all
   5. Open a Pull Request: https://github.com/imMamdouhaboammar/anti-slop-engineering/pulls
 `);
