@@ -1,5 +1,5 @@
 use crate::model::{Finding, Severity, ViolationCategory};
-use crate::path_utils::{is_doc_file, is_test_file, normalize_path};
+use crate::path_utils::{is_doc_file, is_relative_git_path, is_test_file, path_matches_scope};
 use regex::Regex;
 
 #[derive(Debug)]
@@ -74,7 +74,9 @@ impl ShitInterceptor {
                 findings.push(f);
             }
 
-            if let Some(f) = check_intent_violation(&current_file, line_no, read_only_intent, is_change) {
+            if let Some(f) =
+                check_intent_violation(&current_file, line_no, read_only_intent, is_change)
+            {
                 findings.push(f);
             }
 
@@ -133,11 +135,23 @@ impl ShitInterceptor {
         findings
     }
 
-    fn hardening_review(file: &str, line_no: usize, code: &str, msg: &str, suggestion: &str) -> Finding {
+    fn hardening_review(
+        file: &str,
+        line_no: usize,
+        code: &str,
+        msg: &str,
+        suggestion: &str,
+    ) -> Finding {
         Self::hardening_finding(file, line_no, Severity::Review, code, msg, suggestion)
     }
 
-    fn hardening_blocker(file: &str, line_no: usize, code: &str, msg: &str, suggestion: &str) -> Finding {
+    fn hardening_blocker(
+        file: &str,
+        line_no: usize,
+        code: &str,
+        msg: &str,
+        suggestion: &str,
+    ) -> Finding {
         Self::hardening_finding(file, line_no, Severity::Blocker, code, msg, suggestion)
     }
 
@@ -173,7 +187,13 @@ fn extract_target_file(line: &str) -> Option<String> {
 
 pub(crate) fn extract_hunk_line(line: &str) -> Option<usize> {
     let start = line.strip_prefix("@@")?.split('+').nth(1)?;
-    start.split_whitespace().next()?.split(',').next()?.parse().ok()
+    start
+        .split_whitespace()
+        .next()?
+        .split(',')
+        .next()?
+        .parse()
+        .ok()
 }
 
 fn check_intent_violation(
@@ -204,27 +224,15 @@ fn check_scope_creep(
     is_change: bool,
 ) -> Option<Finding> {
     let allowed = allowed_files?;
-    if file.is_empty() || allowed.is_empty() || !is_change {
+    if allowed.is_empty() || !is_change {
         return None;
     }
-    let norm_file = normalize_path(file);
-    let is_allowed = allowed.iter().any(|prefix| {
-        let norm_prefix = normalize_path(prefix.trim_end_matches('/'));
-        if norm_prefix.is_empty() {
-            return true;
-        }
-        if norm_file == norm_prefix {
-            return true;
-        }
-        if norm_file.starts_with(&format!("{norm_prefix}/")) {
-            return true;
-        }
-        false
-    });
+    let is_allowed =
+        is_relative_git_path(file) && allowed.iter().any(|scope| path_matches_scope(file, scope));
 
     if !is_allowed {
         Some(Finding {
-            file: norm_file,
+            file: if file.is_empty() { "unknown" } else { file }.to_owned(),
             line: line_no,
             category: ViolationCategory::ScopeCreep,
             severity: Severity::Blocker,
@@ -253,7 +261,8 @@ mod review_regression_tests {
 
     #[test]
     fn metadata_and_changed_lines_are_separated() {
-        let diff = "diff --git a/a.rs b/a.rs\n--- a/a.rs\n+++ b/a.rs\n@@ -0,0 +1 @@\n+++not a header\n";
+        let diff =
+            "diff --git a/a.rs b/a.rs\n--- a/a.rs\n+++ b/a.rs\n@@ -0,0 +1 @@\n+++not a header\n";
         let findings = ShitInterceptor::new().audit_diff(diff, Some(&["src/"]), true);
         assert!(findings.iter().any(|f| f.code == "STS-I01"));
         assert!(findings.iter().any(|f| f.code == "STS-S01"));
@@ -263,14 +272,18 @@ mod review_regression_tests {
     fn prefix_collision_does_not_permit_unauthorized_files() {
         let diff = "diff --git a/src/auth_bypass.rs b/src/auth_bypass.rs\n--- a/src/auth_bypass.rs\n+++ b/src/auth_bypass.rs\n@@ -1 +1,2 @@\n let a = 1;\n+let b = 2;\n";
         let findings = ShitInterceptor::new().audit_diff(diff, Some(&["src/auth"]), false);
-        assert!(findings.iter().any(|f| f.code == "STS-S01" && f.file == "src/auth_bypass.rs"));
+        assert!(findings
+            .iter()
+            .any(|f| f.code == "STS-S01" && f.file == "src/auth_bypass.rs"));
     }
 
     #[test]
     fn path_traversal_is_normalized_and_blocked() {
         let diff = "diff --git a/src/auth/../../.github/workflows/ci.yml b/src/auth/../../.github/workflows/ci.yml\n--- a/src/auth/../../.github/workflows/ci.yml\n+++ b/src/auth/../../.github/workflows/ci.yml\n@@ -1 +1,2 @@\n name: CI\n+run: echo pwned\n";
         let findings = ShitInterceptor::new().audit_diff(diff, Some(&["src/auth"]), false);
-        assert!(findings.iter().any(|f| f.code == "STS-S01" && f.file == ".github/workflows/ci.yml"));
+        assert!(findings
+            .iter()
+            .any(|f| f.code == "STS-S01" && f.file == "src/auth/../../.github/workflows/ci.yml"));
     }
 
     #[test]
@@ -278,5 +291,41 @@ mod review_regression_tests {
         let diff = "diff --git a/src/auth/login.rs b/src/auth/login.rs\n--- a/src/auth/login.rs\n+++ b/src/auth/login.rs\n@@ -1 +1,2 @@\n let a = 1;\n+let b = 2;\n";
         let findings = ShitInterceptor::new().audit_diff(diff, Some(&["src/auth"]), false);
         assert!(!findings.iter().any(|f| f.code == "STS-S01"));
+    }
+
+    #[test]
+    fn scope_policy_rejects_untrusted_path_components() {
+        for path in [
+            "src/tmp/../auth/a.rs",
+            "src/auth/./a.rs",
+            "/src/auth/a.rs",
+            r"src\auth\a.rs",
+            "C:/src/auth/a.rs",
+        ] {
+            let diff = format!(
+                "diff --git a/{path} b/{path}\n--- a/{path}\n+++ b/{path}\n@@ -0,0 +1 @@\n+line\n"
+            );
+            let findings = ShitInterceptor::new().audit_diff(&diff, Some(&["src/auth/"]), false);
+            assert!(findings.iter().any(|f| f.code == "STS-S01"), "{path:?}");
+        }
+    }
+
+    #[test]
+    fn scope_policy_rejects_unusable_allowlist_entries() {
+        let diff = "diff --git a/src/auth/a.rs b/src/auth/a.rs\n--- a/src/auth/a.rs\n+++ b/src/auth/a.rs\n@@ -0,0 +1 @@\n+line\n";
+        for scope in ["", ".", "/", "/src/auth/", "src/tmp/../auth/", r"src\auth\"] {
+            let findings = ShitInterceptor::new().audit_diff(diff, Some(&[scope]), false);
+            assert!(findings.iter().any(|f| f.code == "STS-S01"), "{scope:?}");
+        }
+    }
+
+    #[test]
+    fn scope_policy_directory_suffix_requires_a_child_path() {
+        let diff = "diff --git a/src/auth b/src/auth\n--- a/src/auth\n+++ b/src/auth\n@@ -0,0 +1 @@\n+line\n";
+        let interceptor = ShitInterceptor::new();
+        let directory = interceptor.audit_diff(diff, Some(&["src/auth/"]), false);
+        let bare = interceptor.audit_diff(diff, Some(&["src/auth"]), false);
+        assert!(directory.iter().any(|f| f.code == "STS-S01"));
+        assert!(bare.is_empty());
     }
 }

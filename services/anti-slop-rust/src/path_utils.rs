@@ -17,25 +17,19 @@ pub fn is_test_file(path: &str) -> bool {
         || path.starts_with("test_")
 }
 
-/// Normalize path components, resolving "." and ".." and stripping leading slashes
-pub fn normalize_path(path: &str) -> String {
-    let trimmed = path.trim().replace('\\', "/");
-    let mut parts: Vec<&str> = Vec::new();
+pub(crate) fn is_relative_git_path(path: &str) -> bool {
+    let windows_drive =
+        path.as_bytes().get(1) == Some(&b':') && path.as_bytes()[0].is_ascii_alphabetic();
+    !windows_drive
+        && !path.contains(['\\', '\0'])
+        && path.split('/').all(|part| !matches!(part, "" | "." | ".."))
+}
 
-    for seg in trimmed.split('/') {
-        if seg.is_empty() || seg == "." {
-            continue;
-        }
-        if seg != ".." {
-            parts.push(seg);
-            continue;
-        }
-        if matches!(parts.last(), Some(&last) if last != "..") {
-            parts.pop();
-        } else {
-            parts.push("..");
-        }
-    }
-
-    parts.join("/")
+pub(crate) fn path_matches_scope(path: &str, scope: &str) -> bool {
+    let prefix = scope.strip_suffix('/').unwrap_or(scope);
+    is_relative_git_path(prefix)
+        && ((prefix == path && !scope.ends_with('/'))
+            || path
+                .strip_prefix(prefix)
+                .is_some_and(|rest| rest.starts_with('/')))
 }
