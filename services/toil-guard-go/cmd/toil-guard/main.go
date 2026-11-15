@@ -230,7 +230,12 @@ func readChangedSources(rootPath string, paths []string) (map[string]string, err
 		if !info.Mode().IsRegular() {
 			continue
 		}
-		content, err := root.ReadFile(path)
+		file, err := root.OpenFile(path, os.O_RDONLY|auditSourceOpenFlags, 0)
+		if err != nil {
+			return nil, fmt.Errorf("opening %q: %w", path, err)
+		}
+		content, err := readRegularSource(file, info)
+		file.Close()
 		if err != nil {
 			return nil, fmt.Errorf("reading %q: %w", path, err)
 		}
@@ -239,6 +244,17 @@ func readChangedSources(rootPath string, paths []string) (map[string]string, err
 		}
 	}
 	return files, nil
+}
+
+func readRegularSource(file *os.File, expected os.FileInfo) ([]byte, error) {
+	actual, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if !actual.Mode().IsRegular() || !os.SameFile(expected, actual) {
+		return nil, errors.New("source file changed before it could be read")
+	}
+	return io.ReadAll(file)
 }
 
 func writeAuditReport(w io.Writer, report model.AuditReport, format string) error {
