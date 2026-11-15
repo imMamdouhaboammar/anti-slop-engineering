@@ -24,6 +24,7 @@
         "type-level-and-ast-slop-gate",
         "comment-budget-guard",
         "pr-boundary-guard",
+        "supply-chain-and-sbom-sentinel",
         "demock-guard",
         "install-anti-slop"
       ]
