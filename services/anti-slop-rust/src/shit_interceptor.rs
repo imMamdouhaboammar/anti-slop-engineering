@@ -1,5 +1,7 @@
 use crate::model::{Finding, Severity, ViolationCategory};
-use crate::path_utils::{is_doc_file, is_git_file_header, is_test_file, DiffPaths};
+use crate::path_utils::{
+    is_doc_file, is_git_file_header, is_relative_git_path, is_test_file, scope_matches, DiffPaths,
+};
 use regex::Regex;
 
 fn is_transfer(line: &str) -> bool {
@@ -277,7 +279,8 @@ fn check_scope_creep(
     if allowed.is_empty() || !is_change {
         return None;
     }
-    let is_allowed = !file.is_empty() && allowed.iter().any(|prefix| file.starts_with(prefix));
+    let is_allowed =
+        is_relative_git_path(file) && allowed.iter().any(|scope| scope_matches(file, scope));
     if !is_allowed {
         Some(Finding {
             file: if file.is_empty() { "unknown" } else { file }.to_owned(),
@@ -388,6 +391,103 @@ mod review_regression_tests {
     #[test]
     fn malformed_metadata_boundary_does_not_reuse_prior_path() {
         let diff = "diff --git a/src/first.rs b/src/first.rs\n@@ -0,0 +1 @@\n+first\ndiff --git\nold mode 100644\nnew mode 100755\n";
+        let findings = ShitInterceptor::new().audit_diff(diff, Some(&["src/"]), false);
+        assert_eq!(
+            findings
+                .iter()
+                .filter(|f| f.code == "STS-S01" && f.file == "unknown")
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn quoted_paths_are_unquoted_and_audited() {
+        let diff = "diff --git \"a/src/my file.rs\" \"b/src/my file.rs\"\n--- \"a/src/my file.rs\"\n+++ \"b/src/my file.rs\"\n@@ -1 +1,2 @@\n let a = 1;\n+let b = 2;\n";
+        let findings = ShitInterceptor::new().audit_diff(diff, Some(&["other/"]), false);
+        assert!(findings
+            .iter()
+            .any(|f| f.code == "STS-S01" && f.file == "src/my file.rs"));
+    }
+
+    #[test]
+    fn quoted_escaped_octal_paths_are_unquoted_and_audited() {
+        let diff = "diff --git \"a/src/\\303\\251.rs\" \"b/src/\\303\\251.rs\"\n--- \"a/src/\\303\\251.rs\"\n+++ \"b/src/\\303\\251.rs\"\n@@ -1 +1,2 @@\n let a = 1;\n+let b = 2;\n";
+        let findings = ShitInterceptor::new().audit_diff(diff, Some(&["other/"]), false);
+        assert!(findings
+            .iter()
+            .any(|f| f.code == "STS-S01" && f.file == "src/é.rs"));
+    }
+
+    #[test]
+    fn unparseable_path_with_allowed_scope_flags_scope_creep() {
+        let diff = "@@ -1 +1,2 @@\n+change\n";
+        let findings = ShitInterceptor::new().audit_diff(diff, Some(&["src/"]), false);
+        assert!(findings
+            .iter()
+            .any(|f| f.code == "STS-S01" && f.file == "unknown"));
+    }
+
+    #[test]
+    fn git_path_keeps_literal_filename_characters() {
+        for (operand, file) in [
+            (r#""src/has\"quote.rs""#, "src/has\"quote.rs"),
+            (r#""src/has\tab.rs""#, "src/has\tab.rs"),
+            (r#""space\\file.rs""#, r"space\file.rs"),
+            ("space/file.rs  \t", "space/file.rs  "),
+        ] {
+            let target = if let Some(quoted) = operand.strip_prefix('"') {
+                format!("\"b/{quoted}")
+            } else {
+                format!("b/{operand}")
+            };
+            let diff = format!("--- /dev/null\n+++ {target}\n@@ -0,0 +1 @@\n+line\n");
+            let findings = ShitInterceptor::new().audit_diff(&diff, Some(&["other/"]), false);
+            assert_eq!(findings[0].file, file);
+        }
+    }
+
+    #[test]
+    fn git_path_rejects_malformed_or_undecodable_targets() {
+        for header in [
+            "diff --git b/src/file.rs",
+            "diff --git a/src/file.rs b/src/file.rs\n+++ invalid",
+            r#"+++ "b/src/invalid\377.rs""#,
+            r#"+++ "b/src/invalid\q.rs""#,
+            r#"+++ "b/src/invalid\000.rs""#,
+        ] {
+            let diff = format!("{header}\n@@ -0,0 +1 @@\n+line\n");
+            let findings = ShitInterceptor::new().audit_diff(&diff, Some(&["src/"]), false);
+            assert!(
+                findings
+                    .iter()
+                    .any(|f| f.code == "STS-S01" && f.file == "unknown"),
+                "{header}"
+            );
+        }
+    }
+
+    #[test]
+    fn git_path_deletion_uses_the_complete_source() {
+        let diff = "diff --git a/archive b/src/file.rs b/archive b/src/file.rs\n--- a/archive b/src/file.rs\t\n+++ /dev/null\n@@ -1 +0,0 @@\n-line\n";
+        let findings = ShitInterceptor::new().audit_diff(diff, Some(&["src/"]), false);
+        assert!(findings
+            .iter()
+            .any(|f| f.code == "STS-S01" && f.file == "archive b/src/file.rs"));
+    }
+
+    #[test]
+    fn git_path_rename_metadata_keeps_real_prefix() {
+        let diff = "diff --git a/a/old.rs b/b/new.rs\nrename from a/old.rs\nrename to b/new.rs\n@@ -0,0 +1 @@\n+line\n";
+        let findings = ShitInterceptor::new().audit_diff(diff, Some(&["other/"]), false);
+        assert!(findings
+            .iter()
+            .any(|f| f.code == "STS-S01" && f.file == "b/new.rs"));
+    }
+
+    #[test]
+    fn malformed_file_boundary_does_not_reuse_prior_path() {
+        let diff = "diff --git a/src/first.rs b/src/first.rs\n@@ -0,0 +1 @@\n+first\ndiff --git\n@@ -0,0 +1 @@\n+second\n";
         let findings = ShitInterceptor::new().audit_diff(diff, Some(&["src/"]), false);
         assert_eq!(
             findings
