@@ -485,7 +485,7 @@ test("verification contract: check/diff exits 0 on clean diff while audit catche
   }
 });
 
-test("CLI: help banner contains dynamic package version and zero dev-notes leakage", () => {
+test("CLI: help banner contains the release version and zero dev-notes leakage", () => {
   const result = invoke("anti-slop-engineering", ["--help"]);
   assert.equal(result.status, 0);
   const helpText = result.stdout;

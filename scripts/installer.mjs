@@ -745,7 +745,7 @@ Options:
 
   const availableSkills = listAvailableSkills()
   let selectedSkills
-  if (presetArg) {
+  if (presetArg !== null) {
     const presetSkills = resolvePreset(presetArg, availableSkills)
     if (skillsArg) {
       const explicitSkills = resolveSkillSelection(skillsArg, availableSkills)

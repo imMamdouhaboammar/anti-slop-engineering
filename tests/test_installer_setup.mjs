@@ -61,6 +61,14 @@ test('Setup: version fallback is limited to a missing package manifest', () => {
   }
 })
 
+test('Setup: explicitly empty presets fail before installing', () => {
+  for (const arg of ['--preset=', '--pack=']) {
+    const result = inDisposableProject([arg, '--agent=codex', '--json'])
+    assert.equal(result.status, 1)
+    assert.match(result.stderr, /Preset name cannot be empty/)
+  }
+})
+
 test('Setup: non-interactive default installs mandatory core only', () => {
   const result = inDisposableProject(['--agent=codex', '--dry-run', '--json'])
   assert.equal(result.status, 0, result.stderr)

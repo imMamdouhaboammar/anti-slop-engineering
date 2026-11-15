@@ -371,7 +371,14 @@ class BashInstallerSafetyTests(unittest.TestCase):
                 self.assertTrue((self.home / ".agents/skills" / entry.name / "SKILL.md").is_file(), entry.name)
 
     def test_bash_rejects_explicit_preset_without_node_before_writes(self):
-        env = {**os.environ, "HOME": str(self.home), "PATH": "/usr/bin:/bin"}
+        no_node_bin = self.home / "no-node-bin"
+        no_node_bin.mkdir()
+        for command in ("bash", "dirname"):
+            target = shutil.which(command)
+            self.assertIsNotNone(target, command)
+            (no_node_bin / command).symlink_to(target)
+        env = {**os.environ, "HOME": str(self.home), "PATH": str(no_node_bin)}
+        self.assertIsNone(shutil.which("node", path=env["PATH"]))
         for flags in (("--preset=backend",), ("--pack", "core-decisions")):
             with self.subTest(flags=flags):
                 result = subprocess.run(["bash", str(REPO / "install.sh"), *flags],
