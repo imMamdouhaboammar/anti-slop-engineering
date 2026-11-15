@@ -502,6 +502,46 @@ class EngineParityContractTests(unittest.TestCase):
             self.assertEqual(ga.returncode, 1, ga.stderr)
             self.assertTrue(any(f["code"] == "SRE-SCALE-SWALLOW" for f in json.loads(ga.stdout)["findings"]))
 
+    def test_go_handler_audit_uses_full_source_syntax(self):
+        if not self.go_bin and not self.require_native:
+            self.skipTest("native Go binary unavailable")
+        before = (
+            "package fixture\n\n"
+            "var sample = \x60if err != nil {}\x60\n\n"
+            "func check(err error) {\n"
+            "    if err != nil { report(err) }\n"
+            "    if err := run(); err != nil { report(err) }\n"
+            "    if err != nil { report(err) }\n"
+            "    if err != nil { report(err) }\n"
+            "}\n"
+            "func run() error { return nil }\n"
+            "func report(error) {}\n"
+        )
+        after = (
+            "package fixture\n\n"
+            "var sample = \x60if err != nil {}\x60\n\n"
+            "func check(err error) {\n"
+            "    if err != nil {\n"
+            "    }\n"
+            "    if err := run(); err != nil {\n"
+            "        // expected: this probe can already be closed\n"
+            "    }\n"
+            "    if err != nil { report(err) }\n"
+            "    /* marker\n"
+            "    */ if err != nil {\n"
+            "    }\n"
+            "}\n"
+            "func run() error { return nil }\n"
+            "func report(error) {}\n"
+        )
+        repo_dir, _ = self._create_repo({"src/worker.go": before})
+        (repo_dir / "src" / "worker.go").write_text(after, encoding="utf-8")
+        report = self._run_go_audit(repo_dir)
+        findings = [f for f in json.loads(report.stdout)["findings"] if f["code"] == "SRE-SCALE-SWALLOW"]
+        self.assertEqual([(f["file"], f["line"]) for f in findings],
+                         [("src/worker.go", 6), ("src/worker.go", 13)])
+        self.assertEqual(report.returncode, 1, report.stderr or report.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()
