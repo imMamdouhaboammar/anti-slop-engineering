@@ -64,13 +64,23 @@ MANIFEST_TARGETS = [
     },
     {
         "file": "CITATION.cff",
-        "pattern": sre_compile.compile(r'(version\s*:\s*)[^\n]+'),
+        "pattern": sre_compile.compile(r'(?m)(^version\s*:\s*)[^\n]+'),
         "replacement": r'\g<1>{version}',
     },
     {
         "file": "CITATION.cff",
         "pattern": sre_compile.compile(r'(date-released\s*:\s*)[^\n]+'),
         "replacement": r'\g<1>{release_date}',
+    },
+    {
+        "file": "submission/listing.json",
+        "pattern": sre_compile.compile(r'("version"\s*:\s*)"[^"]+"'),
+        "replacement": r'\g<1>"{version}"',
+    },
+    {
+        "file": "submission/reviewer-packet.json",
+        "pattern": sre_compile.compile(r'("version"\s*:\s*)"[^"]+"'),
+        "replacement": r'\g<1>"{version}"',
     },
     {
         "file": "services/anti-slop-rust/Cargo.toml",
