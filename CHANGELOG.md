@@ -5,41 +5,6 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.8.0] - 2026-11-12
-
-### Added
-- **Unified Guard Wiring & CLI Contracts:**
-  - Aligned `check`, `audit`, and `check-all` CLI exit and report contracts across all shipped guards.
-  - Implemented daemonless native CLI fallbacks for high-throughput SRE evaluation.
-  - Hardened Python 3.14 compatibility across all standard library audit runners.
-- **Engine Security & Boundary Hardening:**
-  - Hardened Rust SHIT interceptor against quoted git paths, non-hunk modifications (mode changes, renames, binary diffs), prefix collisions, and directory traversals.
-  - Hardened Go SRE toil guard to preserve untracked files in active diff audits and maintain context lines during diff reconstruction.
-  - Added multi-line error swallowing detection across both Rust and Go native engines.
-
-### Changed
-- Replaced single-point heap snapshot subtraction with positive monotonic delta tracking in mechanical sympathy profiling to eliminate GC allocation inversion.
-- Updated universal bash installer (`install.sh`) to support `--local` in any argument position and restrict installation scope to local project targets when requested.
-
-## [1.7.0] - 2026-11-11
-
-### Added
-- **Interactive Multi-Agent Plugin Installer (`scripts/installer.mjs`):**
-  - Interactive terminal picker for optional skill and plugin selection.
-  - Secure CLI linking with conflict preservation and symlink directory protection.
-- **Differential Parity Engine Fixtures:**
-  - Shared golden test fixtures across Python, Rust, and Go engines enforcing identical audit verdicts.
-  - Clean checkout validation and pointer integrity verification across skills and manifests.
-
-## [1.6.0] - 2026-11-10
-
-### Added
-- **High-Performance Native Microservices & Engines:**
-  - Rust anti-slop engine (`services/anti-slop-rust`) providing sub-millisecond AST and diff triage.
-  - Go SRE microservice (`services/toil-guard-go`) providing high-throughput KISS, DRY, YAGNI, and Scale auditing.
-- **Stop-That-Shit (STS) Senior Dev Guard:**
-  - Automated detection of scope creep, unread companion hashes, intent violations, and speculative wrappers.
-
 ## [1.5.0] - 2026-11-09
 
 ### Added

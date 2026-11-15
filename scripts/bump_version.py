@@ -276,6 +276,37 @@ def bump_repository_version(root_dir, bump_type, release_date=None, dry_run=Fals
     }
 
 
+def check_release_metadata(root_dir):
+    root = pathlib.Path(root_dir).resolve()
+    version = read_current_version(root)
+    if parse_semver(version) is None:
+        raise ValueError(f"Invalid canonical version in package.json: {version}")
+
+    findings = []
+    for target in MANIFEST_TARGETS:
+        replacement = target["replacement"]
+        if "{version}" not in replacement:
+            continue
+        rel_path = target["file"]
+        path = root / rel_path
+        if not path.is_file():
+            findings.append({"file": rel_path, "reason": "missing_file"})
+            continue
+        contents = path.read_text(encoding="utf-8")
+        expected, found = apply_target_update(target["pattern"], replacement.format(version=version), contents)
+        if not found:
+            findings.append({"file": rel_path, "reason": "missing_version"})
+        elif contents != expected:
+            findings.append({"file": rel_path, "reason": "version_mismatch"})
+
+    paths = run_git(root, ["ls-files", "-z"]).stdout.split("\0")
+    for path in paths:
+        basename = pathlib.PurePosixPath(path).name.lower()
+        if basename in {".ds_store", "thumbs.db", "ehthumbs.db", "desktop.ini"} or basename.startswith("._"):
+            findings.append({"file": path, "reason": "tracked_platform_junk"})
+    return {"version": version, "findings": findings}
+
+
 def run_git(repo_dir, git_args, check=True):
     """Execute a git command scoped to repo_dir and raise GitCommandError on failure."""
     command = ["git", "-C", str(repo_dir), *git_args]
@@ -389,6 +420,19 @@ def create_release_tag(repo_dir, version):
     return tag_name
 
 
+def report_release_check(root, output_json):
+    report = check_release_metadata(root)
+    findings = report["findings"]
+    if output_json:
+        print(json.dumps(report, indent=2))
+    elif findings:
+        for item in findings:
+            print(f"{item['file']}: {item['reason']}", file=sys.stderr)
+    else:
+        print(f"Release metadata matches {report['version']}.")
+    return int(bool(findings))
+
+
 def main():
     """Command-line entrypoint for bumping version."""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -401,16 +445,22 @@ def main():
     parser.add_argument("--repo", default=".", help="Root directory of the repository")
     parser.add_argument("--date", default=None, help="Release date override (YYYY-MM-DD)")
     parser.add_argument("--dry-run", action="store_true", help="Preview version changes without writing")
+    parser.add_argument("--check", action="store_true", help="Check release metadata and tracked platform junk without writing")
     parser.add_argument("--json", action="store_true", help="Output machine-readable JSON summary")
     parser.add_argument("--git-tag", action="store_true", help="Create git tag vX.Y.Z after bump")
     parser.add_argument("--git-commit", action="store_true", help="Create git commit after bump")
     args = parser.parse_args()
+    if args.check and (args.git_tag or args.git_commit):
+        parser.error("--check cannot be combined with --git-tag or --git-commit")
 
     root = pathlib.Path(args.repo).resolve()
     report = None
     commit_sha = None
 
     try:
+        if args.check:
+            return report_release_check(root, args.json)
+
         if (args.git_commit or args.git_tag) and not args.dry_run:
             target_ver = compute_next_version(read_current_version(root), args.bump)
             preflight_git_release(root, target_ver, git_commit=args.git_commit, git_tag=args.git_tag)

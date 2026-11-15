@@ -55,7 +55,7 @@ class BumpVersionTests(unittest.TestCase):
             (tmp_path / "SKILL.md").write_text('---\nversion: "1.0.0"\n---\n', encoding="utf-8")
             (tmp_path / "bin").mkdir()
             (tmp_path / "bin" / "cli.js").write_text('console.log("Anti-Slop Engineering CLI (v1.0.0)");', encoding="utf-8")
-            (tmp_path / "CITATION.cff").write_text("version: 1.0.0\ndate-released: 2026-01-01\n", encoding="utf-8")
+            (tmp_path / "CITATION.cff").write_text("cff-version: 1.2.0\nversion: 1.0.0\ndate-released: 2026-01-01\n", encoding="utf-8")
 
             rust_dir = tmp_path / "services" / "anti-slop-rust"
             rust_dir.mkdir(parents=True)
@@ -85,7 +85,8 @@ class BumpVersionTests(unittest.TestCase):
             self.assertEqual(pkg_data["version"], "1.1.0")
 
             cff_content = (tmp_path / "CITATION.cff").read_text(encoding="utf-8")
-            self.assertIn("version: 1.1.0", cff_content)
+            self.assertIn("cff-version: 1.2.0", cff_content)
+            self.assertIn("\nversion: 1.1.0", cff_content)
             self.assertIn("date-released: 2026-11-02", cff_content)
 
             cli_content = (tmp_path / "bin" / "cli.js").read_text(encoding="utf-8")
@@ -180,6 +181,38 @@ class BumpVersionGitSafetyTests(unittest.TestCase):
             text=True,
             check=False,
         )
+
+    def test_release_check_reads_manifest_and_ignores_historical_changelog(self):
+        result = self._run_bump_cli(ROOT, ["--check", "--json"])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        report = json.loads(result.stdout)
+        self.assertEqual(report["version"], read_current_version(ROOT))
+        self.assertEqual(report["findings"], [])
+
+    def test_release_check_detects_drift_missing_metadata_and_tracked_junk(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory) / "repo"
+            root.mkdir()
+            env = self._init_disposable_repo(root, include_cargo=True)
+            citation = root / "CITATION.cff"
+            citation.write_text("cff-version: 1.2.0\nversion: 0.9.0\ndate-released: 2026-01-01\n")
+            (root / ".gitignore").write_text(".DS_Store\nThumbs.db\n")
+            (root / "old .DS_Store").touch()
+            (root / "Thumbs.db").touch()
+            (root / ".DS_Store").touch()
+            self._run_git(root, ["add", "-f", "--", "Thumbs.db"], env=env)
+            before = self._run_git(root, ["status", "--porcelain=v1"], env=env).stdout
+
+            result = self._run_bump_cli(root, ["--check", "--json"], env=env)
+            self.assertEqual(result.returncode, 1, result.stderr)
+            findings = {item["file"]: item["reason"] for item in json.loads(result.stdout)["findings"]}
+            self.assertEqual(findings["CITATION.cff"], "version_mismatch")
+            self.assertEqual(findings["submission/listing.json"], "missing_file")
+            self.assertEqual(findings["Thumbs.db"], "tracked_platform_junk")
+            self.assertNotIn(".DS_Store", findings)
+            self.assertNotIn("old .DS_Store", findings)
+            self.assertEqual(self._run_git(root, ["status", "--porcelain=v1"], env=env).stdout, before)
+            self.assertIn("version: 0.9.0", citation.read_text())
 
     def test_git_commit_stages_only_bump_modified_files_on_dirty_tree(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
