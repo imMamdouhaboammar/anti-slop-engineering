@@ -1,3 +1,4 @@
+import json
 import os
 import shutil
 import stat
@@ -312,6 +313,43 @@ class BashInstallerSafetyTests(unittest.TestCase):
         self.assertTrue((skills / "anti-slop-engineering/SKILL.md").exists())
         self.assertTrue((skills / "api-ergonomics-and-contract-governor/SKILL.md").exists())
         self.assertFalse((skills / "decision-guard").exists())
+
+    @unittest.skipUnless(HAS_NODE, "Node.js required for plugin catalog selection")
+    def test_bash_project_selection_records_installed_and_preserved_siblings(self):
+        project = self.home / "project"
+        project.mkdir()
+        env = {**os.environ, "HOME": str(self.home), "PATH": SAFE_PATH, "CI": "true"}
+
+        def install(selection):
+            result = subprocess.run(
+                ["bash", str(REPO / "install.sh"), "--project", f"--skills={selection}"],
+                cwd=project, env=env, capture_output=True, text=True, timeout=25,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+
+        skills = project / ".agents/skills"
+        selection_file = skills / ".anti-slop-selection.json"
+        install("decision-guard")
+        state = json.loads(selection_file.read_text(encoding="utf-8"))
+        package = json.loads((REPO / "package.json").read_text(encoding="utf-8"))
+        self.assertEqual((state["format"], state["scope"], state["version"]), (1, "project", package["version"]))
+        self.assertIn("antigravity", state["agents"])
+        self.assertEqual(state["skills"], ["anti-slop-engineering", "decision-guard"])
+        self.assertTrue((skills / "decision-guard/SKILL.md").is_file())
+        self.assertFalse((self.home / ".agents/skills/.anti-slop-selection.json").exists())
+
+        user_skill = skills / "my-own-skill"
+        user_skill.mkdir()
+        (user_skill / "SKILL.md").write_text("local skill", encoding="utf-8")
+        install("core")
+        self.assertEqual(json.loads(selection_file.read_text(encoding="utf-8")), state)
+        self.assertEqual((user_skill / "SKILL.md").read_text(encoding="utf-8"), "local skill")
+
+        (skills / "decision-guard/SKILL.md").unlink()
+        install("core")
+        repaired = json.loads(selection_file.read_text(encoding="utf-8"))
+        self.assertEqual(repaired["skills"], ["anti-slop-engineering"])
+        self.assertEqual((user_skill / "SKILL.md").read_text(encoding="utf-8"), "local skill")
 
     def test_bash_rejects_unknown_plugin_before_creating_targets(self):
         result = subprocess.run(
