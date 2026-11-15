@@ -35,6 +35,7 @@
         "paranoid-principal-architect",
         "safe-evolution-and-rollout-choreographer",
         "zero-downtime-migration-gate",
+        "distributed-consensus-and-concurrency-gate",
         "privacy-and-data-lineage-gate",
         "observability-and-slo-architect",
         "observability-and-slo-gate"
