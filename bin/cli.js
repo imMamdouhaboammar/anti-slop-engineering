@@ -50,6 +50,7 @@ const motionRuntimeGuardScript = resolve(rootDir, "scripts", "motion_runtime_gua
 const assetProvenanceGuardScript = resolve(rootDir, "scripts", "asset_provenance_guard.py");
 const styleseedGuardScript = resolve(rootDir, "scripts", "styleseed_guard.py");
 const tagoreGuardScript = resolve(rootDir, "scripts", "tagore_guard.py");
+const verificationOracleGuardScript = resolve(rootDir, "scripts", "verification_oracle_guard.py");
 const auditRunnerScript = resolve(rootDir, "scripts", "audit_runner.py");
 const installerScript = resolve(rootDir, "scripts", "installer.mjs");
 const installOxlintScript = resolve(rootDir, "skills", "install-anti-slop", "scripts", "install.mjs");
@@ -166,6 +167,11 @@ const executableAliases = {
   "deslop-prose": "tagore",
   "prose-guard": "tagore",
   "humanize": "tagore",
+  "oracle": "oracle",
+  "oracle-guard": "oracle",
+  "verification-oracle": "oracle",
+  "counterfactual": "counterfactual",
+  "proof": "counterfactual",
   "audit-guard": "audit",
   "audit": "audit",
   "diff": "diff",
@@ -234,6 +240,8 @@ Commands:
   asset-provenance, provenance Run Asset Sourcing & License Provenance Ledger Guard (cryptographic SHA-256 & open-license ledger)
   styleseed              Run StyleSeed Cognitive Grammar & Token Canon Guard (primitives, OKLCH, spatial inversion)
   tagore, discourse      Run Tagore Engineering Discourse & Substance Guard (29 tells, 8-dim rubric, voice calibration)
+  oracle audit <file>    Check Verification Oracle record for fakes, chaos, and property oracles
+  counterfactual, proof  Run isolated red-state counterfactual proof for newly added tests
   diff, diff-guard       Run single Diff Guard (narrow git diff triage against --base, default: HEAD)
   check                  Run single Diff Guard (backwards-compatible alias of diff for git diff triage)
   audit                  Run unified multi-guard audit and generate numbered markdown dossier (anti-slop/audit-NNN.md)
@@ -482,6 +490,10 @@ if (cmd === "build") {
   runPythonScript(styleseedGuardScript, args.slice(1), "styleseed_guard");
 } else if (cmd === "tagore" || cmd === "tagore-guard" || cmd === "discourse" || cmd === "deslop-prose" || cmd === "humanize" || cmd === "prose") {
   runPythonScript(tagoreGuardScript, args.slice(1), "tagore_guard");
+} else if (cmd === "oracle" || cmd === "verification-oracle" || cmd === "oracle-guard") {
+  runPythonScript(verificationOracleGuardScript, args.slice(1), "verification_oracle_guard");
+} else if (cmd === "counterfactual" || cmd === "proof") {
+  runPythonScript(verificationOracleGuardScript, ["counterfactual", ...args.slice(1)], "verification_oracle_guard");
 } else if (cmd === "audit") {
   runPythonScript(auditRunnerScript, ["audit", ...args.slice(1)], "audit_runner");
 } else if (cmd === "mode") {

@@ -46,3 +46,20 @@ A test is a fallible executable claim about a contract, not infallible truth. Th
 - **E2E evidence** for user-facing journeys, not as a replacement for every deterministic unit test.
 
 The objective is independent test *signal*, not maximal test count. DAMP tests may repeat input setup for clarity; do not apply DRY dogmatically to tests.
+
+## Isolated Counterfactual Red-State Proof Runner
+
+To prove that a newly added test actually tests the bugfix or feature rather than being tautological, the Verification Oracle guard provides an isolated counterfactual proof runner (`python3 scripts/verification_oracle_guard.py counterfactual` or `npx anti-slop-engineering counterfactual`).
+
+### Execution Model
+1. **Disposable Isolation:** Creates a detached, ephemeral git worktree at the baseline commit (`--base HEAD~1` or specified ref). The user's working tree is never mutated or stashed.
+2. **Selective Test Tree Injection:** Copies new/modified test files into the disposable baseline worktree without implementation code changes.
+3. **Red-State Evaluation:** Executes the test suite against the baseline tree and captures exit codes and diagnostic output.
+4. **Classification & Fraud Prevention:**
+   - `verified`: Baseline fails on assertion/expectation (`AssertionError`, `FAIL:`, `FAILED (failures=)`), changed tree passes (`exit code 0`).
+   - `tautological`: Test passes on baseline without the implementation change; lacks red-state proof.
+   - `inconclusive_infrastructure`: Test fails on baseline due to missing imports, modules, or syntax differences (`ModuleNotFoundError`, `ImportError`). Never asserts fraud from an irrelevant failure.
+   - `dependency_failure`: Missing runner or environment dependency.
+   - `flaky_nondeterministic`: Execution outcomes vary across repeated runs.
+   - `failed_on_current`: Test fails on current tree.
+5. **Clean Disposal:** The ephemeral worktree is unconditionally removed upon completion.

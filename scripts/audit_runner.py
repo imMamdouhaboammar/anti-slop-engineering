@@ -283,6 +283,15 @@ GUARD_REGISTRY: Dict[str, Dict[str, Any]] = {
         "skip_reason": "Requires dedicated runtime motion profile JSON record (--motion-record <file>)",
         "description": "Validates DPR-2 retina motion performance, long tasks, and audio policy.",
     },
+    "verification_oracle_guard": {
+        "title": "Verification Oracle & Counterfactual Proof Guard",
+        "script": "verification_oracle_guard.py",
+        "input_type": "record_audit",
+        "requires_input": True,
+        "input_flag": "--verification-record",
+        "skip_reason": "Requires dedicated Verification Oracle JSON record (--verification-record <file>)",
+        "description": "Audits verified fakes, metamorphic oracles, seeded chaos, and red-green proof.",
+    },
     "backprop_guard": {
         "title": "Rule & Invariant Backpropagation Guard",
         "script": "backprop_guard.py",
@@ -433,6 +442,12 @@ CLI_COMMAND_TO_GUARD_MAP: Dict[str, str] = {
     "deslop-prose": "tagore_guard",
     "humanize": "tagore_guard",
     "prose": "tagore_guard",
+    "oracle": "verification_oracle_guard",
+    "oracle-guard": "verification_oracle_guard",
+    "oracle audit": "verification_oracle_guard",
+    "verification-oracle": "verification_oracle_guard",
+    "counterfactual": "verification_oracle_guard",
+    "proof": "verification_oracle_guard",
 }
 
 EXCLUDED_CLI_COMMANDS: Dict[str, str] = {
