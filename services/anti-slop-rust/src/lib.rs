@@ -39,7 +39,7 @@ pub fn triage_diff(
     let mut in_hunk = false;
 
     for line in diff_text.lines() {
-        if line.starts_with("diff --git") {
+        if path_utils::is_git_file_header(line) {
             in_hunk = false;
             paths.update(line);
             continue;
