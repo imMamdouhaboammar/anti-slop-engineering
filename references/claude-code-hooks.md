@@ -7,7 +7,7 @@ python3 /path/to/anti-slop/scripts/claude_hooks.py install --project /path/to/tr
 python3 /path/to/anti-slop/scripts/claude_hooks.py install --project /path/to/trusted/project --yes
 ```
 
-Setup consent changes only the selected project's `.claude/settings.local.json`. The install preserves existing permissions and unrelated hooks, refuses malformed or symlinked settings, and writes settings atomically. A default skill installation makes no hook changes. Use Claude Code's `/hooks` and `/status` to verify loaded settings.
+Setup consent changes only the selected project's `.claude/settings.local.json`. The install preserves existing permissions and unrelated hooks, refuses malformed or symlinked settings, and writes settings atomically. Run local settings changes serially while applying or removing hooks. A default skill installation makes no hook changes. Use Claude Code's `/hooks` and `/status` to verify loaded settings.
 
 From the selected project, activate the existing action contract that corresponds to your task.
 
