@@ -445,6 +445,7 @@ EXCLUDED_CLI_COMMANDS: Dict[str, str] = {
     "check-engines": "Polyglot engine requirements validator checking toolchains (cargo, go, node, bun)",
     "check-engine": "Single engine toolchain validator with graceful degradation notices",
     "run-engine": "Engine execution wrapper providing graceful degradation for optional toolchains",
+    "check-changed": "Run contributor checks for paths changed from a Git revision",
     "install": "Skills installation across AI coding agent configurations",
     "setup": "Alias for install command",
     "update": "Skills update and pointer block synchronization across AI coding agents",
@@ -571,6 +572,9 @@ def check_engines(
 
 def _emit_engine_message(msg: str, strict: Optional[bool]) -> int:
     """Print engine notice/error and return exit code based on strict mode."""
+    if msg.startswith("Unknown engine requirement:"):
+        print(msg, file=sys.stderr)
+        return 2
     if strict if strict is not None else is_strict_engine_mode():
         print(msg, file=sys.stderr)
         return 1
@@ -602,6 +606,51 @@ def run_engine_command(
         print(f"=== {title} ===")
     res = subprocess.run(command, cwd=cwd)
     return res.returncode
+
+
+def changed_check_targets(base: str, root: str = ".") -> List[str]:
+    commands = (
+        ["diff", "--name-only", "--no-renames", "-z", "--end-of-options", base, "--"],
+        ["ls-files", "-z", "--others", "--exclude-standard"],
+    )
+    paths = set()
+    for args in commands:
+        result = subprocess.run(["git", *args], cwd=root, check=True, stdout=subprocess.PIPE)
+        paths.update(os.fsdecode(path) for path in result.stdout.split(b"\0") if path)
+
+    selected = set()
+    for path in paths:
+        if path in {"Makefile", "AGENTS.md", "SKILL.md"} or path.startswith(".github/workflows/"):
+            return ["check-all"]
+        if path.endswith(".py") or path in {"pyproject.toml", "ruff.toml", "install.sh"}:
+            selected.add("check")
+        if path.startswith("services/anti-slop-rust/"):
+            selected.update(("test-rust", "clippy"))
+        if path.startswith("services/toil-guard-go/"):
+            selected.add("test-go")
+        if path.endswith((".js", ".mjs", ".cjs", ".ts", ".tsx")) or path in {
+            "package.json", "bun.lock", "bun.lockb", ".oxlintrc.json", "skills.sh.json",
+        }:
+            selected.update(("oxlint", "test-security", "test-node"))
+
+    order = ("check", "oxlint", "test-security", "test-node", "test-rust", "clippy", "test-go")
+    return [target for target in order if target in selected]
+
+
+def handle_check_changed(args: List[str]) -> int:
+    parser = argparse.ArgumentParser(description="Run checks for paths changed against a Git revision")
+    parser.add_argument("--base", default="HEAD")
+    parser.add_argument("--make", default="make")
+    options = parser.parse_args(args)
+    try:
+        targets = changed_check_targets(options.base)
+    except subprocess.CalledProcessError as exc:
+        return exc.returncode
+    if not targets:
+        print("No runtime checks selected for changed paths.")
+        return 0
+    print("Selected checks: " + ", ".join(targets), flush=True)
+    return subprocess.run([options.make, *targets]).returncode
 
 
 def get_settings_file(max_depth: int = 5) -> Path:
@@ -1519,6 +1568,8 @@ def main() -> int:
         return handle_audit(args[1:])
     elif command in ("check-engines", "check-engine"):
         return handle_check_engines(args[1:])
+    elif command == "check-changed":
+        return handle_check_changed(args[1:])
     elif command == "run-engine":
         return handle_run_engine(args[1:])
     elif command == "fix":

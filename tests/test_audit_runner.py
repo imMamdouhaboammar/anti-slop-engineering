@@ -7,8 +7,10 @@ import re
 import shlex
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 SCRIPTS_DIR = ROOT_DIR / "scripts"
@@ -22,7 +24,6 @@ from audit_runner import (
     load_settings,
     save_settings,
 )
-from unittest.mock import patch
 
 
 def extract_bash_commands(markdown_text: str) -> list[str]:
@@ -538,17 +539,58 @@ class AuditRunnerTests(unittest.TestCase):
                 self.assertEqual(mock_run.call_args[0][0], ["node", "-v"])
 
     def test_cli_engine_commands(self):
-        """audit_runner CLI check-engines and run-engine commands execute correctly."""
-        script = str(SCRIPTS_DIR / "audit_runner.py")
-        res = subprocess.run([sys.executable, script, "check-engines"], capture_output=True, text=True)
-        self.assertEqual(res.returncode, 0)
-        self.assertIn("Polyglot Engine Requirements Status:", res.stdout)
+        script = [sys.executable, str(SCRIPTS_DIR / "audit_runner.py")]
+        with tempfile.TemporaryDirectory() as empty_path:
+            local_env = {"PATH": empty_path}
+            ci_env = {**local_env, "CI": "true"}
+            local = subprocess.run(
+                [*script, "check-engines"], env=local_env, capture_output=True, text=True
+            )
+            ci = subprocess.run(
+                [*script, "check-engines"], env=ci_env, capture_output=True, text=True
+            )
+            optional = subprocess.run(
+                [*script, "run-engine", "--engine", "node", "--no-strict", "--", "node", "-v"],
+                env=ci_env,
+                capture_output=True,
+                text=True,
+            )
 
-        # run-engine with known system python
-        res_run = subprocess.run(
-            [sys.executable, script, "run-engine", "--engine", "node", "--no-strict", "--", "node", "-v"],
-            capture_output=True,
-            text=True,
-        )
-        # Should succeed (exit 0) either running node -v or skipping with notice if node missing
-        self.assertEqual(res_run.returncode, 0)
+        self.assertEqual(local.returncode, 0, local.stderr)
+        self.assertIn("Optional engine 'bun'", local.stdout)
+        self.assertEqual(ci.returncode, 1)
+        self.assertIn("Required engine 'bun'", ci.stdout)
+        self.assertEqual(optional.returncode, 0, optional.stderr)
+        self.assertIn("Skipping engine run", optional.stdout)
+
+    def test_changed_checks_selects_staged_unstaged_and_untracked_paths(self):
+        with tempfile.TemporaryDirectory() as root:
+            def git(*args):
+                subprocess.run(["git", *args], cwd=root, check=True, capture_output=True)
+
+            git("init")
+            git("-c", "user.name=Fixture", "-c", "user.email=fixture@example.test",
+                "commit", "--allow-empty", "-m", "baseline")
+            self.assertEqual(audit_runner.changed_check_targets("HEAD", root), [])
+            go_dir = Path(root, "services", "toil-guard-go")
+            go_dir.mkdir(parents=True)
+            go_file = go_dir / "a.go"
+            go_file.write_text("package example\n")
+            git("add", "services/toil-guard-go/a.go")
+            self.assertEqual(audit_runner.changed_check_targets("HEAD", root), ["test-go"])
+
+            js = Path(root, "test with spaces.mjs")
+            js.write_text("export {};\n")
+            git("add", js.name)
+            git("-c", "user.name=Fixture", "-c", "user.email=fixture@example.test", "commit", "-m", "source")
+            js.unlink()
+            Path(root, "guard test.py").write_text("pass\n")
+            self.assertEqual(
+                audit_runner.changed_check_targets("HEAD", root),
+                ["check", "oxlint", "test-security", "test-node"],
+            )
+            with self.assertRaises(subprocess.CalledProcessError):
+                audit_runner.changed_check_targets("missing-revision", root)
+
+    def test_invalid_engine_never_succeeds_in_non_strict_mode(self):
+        self.assertEqual(audit_runner.run_engine_command("absent-engine", ["no-op"], strict=False), 2)
