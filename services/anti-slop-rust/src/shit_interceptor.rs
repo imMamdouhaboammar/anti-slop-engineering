@@ -1,45 +1,60 @@
 use crate::model::{Finding, Severity, ViolationCategory};
-use crate::path_utils::{
-    extract_source_file, extract_target_file, is_doc_file, is_test_file,
-};
+use crate::path_utils::{is_doc_file, is_test_file, DiffPaths};
 use regex::Regex;
 
-fn is_metadata_change_line(line: &str) -> bool {
-    line.starts_with("old mode ")
-        || line.starts_with("new mode ")
-        || line.starts_with("deleted file mode ")
-        || line.starts_with("new file mode ")
-        || line.starts_with("similarity index ")
-        || line.starts_with("rename from ")
-        || line.starts_with("rename to ")
-        || line.starts_with("copy from ")
-        || line.starts_with("copy to ")
-        || line.starts_with("Binary files ")
+fn is_transfer(line: &str) -> bool {
+    ["rename from ", "rename to ", "copy from ", "copy to "]
+        .iter()
+        .any(|prefix| line.starts_with(prefix))
 }
 
-fn record_metadata_end(
-    findings: &mut Vec<Finding>,
-    file: &str,
-    src_file: &str,
-    had_metadata: bool,
-    had_hunks: bool,
-    allowed: Option<&[&str]>,
-    read_only: bool,
-) {
-    if !had_metadata || had_hunks || file.is_empty() {
-        return;
-    }
-    if let Some(f) = check_scope_creep(file, 1, allowed, true) {
-        findings.push(f);
-    }
-    if !src_file.is_empty() && src_file != file {
-        if let Some(f) = check_scope_creep(src_file, 1, allowed, true) {
-            findings.push(f);
+fn is_metadata_change(line: &str) -> bool {
+    line == "GIT binary patch"
+        || [
+            "old mode ",
+            "new mode ",
+            "deleted file mode ",
+            "new file mode ",
+            "Binary files ",
+        ]
+        .iter()
+        .any(|prefix| line.starts_with(prefix))
+}
+
+#[derive(Default)]
+struct MetadataChange {
+    changed: bool,
+    transfer: bool,
+    line_checked: bool,
+}
+
+impl MetadataChange {
+    fn record(
+        &self,
+        findings: &mut Vec<Finding>,
+        paths: &DiffPaths,
+        allowed: Option<&[&str]>,
+        read_only: bool,
+    ) {
+        if (self.changed || self.transfer) && !self.line_checked {
+            record_line_policy(findings, paths.target(), 1, allowed, read_only, true);
+        }
+        if self.transfer && paths.source() != paths.target() {
+            findings.extend(check_scope_creep(paths.source(), 1, allowed, true));
         }
     }
-    if let Some(f) = check_intent_violation(file, 1, read_only, true) {
-        findings.push(f);
-    }
+}
+
+fn record_line_policy(
+    findings: &mut Vec<Finding>,
+    file: &str,
+    line: usize,
+    allowed: Option<&[&str]>,
+    read_only: bool,
+    changed: bool,
+) {
+    findings.extend(check_scope_creep(file, line, allowed, changed));
+    findings.extend(check_intent_violation(file, line, read_only, changed));
 }
 
 #[derive(Debug)]
@@ -84,67 +99,51 @@ impl ShitInterceptor {
         read_only_intent: bool,
     ) -> Vec<Finding> {
         let mut findings = Vec::new();
-        let mut current_file = String::new();
-        let mut source_file = String::new();
+        let mut paths = DiffPaths::default();
         let mut line_no = 0;
         let mut in_hunk = false;
-        let mut file_had_hunks = false;
-        let mut file_had_metadata_change = false;
+        let mut metadata = MetadataChange::default();
 
         for line in diff_text.lines() {
             if line.starts_with("diff --git") {
-                record_metadata_end(
-                    &mut findings,
-                    &current_file,
-                    &source_file,
-                    file_had_metadata_change,
-                    file_had_hunks,
-                    allowed_files,
-                    read_only_intent,
-                );
-                current_file = extract_target_file(line).unwrap_or_default();
-                source_file = extract_source_file(line).unwrap_or_default();
+                metadata.record(&mut findings, &paths, allowed_files, read_only_intent);
+                paths.update(line);
                 line_no = 0;
                 in_hunk = false;
-                file_had_hunks = false;
-                file_had_metadata_change = false;
+                metadata = MetadataChange::default();
                 continue;
             }
             if !in_hunk {
-                if let Some(f) = extract_target_file(line) {
-                    current_file = f;
-                }
-                if let Some(sf) = extract_source_file(line) {
-                    source_file = sf;
-                }
-                if is_metadata_change_line(line) {
-                    file_had_metadata_change = true;
-                }
+                paths.update(line);
+                metadata.changed |= is_metadata_change(line);
+                metadata.transfer |= is_transfer(line);
             }
             if let Some(l) = extract_hunk_line(line) {
                 line_no = l;
                 in_hunk = true;
-                file_had_hunks = true;
                 continue;
             }
             if !in_hunk {
                 continue;
             }
+            let current_file = paths.target();
             let is_change = line.starts_with('+') || line.starts_with('-');
-            if let Some(f) = check_scope_creep(&current_file, line_no, allowed_files, is_change) {
-                findings.push(f);
-            }
-
-            if let Some(f) = check_intent_violation(&current_file, line_no, read_only_intent, is_change) {
-                findings.push(f);
-            }
+            metadata.line_checked |= is_change;
+            record_line_policy(
+                &mut findings,
+                current_file,
+                line_no,
+                allowed_files,
+                read_only_intent,
+                is_change,
+            );
 
             let is_addition = line.starts_with('+') && !line.starts_with("+++");
-            let is_ignored = is_doc_file(&current_file) || is_test_file(&current_file);
+            let is_ignored = is_doc_file(current_file) || is_test_file(current_file);
 
             if is_addition && !is_ignored {
                 let code_content = line[1..].trim();
-                let mut line_findings = self.audit_added_code(&current_file, line_no, code_content);
+                let mut line_findings = self.audit_added_code(current_file, line_no, code_content);
                 findings.append(&mut line_findings);
             }
 
@@ -153,15 +152,7 @@ impl ShitInterceptor {
             }
         }
 
-        record_metadata_end(
-            &mut findings,
-            &current_file,
-            &source_file,
-            file_had_metadata_change,
-            file_had_hunks,
-            allowed_files,
-            read_only_intent,
-        );
+        metadata.record(&mut findings, &paths, allowed_files, read_only_intent);
 
         findings
     }
@@ -204,11 +195,23 @@ impl ShitInterceptor {
         findings
     }
 
-    fn hardening_review(file: &str, line_no: usize, code: &str, msg: &str, suggestion: &str) -> Finding {
+    fn hardening_review(
+        file: &str,
+        line_no: usize,
+        code: &str,
+        msg: &str,
+        suggestion: &str,
+    ) -> Finding {
         Self::hardening_finding(file, line_no, Severity::Review, code, msg, suggestion)
     }
 
-    fn hardening_blocker(file: &str, line_no: usize, code: &str, msg: &str, suggestion: &str) -> Finding {
+    fn hardening_blocker(
+        file: &str,
+        line_no: usize,
+        code: &str,
+        msg: &str,
+        suggestion: &str,
+    ) -> Finding {
         Self::hardening_finding(file, line_no, Severity::Blocker, code, msg, suggestion)
     }
 
@@ -234,7 +237,13 @@ impl ShitInterceptor {
 
 pub(crate) fn extract_hunk_line(line: &str) -> Option<usize> {
     let start = line.strip_prefix("@@")?.split('+').nth(1)?;
-    start.split_whitespace().next()?.split(',').next()?.parse().ok()
+    start
+        .split_whitespace()
+        .next()?
+        .split(',')
+        .next()?
+        .parse()
+        .ok()
 }
 
 fn check_intent_violation(
@@ -247,7 +256,7 @@ fn check_intent_violation(
         return None;
     }
     Some(Finding {
-        file: file.to_string(),
+        file: if file.is_empty() { "unknown" } else { file }.to_owned(),
         line: line_no,
         category: ViolationCategory::IntentViolation,
         severity: Severity::Blocker,
@@ -265,13 +274,13 @@ fn check_scope_creep(
     is_change: bool,
 ) -> Option<Finding> {
     let allowed = allowed_files?;
-    if file.is_empty() || allowed.is_empty() || !is_change {
+    if allowed.is_empty() || !is_change {
         return None;
     }
-    let is_allowed = allowed.iter().any(|prefix| file.starts_with(prefix));
+    let is_allowed = !file.is_empty() && allowed.iter().any(|prefix| file.starts_with(prefix));
     if !is_allowed {
         Some(Finding {
-            file: file.to_string(),
+            file: if file.is_empty() { "unknown" } else { file }.to_owned(),
             line: line_no,
             category: ViolationCategory::ScopeCreep,
             severity: Severity::Blocker,
@@ -300,7 +309,8 @@ mod review_regression_tests {
 
     #[test]
     fn metadata_and_changed_lines_are_separated() {
-        let diff = "diff --git a/a.rs b/a.rs\n--- a/a.rs\n+++ b/a.rs\n@@ -0,0 +1 @@\n+++not a header\n";
+        let diff =
+            "diff --git a/a.rs b/a.rs\n--- a/a.rs\n+++ b/a.rs\n@@ -0,0 +1 @@\n+++not a header\n";
         let findings = ShitInterceptor::new().audit_diff(diff, Some(&["src/"]), true);
         assert!(findings.iter().any(|f| f.code == "STS-I01"));
         assert!(findings.iter().any(|f| f.code == "STS-S01"));
@@ -311,14 +321,18 @@ mod review_regression_tests {
         let diff = "diff --git a/script.sh b/script.sh\nold mode 100644\nnew mode 100755\n";
         let findings = ShitInterceptor::new().audit_diff(diff, Some(&["src/"]), true);
         assert!(findings.iter().any(|f| f.code == "STS-I01"));
-        assert!(findings.iter().any(|f| f.code == "STS-S01" && f.file == "script.sh"));
+        assert!(findings
+            .iter()
+            .any(|f| f.code == "STS-S01" && f.file == "script.sh"));
     }
 
     #[test]
     fn non_hunk_rename_triggers_scope_check_on_old_and_new_files() {
         let diff = "diff --git a/src/old.rs b/outside/new.rs\nsimilarity index 100%\nrename from src/old.rs\nrename to outside/new.rs\n";
         let findings = ShitInterceptor::new().audit_diff(diff, Some(&["src/"]), false);
-        assert!(findings.iter().any(|f| f.code == "STS-S01" && f.file == "outside/new.rs"));
+        assert!(findings
+            .iter()
+            .any(|f| f.code == "STS-S01" && f.file == "outside/new.rs"));
     }
 
     #[test]
@@ -326,6 +340,48 @@ mod review_regression_tests {
         let diff = "diff --git a/outside/image.png b/outside/image.png\nBinary files a/outside/image.png and b/outside/image.png differ\n";
         let findings = ShitInterceptor::new().audit_diff(diff, Some(&["src/"]), true);
         assert!(findings.iter().any(|f| f.code == "STS-I01"));
-        assert!(findings.iter().any(|f| f.code == "STS-S01" && f.file == "outside/image.png"));
+        assert!(findings
+            .iter()
+            .any(|f| f.code == "STS-S01" && f.file == "outside/image.png"));
+    }
+
+    #[test]
+    fn metadata_path_errors_keep_the_policy_active() {
+        let diff = "diff --git b/src/x.rs\nold mode 100644\nnew mode 100755\n";
+        let findings = ShitInterceptor::new().audit_diff(diff, Some(&["src/"]), true);
+        for code in ["STS-S01", "STS-I01"] {
+            assert!(findings
+                .iter()
+                .any(|f| f.code == code && f.file == "unknown"));
+        }
+    }
+
+    #[test]
+    fn metadata_binary_patch_without_hunks_is_a_change() {
+        let diff = "diff --git a/data.bin b/data.bin\nindex aabbcc..ddeeff 100644\nGIT binary patch\nliteral 1\nA\n";
+        let findings = ShitInterceptor::new().audit_diff(diff, Some(&["src/"]), true);
+        for code in ["STS-S01", "STS-I01"] {
+            assert!(findings
+                .iter()
+                .any(|f| f.code == code && f.file == "data.bin"));
+        }
+    }
+
+    #[test]
+    fn metadata_rename_with_hunks_checks_both_paths_without_duplicate_intent() {
+        let diff = "diff --git a/archive/old.rs b/src/new.rs\nsimilarity index 90%\nrename from archive/old.rs\nrename to src/new.rs\n--- a/archive/old.rs\n+++ b/src/new.rs\n@@ -1,2 +1 @@\n context\n-removed\n";
+        let findings = ShitInterceptor::new().audit_diff(diff, Some(&["src/"]), true);
+        assert!(findings
+            .iter()
+            .any(|f| f.code == "STS-S01" && f.file == "archive/old.rs"));
+        assert_eq!(findings.iter().filter(|f| f.code == "STS-I01").count(), 1);
+    }
+
+    #[test]
+    fn metadata_bare_file_header_is_inert() {
+        let diff = "diff --git a/data.bin b/data.bin\n";
+        assert!(ShitInterceptor::new()
+            .audit_diff(diff, Some(&["src/"]), true)
+            .is_empty());
     }
 }
