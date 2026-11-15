@@ -28,6 +28,36 @@ class RuleRegistryTests(unittest.TestCase):
                 self.assertEqual(result["catalog_id"], target)
                 self.assertTrue((ROOT / result["skill_path"]).is_file())
 
+    def test_calibrated_detector_provenance_resolves_to_live_code(self):
+        cases = {
+            "TRIVIAL_COMMENT_NARRATION": ("SIM-17", "scripts/diff_guard.py"),
+            "SRE-YAGNI_DEAD_FLAG": None,
+            "SRE_YAGNI_DEAD_FLAG": ("SRE-05", "scripts/diff_guard.py"),
+            "SRE-SCALE-SLEEP": ("SRE-07", "services/toil-guard-go/pkg/sre/toil.go"),
+            "SRE-SCALE-RETRY": ("SRE-08", "services/toil-guard-go/pkg/sre/toil.go"),
+            "SRE_SCALE_UNBOUNDED_CONCURRENCY": ("SRE-09", "scripts/diff_guard.py"),
+            "SCALE_MISLEADING_HEALTH_CHECK": ("SRE-12", "scripts/sre_guard.py"),
+        }
+        for raw, expected in cases.items():
+            with self.subTest(raw=raw):
+                result = rule_registry.lookup(raw)
+                if expected is None:
+                    self.assertFalse(result["found"])
+                    continue
+                catalog_id, source = expected
+                self.assertEqual(result["catalog_id"], catalog_id)
+                detector = next(rule for rule in result["related_rules"] if rule["engine_code"] == raw)
+                self.assertEqual(detector["source"], source)
+                self.assertIn(raw, (ROOT / source).read_text(encoding="utf-8"))
+
+    def test_health_calibration_reports_false_positive(self):
+        detector = "sre_guard:SCALE_MISLEADING_HEALTH_CHECK"
+        receipt = {detector: {"tp": 1, "fp": 1, "tn": 1, "fn": 0}}
+        report = rule_registry.build_coverage(receipt)
+        self.assertEqual(report["fixture_precision"][detector], 0.5)
+        self.assertEqual(report["patterns"]["SRE-12"]["fixtures"], receipt)
+        self.assertEqual(report["detectors"][detector]["source"], rule_registry.SRE_SOURCE)
+
     def test_all_catalog_ids_can_be_explained_and_copies_match(self):
         path = ROOT / "references" / "anti-pattern-catalog.md"
         mirror = ROOT / "skills" / "anti-slop-engineering" / "references" / path.name
@@ -89,15 +119,18 @@ class RuleRegistryTests(unittest.TestCase):
         self.assertEqual(rule_registry.build_coverage(fixture)["counts"]["automatic"], 0)
 
     def test_duplicate_rules_or_dangling_catalog_mappings_fail_validation(self):
-        entry = rule_registry.Rule("engine", "REUSED", "OPS-01")
+        entry = rule_registry.Rule("engine", "REUSED", "OPS-01", rule_registry.DIFF_SOURCE)
         with self.assertRaisesRegex(ValueError, "Duplicate"):
             rule_registry.validate_registry((entry, entry))
-        dangling = rule_registry.Rule("engine", "DANGLING", "NO-SUCH")
+        dangling = rule_registry.Rule("engine", "DANGLING", "NO-SUCH", rule_registry.DIFF_SOURCE)
         with self.assertRaisesRegex(ValueError, "catalog"):
             rule_registry.validate_registry((dangling,))
-        unknown_skill = rule_registry.Rule("engine", "UNKNOWN", "OPS-01", "unavailable")
+        unknown_skill = rule_registry.Rule("engine", "UNKNOWN", "OPS-01", rule_registry.DIFF_SOURCE, skill="unavailable")
         with self.assertRaisesRegex(ValueError, "skill"):
             rule_registry.validate_registry((unknown_skill,))
+        unknown_source = rule_registry.Rule("engine", "UNKNOWN", "OPS-01", "no-such-script")
+        with self.assertRaisesRegex(ValueError, "source"):
+            rule_registry.validate_registry((unknown_source,))
         rule_registry.validate_registry(rule_registry.RULES)
 
     def test_report_does_not_infer_precision_from_only_positive_cases(self):
