@@ -357,6 +357,42 @@ class BashInstallerSafetyTests(unittest.TestCase):
         self.assertTrue((skills / "anti-slop-engineering/SKILL.md").exists())
         self.assertFalse((skills / "decision-guard").exists())
 
+    def test_bash_preset_minimal_succeeds_without_node(self):
+        """Verify --preset=minimal succeeds even without Node.js in PATH."""
+        env = {**os.environ, "HOME": str(self.home), "PATH": "/usr/bin:/bin"}
+        result = subprocess.run(
+            ["bash", str(REPO / "install.sh"), "--preset=minimal"],
+            cwd=self.home, env=env, capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        skills = self.home / ".agents/skills"
+        self.assertTrue((skills / "anti-slop-engineering/SKILL.md").exists())
+        self.assertFalse((skills / "decision-guard").exists())
+
+    @unittest.skipUnless(HAS_NODE, "Node.js required for plugin catalog selection")
+    def test_bash_preset_ci_with_node(self):
+        result = subprocess.run(
+            ["bash", str(REPO / "install.sh"), "--preset=ci"],
+            cwd=self.home, env={**os.environ, "HOME": str(self.home), "PATH": SAFE_PATH},
+            capture_output=True, text=True, timeout=30,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        skills = self.home / ".agents/skills"
+        self.assertTrue((skills / "anti-slop-engineering/SKILL.md").exists())
+        self.assertTrue((skills / "pr-boundary-guard/SKILL.md").exists())
+        self.assertTrue((skills / "comment-budget-guard/SKILL.md").exists())
+        self.assertFalse((skills / "apple-craft-and-interaction-physics").exists())
+
+    @unittest.skipUnless(HAS_NODE, "Node.js required for plugin catalog selection")
+    def test_bash_preset_invalid_fails(self):
+        result = subprocess.run(
+            ["bash", str(REPO / "install.sh"), "--preset=unknown_preset"],
+            cwd=self.home, env={**os.environ, "HOME": str(self.home), "PATH": SAFE_PATH},
+            capture_output=True, text=True,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse((self.home / ".agents").exists())
+
 
 if __name__ == "__main__":
     unittest.main()

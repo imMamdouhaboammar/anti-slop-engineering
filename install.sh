@@ -30,7 +30,7 @@ if [ -z "$SOURCE_DIR" ] || [ ! -f "$SOURCE_DIR/SKILL.md" ]; then
 fi
 
 if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
-  echo "Usage: bash install.sh [--skills=core|all|id1,id2] [--local|--project]"
+  echo "Usage: bash install.sh [--preset=full|minimal|ci] [--skills=core|all|id1,id2] [--local|--project]"
   echo "Use 'anti-slop-engineering setup' for interactive agent and scope selection."
   exit 0
 fi
@@ -67,8 +67,8 @@ for skill in data["skills"]:
 ' "$setup_selection")"
 else
   case " $* " in
-    *--skills=core*|*"-s core"*|*--plugins=core*|*--modules=core*) : ;;
-    *--skills*|*--plugins*|*--modules*|*"-s "*|*--all*)
+    *--skills=core*|*"-s core"*|*--plugins=core*|*--modules=core*|*--preset=minimal*|*"--preset minimal"*) : ;;
+    *--skills*|*--plugins*|*--modules*|*"-s "*|*--all*|*--preset*)
       echo "Installer error: Node.js is needed to select optional plugins; core-only Bash installation is available" >&2
       exit 2 ;;
   esac

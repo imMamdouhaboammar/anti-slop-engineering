@@ -130,5 +130,76 @@ class InteractiveInstallerTests(unittest.TestCase):
         self.assertFalse((self.project / ".codex").exists())
 
 
+@unittest.skipUnless(os.name == "posix" and shutil.which("node"), "Node is required")
+class PresetInstallerTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.project = Path(self.temp.name)
+
+    def run_installer(self, *args, check=True):
+        cmd = [shutil.which("node"), str(REPO / "scripts/installer.mjs"), "--agent=codex", *args]
+        return subprocess.run(
+            cmd,
+            cwd=self.project,
+            capture_output=True,
+            text=True,
+            check=check,
+            env={**os.environ, "HOME": str(self.project), "CI": "1", "NO_COLOR": "1"},
+        )
+
+    def test_preset_minimal_installs_core_only(self):
+        result = self.run_installer("--preset=minimal")
+        self.assertEqual(result.returncode, 0)
+        self.assertTrue((self.project / ".codex/skills/anti-slop-engineering/SKILL.md").exists())
+        self.assertFalse((self.project / ".codex/skills/decision-guard").exists())
+        self.assertFalse((self.project / ".codex/skills/pr-boundary-guard").exists())
+
+    def test_preset_ci_installs_ci_guards(self):
+        result = self.run_installer("--preset=ci")
+        self.assertEqual(result.returncode, 0)
+        self.assertTrue((self.project / ".codex/skills/anti-slop-engineering/SKILL.md").exists())
+        self.assertTrue((self.project / ".codex/skills/pr-boundary-guard/SKILL.md").exists())
+        self.assertTrue((self.project / ".codex/skills/comment-budget-guard/SKILL.md").exists())
+        self.assertTrue((self.project / ".codex/skills/type-level-and-ast-slop-gate/SKILL.md").exists())
+        self.assertFalse((self.project / ".codex/skills/apple-craft-and-interaction-physics").exists())
+
+    def test_preset_full_installs_all_skills(self):
+        result = self.run_installer("--preset=full")
+        self.assertEqual(result.returncode, 0)
+        self.assertTrue((self.project / ".codex/skills/anti-slop-engineering/SKILL.md").exists())
+        self.assertTrue((self.project / ".codex/skills/decision-guard/SKILL.md").exists())
+        self.assertTrue((self.project / ".codex/skills/pr-boundary-guard/SKILL.md").exists())
+        self.assertTrue((self.project / ".codex/skills/apple-craft-and-interaction-physics/SKILL.md").exists())
+
+    def test_invalid_preset_fails_with_clear_error(self):
+        result = self.run_installer("--preset=invalid_foo", check=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("invalid preset", result.stderr.lower())
+
+    def test_preset_flag_bypasses_pty_prompt(self):
+        import fcntl
+        import pty
+        import struct
+        import termios
+
+        master, slave = pty.openpty()
+        fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 24, 80, 0, 0))
+        proc = subprocess.Popen(
+            [shutil.which("node"), str(REPO / "scripts/installer.mjs"), "--agent=codex", "--preset=minimal"],
+            stdin=slave, stdout=slave, stderr=slave, cwd=self.project,
+            env={**os.environ, "HOME": str(self.project), "CI": "", "NO_COLOR": "1"},
+        )
+        os.close(slave)
+        try:
+            exit_code = proc.wait(timeout=10)
+            self.assertEqual(exit_code, 0)
+            self.assertTrue((self.project / ".codex/skills/anti-slop-engineering/SKILL.md").exists())
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+            os.close(master)
+
+
 if __name__ == "__main__":
     unittest.main()

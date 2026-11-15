@@ -89,6 +89,39 @@ export function listAvailableModules() {
   })
 }
 
+export const PRESETS = {
+  minimal: [CORE_SKILL],
+  full: 'all',
+  ci: [
+    CORE_SKILL,
+    'decision-guard',
+    'root-fix-gate',
+    'pr-boundary-guard',
+    'type-level-and-ast-slop-gate',
+    'comment-budget-guard',
+    'cognitive-load-and-attention-governor',
+    'demock-guard',
+    'mandela-guard',
+    'honeypot-trap-guard',
+  ],
+}
+
+export function resolvePreset(presetName, available = listAvailableSkills()) {
+  const normalized = String(presetName || '').trim().toLowerCase()
+  if (!normalized) {
+    throw new Error('Preset name cannot be empty. Available presets: full, minimal, ci')
+  }
+  if (!Object.prototype.hasOwnProperty.call(PRESETS, normalized)) {
+    throw new Error(`Unknown or invalid preset: ${presetName}. Available presets: ${Object.keys(PRESETS).join(', ')}`)
+  }
+  const selection = PRESETS[normalized]
+  if (selection === 'all') {
+    return available
+  }
+  const availableSet = new Set(available)
+  return [CORE_SKILL, ...selection.filter((s) => s !== CORE_SKILL && availableSet.has(s))]
+}
+
 export function resolveSkillSelection(requested, available = listAvailableSkills()) {
   const requestedIds = requested === 'all' ? available
     : requested === 'core' || requested === '' ? []
@@ -567,6 +600,7 @@ Usage:
 Options:
   --agent <names>     Target agents (comma-separated, or 'all'). Default: detected agents
   --scope <scope>     Install scope: 'project' (default) or 'global'
+  --preset <preset>   Preset selection: 'full', 'minimal', or 'ci'
   --skills <skills>   Optional skill IDs: 'all', 'core', or comma-separated names
   --plugins <names>   Alias for --skills; core is always included
   --all               Select every available optional skill
@@ -602,6 +636,7 @@ Options:
 
   const scopeArg = optionValue(args, ['scope']) || (args.includes('--global') ? 'global' : 'project')
   const agentArg = optionValue(args, ['agent'])
+  const presetArg = optionValue(args, ['preset'])
   const skillsArg = args.includes('--all') ? 'all' : optionValue(args, ['skills', 'plugins', 'modules'])
   const overwrite = args.includes('--overwrite')
   const dryRun = args.includes('--dry-run')
@@ -624,14 +659,25 @@ Options:
   }
 
   const availableSkills = listAvailableSkills()
-  let selectedSkills = resolveSkillSelection(skillsArg ?? 'core', availableSkills)
+  let selectedSkills
+  if (presetArg) {
+    const presetSkills = resolvePreset(presetArg, availableSkills)
+    if (skillsArg) {
+      const explicitSkills = resolveSkillSelection(skillsArg, availableSkills)
+      selectedSkills = [CORE_SKILL, ...new Set([...presetSkills, ...explicitSkills].filter((s) => s !== CORE_SKILL))]
+    } else {
+      selectedSkills = presetSkills
+    }
+  } else {
+    selectedSkills = resolveSkillSelection(skillsArg ?? 'core', availableSkills)
+  }
 
   let targets = resolveTargets(scopeArg, selectedAgents)
   let resolvedScope = scopeArg
 
   const promptOutput = selectionOnly ? process.stderr : process.stdout
   const interactive = !dryRun && !jsonMode && !process.env.CI && !args.includes('--no-interactive')
-    && skillsArg == null && process.stdin.isTTY && promptOutput.isTTY
+    && skillsArg == null && presetArg == null && !args.includes('--all') && process.stdin.isTTY && promptOutput.isTTY
   if (interactive) {
     const response = await promptForSkills(listAvailableModules(), targets, process.stdin, promptOutput,
       { scope: resolvedScope, agents: selectedAgents, allowTargetChange: !selectionOnly })

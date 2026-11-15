@@ -32,6 +32,44 @@ test('Setup: non-interactive default installs mandatory core only', () => {
   assert.deepEqual(JSON.parse(result.stdout).skills, ['anti-slop-engineering'])
 })
 
+test('Setup: preset minimal selects core only', () => {
+  const result = inDisposableProject(['--agent=codex', '--preset=minimal', '--dry-run', '--json'])
+  assert.equal(result.status, 0, result.stderr)
+  assert.deepEqual(JSON.parse(result.stdout).skills, ['anti-slop-engineering'])
+})
+
+test('Setup: preset ci selects core and ci guard skills', () => {
+  const result = inDisposableProject(['--agent=codex', '--preset=ci', '--dry-run', '--json'])
+  assert.equal(result.status, 0, result.stderr)
+  const skills = JSON.parse(result.stdout).skills
+  assert.ok(skills.includes('anti-slop-engineering'))
+  assert.ok(skills.includes('pr-boundary-guard'))
+  assert.ok(skills.includes('comment-budget-guard'))
+  assert.ok(skills.includes('type-level-and-ast-slop-gate'))
+  assert.equal(skills.includes('apple-craft-and-interaction-physics'), false)
+})
+
+test('Setup: preset full selects all available skills', () => {
+  const result = inDisposableProject(['--agent=codex', '--preset=full', '--dry-run', '--json'])
+  assert.equal(result.status, 0, result.stderr)
+  const skills = JSON.parse(result.stdout).skills
+  assert.ok(skills.length >= 10)
+  assert.ok(skills.includes('anti-slop-engineering'))
+  assert.ok(skills.includes('decision-guard'))
+})
+
+test('Setup: invalid preset throws clear error and non-zero exit', () => {
+  const result = inDisposableProject(['--agent=codex', '--preset=invalid_xyz', '--dry-run', '--json'])
+  assert.notEqual(result.status, 0)
+  assert.match(result.stderr, /Unknown or invalid preset/i)
+})
+
+test('Setup: preset combined with explicit skill', () => {
+  const result = inDisposableProject(['--agent=codex', '--preset=minimal', '--skills=decision-guard', '--dry-run', '--json'])
+  assert.equal(result.status, 0, result.stderr)
+  assert.deepEqual(JSON.parse(result.stdout).skills, ['anti-slop-engineering', 'decision-guard'])
+})
+
 test('Setup: public CLI forwards JSON setup without prompts or extra output', () => {
   const project = fs.mkdtempSync(path.join(os.tmpdir(), 'anti-slop-entry-'))
   try {
