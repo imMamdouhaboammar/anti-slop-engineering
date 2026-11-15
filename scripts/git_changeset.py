@@ -1,8 +1,11 @@
 # SPDX-License-Identifier: MIT
 """Collect versioned file-change evidence directly from Git."""
+import argparse
 import codecs
+import json
 import os
 import subprocess
+import sys
 from collections import defaultdict
 
 STATUS = b"ACDMRTUXB"
@@ -161,3 +164,24 @@ def collect_changes(repo, base, snapshot="worktree", target=None):
         "files": list(records.values()),
         "untracked": untracked,
     }
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--repo", default=".")
+    parser.add_argument("--base", default="HEAD")
+    parser.add_argument("--snapshot", choices=("worktree", "index", "commit"), default="worktree")
+    parser.add_argument("--target", help="Target revision for a commit snapshot")
+    args = parser.parse_args()
+    try:
+        root = repository_root(args.repo)
+        evidence = collect_changes(root, args.base, args.snapshot, args.target)
+    except (RuntimeError, ValueError) as error:
+        print(f"Git change evidence unavailable: {error}", file=sys.stderr)
+        return 1
+    print(json.dumps(evidence))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

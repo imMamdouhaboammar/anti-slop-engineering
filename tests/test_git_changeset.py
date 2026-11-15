@@ -2,6 +2,7 @@
 import json
 import os
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -111,6 +112,19 @@ class ChangeSetTests(unittest.TestCase):
              if finding["id"] == "SCALE_SLEEP_BAND_AID"],
             [(3, False), (4, True)],
         )
+
+    def test_standalone_producer_outputs_json_only(self):
+        script = str(REPO_ROOT / "scripts" / "git_changeset.py")
+        command = [sys.executable, "-S", script, "--repo", str(self.repo), "--base", "HEAD"]
+        result = subprocess.run(command + ["--snapshot", "index"], capture_output=True, text=True, check=True)
+        self.assertEqual(result.stderr, "")
+        self.assertEqual(json.loads(result.stdout), collect_changes(self.repo, "HEAD", "index"))
+        bad_result = subprocess.run(
+            command + ["--snapshot", "commit"], capture_output=True, text=True, check=False,
+        )
+        self.assertEqual(bad_result.returncode, 1)
+        self.assertEqual(bad_result.stdout, "")
+        self.assertIn("target is required", bad_result.stderr)
 
     def test_invalid_mode_and_revision_fail_explicitly(self):
         with self.assertRaises(ValueError):

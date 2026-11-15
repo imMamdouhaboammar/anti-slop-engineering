@@ -4,6 +4,8 @@ The Python standard-library producer in `scripts/git_changeset.py` supplies file
 
 ## Snapshot inputs
 
+`python3 scripts/git_changeset.py --repo . --base HEAD --snapshot index` writes the record to stdout. For a commit snapshot, add `--target <revision>`. Collection errors return a nonzero exit and use stderr.
+
 | Snapshot | Comparison | Target field | Untracked paths |
 | --- | --- | --- | --- |
 | `worktree` | Resolved base commit to current working tree | null | Non-ignored paths listed separately |
