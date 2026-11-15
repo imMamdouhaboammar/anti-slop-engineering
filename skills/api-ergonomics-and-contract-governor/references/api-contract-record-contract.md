@@ -167,3 +167,14 @@ The `compiler` object records the actual Python interpreter and either a success
 `installed_api.status: declared` means a direct declaration is visible in the installed source or stub at the reported location. It does not prove Python can import it from the consumer's actual working directory, that a guarded or dynamic export works, or that the API type-checks. `not_declared` means no direct declaration in the selected stub. Missing metadata, namespace or binary modules, unresolved symbols in normal source, and dynamic stubs can yield `inconclusive`.
 
 Exit status 0 requires both a completed syntax check and declaration evidence. Status 1 is a compiler diagnostic. Status 2 means the requested evidence was unavailable or inconclusive. No dependencies are installed, no registry is queried, and neither source file is executed.
+
+### Optional TypeScript compiler fixture
+
+```sh
+python3 -I -S scripts/typescript_compiler_evidence.py \
+  --node /path/to/trusted/node --tsc-js /path/to/trusted/typescript/lib/tsc.js
+```
+
+Select an installed compiler that you trust. The probe compares the compiler's reported version with its installed package metadata. On macOS it first verifies that a loopback bind is denied, then checks fixed positive and negative TypeScript fixtures in a temporary directory. The run passes explicit strict, no-emit, no-resolve and library flags, empty type roots, and a clean environment. There is no project path input, project configuration or plugin load, or import of consumer code.
+
+The result records the selected compiler version, passing control, and an actual diagnostic with its code and source position. The helper has per-child wall-time, CPU and output limits. The Node heap target is not an operating-system memory cap. A missing compiler, unsupported platform, failed sandbox probe or unrecognized diagnostic returns `not_checked`. The network sandbox profile is not a guarantee of filesystem isolation for an untrusted compiler.
