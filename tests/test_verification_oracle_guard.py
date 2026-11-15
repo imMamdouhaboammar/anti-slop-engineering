@@ -497,6 +497,32 @@ class VerificationOracleGuardTests(unittest.TestCase):
                 self.assertIn("test_selected_value", output)
                 self.assertNotIn("test_prior_value", output)
 
+    def test_counterfactual_python_requires_the_failed_subtest_to_pass(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            git = _init_git_repo(root)
+            value = root / "value.txt"
+            value.write_text("old")
+            git("add", ".")
+            git("commit", "-m", "add old value")
+            value.write_text("new")
+            test_file = "test_selected.py"
+            (root / test_file).write_text(
+                "import unittest\nfrom pathlib import Path\n"
+                "class Selected(unittest.TestCase):\n"
+                "    def test_values(self):\n"
+                "        value = Path('value.txt').read_text()\n"
+                "        for expected in ('always', 'new'):\n"
+                "            with self.subTest(expected=expected):\n"
+                "                if expected == 'new' and value == 'new':\n"
+                "                    self.skipTest('regression case is skipped')\n"
+                "                self.assertEqual(value if expected == 'new' else 'always', expected)\n"
+            )
+            exit_code, result = self._proof_cli(root, test_file)
+            self.assertEqual(exit_code, 2, result)
+            self.assertEqual(result["status"], "inconclusive", result)
+            self.assertFalse(result["red_green_verified"], result)
+
     def test_counterfactual_cannot_attribute_an_opaque_runner(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

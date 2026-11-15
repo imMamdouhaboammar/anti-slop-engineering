@@ -719,7 +719,10 @@ def _run_unittest_selected(filename: Path, report: Path):
 
     outcome = unittest.TextTestRunner(verbosity=2).run(suite)
     failures = {getattr(test, "test_case", test).id() for test, _ in outcome.failures}
-    skipped = {test.id() for test, _ in outcome.skipped + outcome.expectedFailures}
+    skipped = {
+        getattr(test, "test_case", test).id()
+        for test, _ in outcome.skipped + outcome.expectedFailures
+    }
     completed_all = outcome.testsRun == len(selected)
     cases = {
         test.id(): "fail" if test.id() in failures else "pass"
