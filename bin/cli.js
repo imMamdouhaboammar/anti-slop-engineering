@@ -52,8 +52,14 @@ const styleseedGuardScript = resolve(rootDir, "scripts", "styleseed_guard.py");
 const tagoreGuardScript = resolve(rootDir, "scripts", "tagore_guard.py");
 const auditRunnerScript = resolve(rootDir, "scripts", "audit_runner.py");
 const installerScript = resolve(rootDir, "scripts", "installer.mjs");
-const installOxlintScript = resolve(rootDir, "skills", "install-anti-slop", "scripts", "install.mjs");
-const updateOxlintScript = resolve(rootDir, "skills", "install-anti-slop", "scripts", "update.mjs");
+const bundledOxlint = resolve(rootDir, "skills", "install-anti-slop");
+const installedOxlint = resolve(rootDir, "..", "install-anti-slop");
+const oxlintSkill = !existsSync(bundledOxlint) && existsSync(resolve(rootDir, ".anti-slop-managed.json"))
+  && existsSync(resolve(installedOxlint, ".anti-slop-managed.json"))
+  ? installedOxlint
+  : bundledOxlint;
+const installOxlintScript = resolve(oxlintSkill, "scripts", "install.mjs");
+const updateOxlintScript = resolve(oxlintSkill, "scripts", "update.mjs");
 const nativeSuffix = process.platform === "win32" ? ".exe" : "";
 const rustExecutable = "anti-slop-rust" + nativeSuffix;
 const goExecutable = "toil-guard" + nativeSuffix;
@@ -516,13 +522,13 @@ if (cmd === "build") {
   });
 } else if (cmd === "update-oxlint") {
   if (!existsSync(updateOxlintScript)) {
-    console.error(`Error: update script not found at ${updateOxlintScript}`);
+    console.error("Error: update-oxlint requires the install-anti-slop optional skill.");
     process.exit(1);
   }
   spawnProcess("node", [updateOxlintScript, ...args.slice(1)], "update_oxlint");
 } else if (cmd === "install-oxlint" || cmd === "install-anti-slop") {
   if (!existsSync(installOxlintScript)) {
-    console.error(`Error: install script not found at ${installOxlintScript}`);
+    console.error("Error: install-oxlint requires the install-anti-slop optional skill.");
     process.exit(1);
   }
   spawnProcess("node", [installOxlintScript, ...args.slice(1)], "install_oxlint");

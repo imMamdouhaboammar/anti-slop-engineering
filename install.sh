@@ -109,7 +109,7 @@ install_to() {
   local result
   local preview=()
   if [ "$BASH_DRY_RUN" -eq 1 ]; then preview=(--dry-run); fi
-  result="$(python3 "$SOURCE_DIR/scripts/safe_install.py" --source "$SOURCE_DIR" --dest "$dest" "${preview[@]}")"
+  result="$(python3 "$SOURCE_DIR/scripts/safe_install.py" --source "$SOURCE_DIR" --dest "$dest" --exclude skills "${preview[@]}")"
   report_install "$result" "$label" "$dest"
   # Install only the optional skills selected from the authoritative catalog.
   local module
