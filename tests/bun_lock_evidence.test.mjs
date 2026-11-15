@@ -36,6 +36,11 @@ test("honors unsupported lock versions, malformed input, and unsupported resolut
   expect(inspectDirectDependency(manifest, lock.replace('"lockfileVersion": 2', '"lockfileVersion": 999'), "@demo/library").status).toBe("unsupported");
   expect(inspectDirectDependency(manifest, "{", "@demo/library").status).toBe("unreadable");
   expect(inspectDirectDependency(
+    manifest.replace("^2.0.0", "^broken"),
+    lock.replace("^2.0.0", "^broken"),
+    "@demo/library",
+  ).status).toBe("unsupported");
+  expect(inspectDirectDependency(
     manifest.replace("^2.0.0", "workspace:*"),
     lock.replace("^2.0.0", "workspace:*"),
     "@demo/library",

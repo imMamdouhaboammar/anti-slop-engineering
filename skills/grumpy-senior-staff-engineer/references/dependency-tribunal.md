@@ -83,7 +83,7 @@ A dependency added without this record is a dependency that will be forgotten un
 
 For an existing dependency, capture the declared range from `package.json` and the exact release from `bun.lock` before proposing changes. Then inspect the matching installed package manifest and its exported definitions if the task depends on an API. An absent installation or mismatched version leaves local API availability unverified.
 
-The [offline Bun example](../examples/bun-lock-evidence.mjs) reads text lockfile version 2. It identifies a direct root dependency and distinguishes stable from prerelease selections. It reports mismatched declarations, missing records, and unsupported lockfile formats, tagged or local resolutions, aliases, direct overrides, and ambiguous dependency groups. For a workspace or non-registry resolution, inspect the corresponding manifest and lockfile entry before making a recommendation.
+The [offline Bun example](../examples/bun-lock-evidence.mjs) reads text lockfile version 2. It identifies a direct root dependency declared with an exact version, caret range, or tilde range and distinguishes stable from prerelease selections. It reports mismatched declarations, missing records, and unsupported lockfile formats, tagged or local resolutions, aliases, direct overrides, and ambiguous dependency groups. For a workspace or non-registry resolution, inspect the corresponding manifest and lockfile entry before making a recommendation.
 
 ```bash
 bun <skill-directory>/examples/bun-lock-evidence.mjs <project-root> <package-name>

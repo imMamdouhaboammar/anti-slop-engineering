@@ -3,7 +3,13 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 const dependencyGroups = ["dependencies", "optionalDependencies", "devDependencies"];
-const registryRange = /^(?:[vV]?\d|[~^<>*=xX])[0-9A-Za-z.*~^<>=+| -]*$/;
+const versionCore = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/;
+const registryRange = /^([~^=]?)([^\s]+)$/;
+
+function releaseVersion(value) {
+  return versionCore.test(value.split(/[-+]/, 1)[0]) && Bun.semver.satisfies(value, value);
+}
+
 
 export function inspectDirectDependency(manifestText, lockText, packageName) {
   let manifest;
@@ -37,7 +43,8 @@ export function inspectDirectDependency(manifestText, lockText, packageName) {
   if (!Object.hasOwn(root[group] ?? {}, packageName) || root[group][packageName] !== declared) {
     return { status: "stale_lock", declared };
   }
-  if (!registryRange.test(declared) || Object.hasOwn(manifest.overrides ?? {}, packageName)) {
+  const request = declared.match(registryRange);
+  if (!request || !releaseVersion(request[2]) || Object.hasOwn(manifest.overrides ?? {}, packageName)) {
     return { status: "unsupported", declared };
   }
 
@@ -51,7 +58,7 @@ export function inspectDirectDependency(manifestText, lockText, packageName) {
     return { status: "unsupported", declared };
   }
   const resolved = record[0].slice(prefix.length);
-  if (!Bun.semver.satisfies(resolved, resolved)) {
+  if (!releaseVersion(resolved)) {
     return { status: "unsupported", declared };
   }
   if (!Bun.semver.satisfies(resolved, declared)) {
