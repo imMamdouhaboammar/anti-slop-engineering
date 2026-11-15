@@ -196,8 +196,9 @@ bunx anti-slop-engineering toil runtime-check --fixture=go-lookup
 
 The built-in Go lookup fixture measures single-item and batched dependency calls,
 checks result equality, and records recovery from one injected local failure.
-Its elapsed times describe one run of the fixture. Treat production latency and
-concurrency separately.
+A two-worker scenario records observed overlap and cancels while both workers
+are in flight. It reports completed, canceled and unstarted operations for six
+local lookups. Elapsed times describe the fixture run.
 
 On macOS, the worker uses a disposable directory and verifies denial of a read
 canary, file creation, local TCP connection and listening, and child execution

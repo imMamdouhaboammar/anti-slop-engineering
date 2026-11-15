@@ -128,3 +128,28 @@ func TestRuntimeCheckCapsWorkerDeadline(t *testing.T) {
 		t.Fatalf("timeout did not remain inconclusive: %d %s", exit, out.String())
 	}
 }
+
+func TestFixtureRecordsBoundedConcurrencyAndCancellation(t *testing.T) {
+	evidence := measureLookupFixture().Concurrency
+	if evidence.Workers != 2 || evidence.Jobs != 6 || evidence.PeakInFlight != 2 ||
+		evidence.Completed != 6 || evidence.CancelPeakInFlight != 2 || evidence.CanceledInFlight != 2 ||
+		evidence.NotStarted != 4 || evidence.CompletedAfterCancel != 0 {
+		t.Fatalf("unexpected concurrent fixture evidence: %+v", evidence)
+	}
+}
+
+func TestFixtureCancellationDoesNotAllowOverlappingWarmupToPass(t *testing.T) {
+	for _, defect := range []func(*concurrencyMeasurements){
+		func(m *concurrencyMeasurements) { m.PeakInFlight = 3 },
+		func(m *concurrencyMeasurements) { m.PeakInFlight = 1 },
+		func(m *concurrencyMeasurements) { m.CanceledInFlight = 1 },
+		func(m *concurrencyMeasurements) { m.CompletedAfterCancel = 1 },
+	} {
+		evidence := runtimeEvidence{Isolation: verifiedRuntimeIsolation(), Measurements: measureLookupFixture()}
+		defect(&evidence.Measurements.Concurrency)
+		report, exit := newRuntimeCheckReport(evidence, nil)
+		if exit != 1 || report.Status != "failed" || !report.Executed {
+			t.Fatalf("incorrect concurrency evidence passed: exit=%d report=%+v", exit, report)
+		}
+	}
+}

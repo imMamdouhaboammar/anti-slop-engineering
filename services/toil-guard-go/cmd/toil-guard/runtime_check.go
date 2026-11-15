@@ -38,21 +38,23 @@ type runtimeEvidence struct {
 }
 
 type lookupMeasurements struct {
-	Items          int   `json:"items"`
-	Iterations     int   `json:"iterations"`
-	BaselineCalls  int   `json:"single_lookup_calls"`
-	BatchedCalls   int   `json:"batched_lookup_calls"`
-	BaselineTimeNS int64 `json:"single_lookup_elapsed_ns"`
-	BatchedTimeNS  int64 `json:"batched_lookup_elapsed_ns"`
-	ResultsMatch   bool  `json:"results_match"`
-	FaultObserved  bool  `json:"fault_observed"`
-	Recovered      bool  `json:"recovered"`
+	Items          int                     `json:"items"`
+	Iterations     int                     `json:"iterations"`
+	BaselineCalls  int                     `json:"single_lookup_calls"`
+	BatchedCalls   int                     `json:"batched_lookup_calls"`
+	BaselineTimeNS int64                   `json:"single_lookup_elapsed_ns"`
+	BatchedTimeNS  int64                   `json:"batched_lookup_elapsed_ns"`
+	ResultsMatch   bool                    `json:"results_match"`
+	FaultObserved  bool                    `json:"fault_observed"`
+	Recovered      bool                    `json:"recovered"`
+	Concurrency    concurrencyMeasurements `json:"concurrency"`
 }
 
 func (m lookupMeasurements) passed() bool {
 	return m.Items == len(lookupKeys) && m.Iterations == lookupIterations &&
 		m.BaselineCalls == m.Items*m.Iterations && m.BatchedCalls == m.Iterations &&
-		m.BaselineTimeNS > 0 && m.BatchedTimeNS > 0 && m.ResultsMatch && m.FaultObserved && m.Recovered
+		m.BaselineTimeNS > 0 && m.BatchedTimeNS > 0 && m.ResultsMatch && m.FaultObserved && m.Recovered &&
+		m.Concurrency.passed()
 }
 
 type runtimeCheckReport struct {
@@ -114,7 +116,7 @@ func newRuntimeCheckReport(evidence runtimeEvidence, err error) (runtimeCheckRep
 		return report, 0
 	}
 	report.Status = "failed"
-	report.Reason = "observed lookup, result, or recovery evidence did not meet fixture criteria"
+	report.Reason = "observed lookup, result, recovery, or concurrency evidence did not meet fixture criteria"
 	return report, 1
 }
 
@@ -191,5 +193,6 @@ func measureLookupFixture() lookupMeasurements {
 		BaselineTimeNS: singleTime.Nanoseconds(), BatchedTimeNS: batchTime.Nanoseconds(),
 		ResultsMatch:  singleErr == nil && batchErr == nil && singleValues == want && batchValues == want,
 		FaultObserved: errors.Is(injected, errFixtureUnavailable), Recovered: retried == nil && recovered == want,
+		Concurrency: measureLookupConcurrency(),
 	}
 }
