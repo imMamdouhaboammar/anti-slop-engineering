@@ -162,5 +162,70 @@ class AstSlopGuardTests(unittest.TestCase):
         self.assertNotIn('UNJUSTIFIED_TYPE_ASSERTION', finding_ids)
 
 
+    def test_conditional_empty_spread_uses_outer_object_branches(self):
+        file_path = self.write_shared_fixture()
+        result = self.run_guard(str(file_path), '--json')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.finding_lines(result, 'CONDITIONAL_EMPTY_SPREAD'), [1, 2, 3, 4, 5])
+
+    def test_spread_after_a_multiline_call_closer(self):
+        file_path = self.repo / 'continuation.ts'
+        file_path.write_text(
+            'consume(\n'
+            '  1\n'
+            '); const options = { ...(ready ? pair : {}) };\n'
+        )
+        result = self.run_guard(str(file_path), '--json')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.finding_lines(result, 'CONDITIONAL_EMPTY_SPREAD'), [3])
+
+    def test_cast_exemption_requires_adjacent_never_proof_for_same_value(self):
+        file_path = self.write_shared_fixture()
+        result = self.run_guard(str(file_path), '--json')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.finding_lines(result, 'UNJUSTIFIED_TYPE_ASSERTION'), [13, 15, 17, 36, 40, 53])
+
+    def test_diff_preserves_source_adjacency_and_absolute_lines(self):
+        file_path = self.repo / 'review.ts'
+        lines = ['// unchanged'] * 100
+        lines[89] = '// SAFETY: the upstream parser validated the user'
+        lines[94] = 'switch (action.type) {'
+        lines[95] = '  default:'
+        lines[96] = '    const verified: never = action;'
+        lines[98] = '}'
+        file_path.write_text('\n'.join(lines) + '\n')
+        subprocess.run(['git', 'init', '-q'], cwd=self.repo, check=True)
+        self.commit_fixture()
+
+        lines[9] = 'const _exhaustive: never = raw;'
+        lines[79] = 'throw new UnhandledActionError(raw as User);'
+        lines[90] = 'const safe = raw as User;'
+        lines[97] = '    throw new AuditError(action as User);'
+        file_path.write_text('\n'.join(lines) + '\n')
+        self.commit_fixture()
+
+        result = self.run_guard('--repo', str(self.repo), '--base', 'HEAD^', '--json')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.finding_lines(result, 'UNJUSTIFIED_TYPE_ASSERTION'), [80])
+
+    def write_shared_fixture(self):
+        fixture = ROOT / 'tests' / 'fixtures' / 'ast-slop.source.txt'
+        file_path = self.repo / 'spread-and-casts.ts'
+        file_path.write_bytes(fixture.read_bytes())
+        return file_path
+
+    def finding_lines(self, result, finding_id):
+        return [f['line'] for f in json.loads(result.stdout)['findings'] if f['id'] == finding_id]
+
+    def commit_fixture(self):
+        subprocess.run(['git', 'add', 'review.ts'], cwd=self.repo, check=True)
+        subprocess.run(
+            ['git', '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.test',
+             '-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null',
+             'commit', '-qm', 'fixture'],
+            cwd=self.repo, check=True,
+        )
+
+
 if __name__ == '__main__':
     unittest.main()

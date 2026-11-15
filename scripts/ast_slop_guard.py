@@ -10,56 +10,55 @@ import argparse
 import json
 import pathlib
 import re
-import sre_compile
 import subprocess
 import sys
 
 __version__ = '1.0.0'
 
 JS_TS_EXTS = {'.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'}
-TEST_PATH_RE = sre_compile.compile(r'(?i)(?:^|/)(?:tests?|__tests__|specs?)(?:/|$)|(?:^|/)(?:test_[^/]+\.[a-z0-9]+|[^/]+[._](?:test|spec)\.[a-z0-9]+)$')
-IGNORE_DIR_RE = sre_compile.compile(r'(?i)(?:^|/)(?:node_modules|vendor|dist|build|\.next|coverage|\.git|tools/oxlint)(?:/|$)')
+TEST_PATH_RE = re.compile(r'(?i)(?:^|/)(?:tests?|__tests__|specs?)(?:/|$)|(?:^|/)(?:test_[^/]+\.[a-z0-9]+|[^/]+[._](?:test|spec)\.[a-z0-9]+)$')
+IGNORE_DIR_RE = re.compile(r'(?i)(?:^|/)(?:node_modules|vendor|dist|build|\.next|coverage|\.git|tools/oxlint)(?:/|$)')
 
 RULES = [
     {
         'id': 'CHAINED_TYPE_ASSERTION',
         'severity': 'blocker',
-        'pattern': sre_compile.compile(r'(?i)\bas\s+(?:unknown|any|object)\s+as\b|<\s*(?:any|unknown)\s*><'),
+        'pattern': re.compile(r'(?i)\bas\s+(?:unknown|any|object)\s+as\b|<\s*(?:any|unknown)\s*><'),
         'test_only': False,
         'action': 'Chained type assertion detected. Do not fabricate evidence by widening and reasserting; validate schema at the system boundary.',
     },
     {
         'id': 'CONDITIONAL_EMPTY_SPREAD',
         'severity': 'review',
-        'pattern': sre_compile.compile(r'\.\.\.\s*\([^?)]+\?(?:[^)]*:\s*\{\}|\s*\{\}\s*:[^)]*)\s*\)|\.\.\.\s*[a-zA-Z0-9_$.]+\s*\?[^;,\n]*:\s*\{\}(?:\s*[,;}]|$)'),
+        'pattern': None,
         'test_only': False,
         'action': 'Conditional empty object spread detected. Spreading `{}` allocates throwaways and deoptimizes V8 hidden classes. Use explicit property assignments.',
     },
     {
         'id': 'ARRAY_FILTER_MAP_CHAIN',
         'severity': 'review',
-        'pattern': sre_compile.compile(r'\.(?:filter|map)\s*\([^)]*\)\s*\.(?:map|filter)\s*\('),
+        'pattern': re.compile(r'\.(?:filter|map)\s*\([^)]*\)\s*\.(?:map|filter)\s*\('),
         'test_only': False,
         'action': 'Adjacent eager array filter/map pass detected. Creates redundant intermediate arrays. Prefer lazy iterator helpers (`.values().filter().map().toArray()`), a single `flatMap()`, or a mutating reducer.',
     },
     {
         'id': 'REDUCE_ACCUMULATOR_COPY',
         'severity': 'blocker',
-        'pattern': sre_compile.compile(r'(?i)\.reduce(?:Right)?\s*\(.*?(?:Object\.assign\s*\(\s*\{\}\s*,|(?:\bacc|accumulator)\.(?:concat|slice|toSpliced|toSorted|toReversed)\s*\()'),
+        'pattern': re.compile(r'(?i)\.reduce(?:Right)?\s*\(.*?(?:Object\.assign\s*\(\s*\{\}\s*,|(?:\bacc|accumulator)\.(?:concat|slice|toSpliced|toSorted|toReversed)\s*\()'),
         'test_only': False,
         'action': 'Reducer accumulator copy detected. Copying an accumulator inside a reducer causes quadratic O(N^2) complexity and memory bloat. Mutate the local accumulator and return it.',
     },
     {
         'id': 'MODULE_MOCKING_ORACLE_EROSION',
         'severity': 'blocker',
-        'pattern': sre_compile.compile(r'(?i)\b(?:vi|jest)\.(?:mock|doMock|unstable_mockModule)\s*\('),
+        'pattern': re.compile(r'(?i)\b(?:vi|jest)\.(?:mock|doMock|unstable_mockModule)\s*\('),
         'test_only': True,
         'action': 'Module mocking detected in tests. Mocking whole modules erodes test fidelity and creates assertion theater. Use real dependency seams, in-memory fakes, or dependency injection.',
     },
     {
         'id': 'RUNTIME_TYPEOF_AD_HOC',
         'severity': 'review',
-        'pattern': sre_compile.compile(r'\btypeof\s+[a-zA-Z0-9_$.]+\s*===\s*["\'](?:object|string|number|boolean)["\']'),
+        'pattern': re.compile(r'\btypeof\s+[a-zA-Z0-9_$.]+\s*===\s*["\'](?:object|string|number|boolean)["\']'),
         'test_only': False,
         'exclude_tests': True,
         'action': 'Ad-hoc runtime typeof narrowing detected. External input must be parsed into branded domain types at the I/O boundary using schema validation (Zod, ArkType, Valibot, Effect Schema).',
@@ -67,32 +66,99 @@ RULES = [
     {
         'id': 'METANAME_SHAPE_SLOP',
         'severity': 'review',
-        'pattern': sre_compile.compile(r'\b(?:interface|type)\s+[A-Z]\w*Shape\b'),
+        'pattern': re.compile(r'\b(?:interface|type)\s+[A-Z]\w*Shape\b'),
         'test_only': False,
         'action': 'Meta-naming slop "Shape" detected in type/interface identifier. Name domain models after the business concept (e.g. `User`, `UserDTO`), not implementation metadata.',
     },
     {
         'id': 'EFFECT_MANUAL_TAG_SLOP',
         'severity': 'review',
-        'pattern': sre_compile.compile(r'\._tag\s*===|\._tag\s*!=='),
+        'pattern': re.compile(r'\._tag\s*===|\._tag\s*!=='),
         'test_only': False,
         'action': 'Manual Effect `_tag` comparison detected. Use Effect `Match.value()`, `Predicate.isTagged()`, or `Effect.catchTag()` instead of manual tag checking.',
     },
 ]
 
-SAFETY_COMMENT_RE = sre_compile.compile(r'(?i)//\s*(?:SAFETY|INVARIANT)\s*:')
-TYPE_ASSERTION_RE = sre_compile.compile(r'\bas\s+(?!const\b)[A-Z]\w*\b')
+SAFETY_COMMENT_RE = re.compile(r'(?i)//\s*(?:SAFETY|INVARIANT)\s*:')
+TYPE_ASSERTION_RE = re.compile(r'\bas\s+(?!const\b)[A-Z]\w*\b')
 
 
-def is_exhaustive_guard(line: str, prev_line: str = '') -> bool:
-    """Check if line is part of a verified exhaustive switch guard or assertNever branch."""
-    combined = f'{prev_line}\n{line}'
-    if 'assertNever(' in combined or '_exhaustive' in combined or 'as never' in combined:
-        return True
-    if 'default:' in combined:
-        return True
-    if 'Unhandled' in combined or 'Unreachable' in combined:
-        return True
+TOKEN_RE = re.compile(
+    r"""//.*|/\*.*?\*/|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|"""
+    r"""`(?:\\.|[^`\\])*`|\.\.\.|\?\.|\?\?|[^\s]"""
+)
+NEVER_ASSIGNMENT_RE = re.compile(r'const\s+[A-Za-z_$][\w$]*\s*:\s*never\s*=\s*([A-Za-z_$][\w$]*)\s*;?')
+THROW_ASSERTION_RE = re.compile(r'throw\s+new\s+[\w$.]+\s*\(\s*([A-Za-z_$][\w$]*)\s+as\s+[A-Z]\w*\s*\)\s*;?')
+
+
+def has_never_proof(line, previous_line, branch_line):
+    if branch_line != 'default:':
+        return False
+    proof = NEVER_ASSIGNMENT_RE.fullmatch(previous_line)
+    thrown = THROW_ASSERTION_RE.fullmatch(line)
+    return bool(proof and thrown and proof[1] == thrown[1])
+
+
+def object_groups(line):
+    # Preserve lexical boundaries so a nested comma or ternary cannot end the spread.
+    pairs = {')': '(', ']': '[', '}': '{'}
+    stack = [('', [])]
+    for match in TOKEN_RE.finditer(line):
+        token = match[0]
+        if token.startswith(('//', '/*')):
+            continue
+        if token in pairs.values():
+            group = (token, [])
+            stack[-1][1].append(group)
+            stack.append(group)
+        elif token in pairs:
+            opening, children = stack[-1]
+            if opening != pairs[token]:
+                if not opening and token == '}' and children[:1] == ['...']:
+                    yield children
+                stack = [('', [])]
+                continue
+            stack.pop()
+            if opening == '{':
+                yield children
+        else:
+            stack[-1][1].append(token)
+    for opening, children in stack:
+        # Added lines may begin or end inside a surrounding object literal.
+        if opening == '{' or (not opening and children[:1] == ['...']):
+            yield children
+
+
+def is_conditional_empty_spread(expression):
+    while len(expression) == 1 and isinstance(expression[0], tuple) and expression[0][0] == '(':
+        expression = expression[0][1]
+    if '?' not in expression:
+        return False
+
+    question = expression.index('?')
+    nested = 0
+    for colon in range(question + 1, len(expression)):
+        token = expression[colon]
+        if token == '?':
+            nested += 1
+        elif token == ':':
+            if not nested:
+                empty = [('{', [])]
+                return expression[question + 1:colon] == empty or expression[colon + 1:] == empty
+            nested -= 1
+    return False
+
+
+def has_conditional_empty_spread(line):
+    if '...' not in line or '?' not in line:
+        return False
+    for group in object_groups(line):
+        start = 0
+        for end, token in enumerate(group + [',']):
+            if token in (',', ';'):
+                if group[start:start + 1] == ['...'] and is_conditional_empty_spread(group[start + 1:end]):
+                    return True
+                start = end + 1
     return False
 
 
@@ -106,12 +172,14 @@ def is_eligible_file(path_str):
     return True
 
 
-def audit_source_lines(lines, file_path):
+def audit_source_lines(lines, file_path, changed_lines=None):
     """Audit lines of code in a single file with line numbers."""
     findings = []
     is_test = bool(TEST_PATH_RE.search(file_path))
 
-    for idx, line in enumerate(lines, 1):
+    for idx, line in lines.items():
+        if changed_lines is not None and idx not in changed_lines:
+            continue
         stripped = line.strip()
         if not stripped or stripped.startswith('//') or stripped.startswith('/*') or stripped.startswith('*'):
             continue
@@ -122,7 +190,9 @@ def audit_source_lines(lines, file_path):
             if rule.get('exclude_tests') and is_test:
                 continue
 
-            if rule['pattern'].search(stripped):
+            pattern = rule['pattern']
+            matched = has_conditional_empty_spread(stripped) if pattern is None else pattern.search(stripped)
+            if matched:
                 findings.append({
                     'id': rule['id'],
                     'severity': rule['severity'],
@@ -136,8 +206,9 @@ def audit_source_lines(lines, file_path):
         if file_path.endswith(('.ts', '.tsx')) and not is_test:
             if TYPE_ASSERTION_RE.search(stripped) and not stripped.startswith('import '):
                 # Look backwards for SAFETY comment on previous line
-                prev_line = lines[idx - 2].strip() if idx >= 2 else ''
-                if is_exhaustive_guard(stripped, prev_line):
+                prev_line = lines.get(idx - 1, '').strip()
+                branch_line = lines.get(idx - 2, '').strip()
+                if has_never_proof(stripped, prev_line, branch_line):
                     continue
                 curr_has_safety = bool(SAFETY_COMMENT_RE.search(stripped))
                 prev_has_safety = bool(SAFETY_COMMENT_RE.search(prev_line))
@@ -158,7 +229,7 @@ def scan_file(file_path):
     """Scan a single file from disk."""
     try:
         content = pathlib.Path(file_path).read_text(encoding='utf-8', errors='replace')
-        return audit_source_lines(content.splitlines(), str(file_path))
+        return audit_source_lines(dict(enumerate(content.splitlines(), 1)), str(file_path))
     except Exception as err:
         return [{
             'id': 'READ_ERROR',
@@ -180,54 +251,42 @@ def scan_directory(dir_path):
     return findings
 
 
-def _flush_diff_lines(current_file, added_lines, findings):
-    """Audit accumulated added lines and remap line numbers."""
-    if not (current_file and is_eligible_file(current_file) and added_lines):
-        return
-    text_lines = [l for _, l in added_lines]
-    file_findings = audit_source_lines(text_lines, current_file)
-    for f in file_findings:
-        relative_idx = f['line'] - 1
-        if 0 <= relative_idx < len(added_lines):
-            f['line'] = added_lines[relative_idx][0]
-    findings.extend(file_findings)
+def _flush_diff_lines(current_file, source_lines, changed_lines, findings):
+    if current_file and is_eligible_file(current_file) and changed_lines:
+        findings.extend(audit_source_lines(source_lines, current_file, changed_lines))
 
 
 def scan_diff(repo, base):
-    """Scan added lines from git diff."""
+    """Scan added lines with their immediate source context."""
     findings = []
-    try:
-        cmd = ['git', '-C', str(repo), 'diff', '-U0', f'{base}...HEAD']
-        res = subprocess.run(cmd, capture_output=True, text=True, check=True)
-        diff_text = res.stdout
-    except subprocess.CalledProcessError:
-        # Fall back to 2-dot diff
-        cmd = ['git', '-C', str(repo), 'diff', '-U0', base]
-        res = subprocess.run(cmd, capture_output=True, text=True)
-        diff_text = res.stdout
+    cmd = ['git', '-C', str(repo), 'diff', '-U2', '--inter-hunk-context=0',
+           '--no-color', '--no-ext-diff', '--no-textconv', '--src-prefix=a/', '--dst-prefix=b/']
+    res = subprocess.run([*cmd, f'{base}...HEAD', '--'], capture_output=True, text=True)
+    if res.returncode:
+        res = subprocess.run([*cmd, base, '--'], capture_output=True, text=True)
 
     current_file = None
-    current_line_num = 0
-    added_lines = []
-
-    for line in diff_text.splitlines():
-        if line.startswith('+++ b/'):
-            _flush_diff_lines(current_file, added_lines, findings)
-            current_file = line[6:].strip()
-            added_lines = []
-            continue
-
-        if line.startswith('@@'):
-            m = re.search(r'\+(\d+)', line)
-            current_line_num = int(m.group(1)) if m else 0
-            continue
-
-        if line.startswith('+') and not line.startswith('+++'):
-            code = line[1:]
-            added_lines.append((current_line_num, code))
+    current_line_num = None
+    source_lines = {}
+    changed_lines = set()
+    for line in res.stdout.splitlines():
+        if line.startswith('diff --git '):
+            _flush_diff_lines(current_file, source_lines, changed_lines, findings)
+            current_file = current_line_num = None
+            source_lines = {}
+            changed_lines = set()
+        elif current_line_num is None and line.startswith('+++ b/'):
+            current_file = line[6:].rstrip('\t')
+        elif line.startswith('@@ '):
+            match = re.match(r'^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@', line)
+            current_line_num = int(match[1]) if match else None
+        elif current_line_num is not None and line.startswith(('+', ' ')):
+            source_lines[current_line_num] = line[1:]
+            if line.startswith('+'):
+                changed_lines.add(current_line_num)
             current_line_num += 1
 
-    _flush_diff_lines(current_file, added_lines, findings)
+    _flush_diff_lines(current_file, source_lines, changed_lines, findings)
     return findings
 
 

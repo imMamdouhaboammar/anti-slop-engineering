@@ -1,0 +1,53 @@
+const chooseCall = { ...(enabled() ? { a: 1 } : {}) };
+const chooseMany = { ...enabled ? { a: 1, b: 2 } : {} };
+const omitFirst = { ...(enabled() ? {} : { a: 1 }) };
+const nested = { ...((isReady?.(pair) ?? false) ? { props: { a: 1, b: 2 } } : {}) };
+const emptyComment = { ...(enabled() ? { a: 1 } : { /* nothing */ }) };
+const nestedTernary = { ...(enabled() ? (other ? {} : pair) : pair) };
+const fallback = { ...(enabled() ? { a: 1 } : pair ?? {}) };
+const separator = { ...enabled() ? pair : pair, meta: {} };
+const unrelated = { ...withFallback(enabled() ? pair : {}) };
+const arraySpread = [...(enabled() ? pair : {})];
+const calls = take(...(enabled() ? pair : {}));
+function unsafe(kind: Kind, raw: unknown) {
+  switch (kind) { default: return raw as User; }
+}
+const incidental = raw as User; // Unhandled input
+const _exhaustiveLooking = raw;
+const next = raw as User;
+// SAFETY: validated before entering this module
+const safe = raw as User;
+const immutable = { key: "value" } as const;
+function exhaustive(action: Add | Remove) {
+  switch (action.type) {
+    case "add": return action.payload;
+    case "remove": return;
+    default:
+      const checked: never = action;
+      throw new UnhandledActionError(action as UnhandledAction);
+  }
+}
+function unrelatedProof(action: Add | Remove, raw: unknown) {
+  switch (action.type) {
+    case "add": return action.payload;
+    case "remove": return;
+    default:
+      const checked: never = action;
+      throw new UnhandledActionError(raw as UnhandledAction);
+  }
+}
+function fakeAssertion(raw: unknown) {
+  return assertNever(raw as User);
+}
+function exhaustShape(shape: Circle | Square) {
+  switch (shape.kind) {
+    case "circle": return shape.radius;
+    case "square": return shape.side;
+    default: return assertNever(shape as never);
+  }
+}
+const blockComment = { ...(/* ...ready ? {} : pair */ pair) };
+const quoted = "...(ready ? {} : pair)";
+declare const rawInput: unknown;
+const checked: never = rawInput;
+throw new AuditError(rawInput as User);
