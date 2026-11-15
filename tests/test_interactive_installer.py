@@ -129,6 +129,86 @@ class InteractiveInstallerTests(unittest.TestCase):
         self.assertTrue((self.project / ".agents/skills/anti-slop-engineering/SKILL.md").exists())
         self.assertFalse((self.project / ".codex").exists())
 
+    def test_interactive_role_preset_selection(self):
+        self.read_until("Choose installation:")
+        os.write(self.master, b"p\n")
+        self.read_until("Choose role preset")
+        os.write(self.master, b"1\n")
+        self.read_until("Confirm installation")
+        os.write(self.master, b"y\n")
+        self.assertEqual(self.process.wait(timeout=15), 0)
+        root = self.project / ".codex/skills"
+        self.assertTrue((root / "anti-slop-engineering/SKILL.md").is_file())
+        self.assertTrue((root / "decision-guard/SKILL.md").is_file())
+        self.assertTrue((root / "paranoid-principal-architect/SKILL.md").is_file())
+        self.assertFalse((root / "apple-craft-and-interaction-physics").exists())
+
+    def test_interactive_domain_pack_selection(self):
+        self.read_until("Choose installation:")
+        os.write(self.master, b"g\n")
+        self.read_until("Domain pack [1-7")
+        os.write(self.master, b"1\n")
+        self.read_until("Confirm installation")
+        os.write(self.master, b"y\n")
+        self.assertEqual(self.process.wait(timeout=15), 0)
+        root = self.project / ".codex/skills"
+        self.assertTrue((root / "anti-slop-engineering/SKILL.md").is_file())
+        self.assertTrue((root / "decision-guard/SKILL.md").is_file())
+        self.assertTrue((root / "reduction-guard/SKILL.md").is_file())
+
+
+@unittest.skipUnless(os.name == "posix" and shutil.which("node"), "Node is required")
+class PresetInstallerTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.project = Path(self.temp.name)
+
+    def run_installer(self, *args, check=True):
+        cmd = [shutil.which("node"), str(REPO / "scripts/installer.mjs"), "--agent=codex", *args]
+        return subprocess.run(
+            cmd,
+            cwd=self.project,
+            capture_output=True,
+            text=True,
+            check=check,
+            env={**os.environ, "HOME": str(self.project), "CI": "1", "NO_COLOR": "1"},
+        )
+
+    def test_preset_minimal_installs_core_only(self):
+        result = self.run_installer("--preset=minimal")
+        self.assertEqual(result.returncode, 0)
+        self.assertTrue((self.project / ".codex/skills/anti-slop-engineering/SKILL.md").exists())
+        self.assertFalse((self.project / ".codex/skills/decision-guard").exists())
+
+    def test_preset_backend_installs_backend_skills(self):
+        result = self.run_installer("--preset=backend")
+        self.assertEqual(result.returncode, 0)
+        self.assertTrue((self.project / ".codex/skills/anti-slop-engineering/SKILL.md").exists())
+        self.assertTrue((self.project / ".codex/skills/decision-guard/SKILL.md").exists())
+        self.assertTrue((self.project / ".codex/skills/paranoid-principal-architect/SKILL.md").exists())
+        self.assertFalse((self.project / ".codex/skills/apple-craft-and-interaction-physics").exists())
+
+    def test_preset_frontend_installs_frontend_skills(self):
+        result = self.run_installer("--preset=frontend")
+        self.assertEqual(result.returncode, 0)
+        self.assertTrue((self.project / ".codex/skills/anti-slop-engineering/SKILL.md").exists())
+        self.assertTrue((self.project / ".codex/skills/apple-craft-and-interaction-physics/SKILL.md").exists())
+        self.assertTrue((self.project / ".codex/skills/styleseed-guard/SKILL.md").exists())
+        self.assertFalse((self.project / ".codex/skills/zero-downtime-migration-gate").exists())
+
+    def test_preset_domain_pack(self):
+        result = self.run_installer("--preset=core-decisions")
+        self.assertEqual(result.returncode, 0)
+        self.assertTrue((self.project / ".codex/skills/anti-slop-engineering/SKILL.md").exists())
+        self.assertTrue((self.project / ".codex/skills/decision-guard/SKILL.md").exists())
+        self.assertTrue((self.project / ".codex/skills/reduction-guard/SKILL.md").exists())
+
+    def test_invalid_preset_fails_with_clear_error(self):
+        result = self.run_installer("--preset=invalid_foo", check=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("invalid preset", result.stderr.lower())
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -54,6 +54,49 @@ test('Setup: both help entrypoints describe the required core and optional plugi
   assert.match(general.stdout, /required core/i)
   assert.match(installerHelp.stdout, /core is required/i)
   assert.match(installerHelp.stdout, /optional skill/i)
+  assert.doesNotMatch(installerHelp.stdout, /\b(todo|fixme|dev[- ]note|developer[- ]note|agent[- ]note|mock data)\b/i)
+})
+
+test('Setup: role preset backend selects backend and sre skills', () => {
+  const result = inDisposableProject(['--agent=codex', '--preset=backend', '--dry-run', '--json'])
+  assert.equal(result.status, 0, result.stderr)
+  const skills = JSON.parse(result.stdout).skills
+  assert.ok(skills.includes('anti-slop-engineering'))
+  assert.ok(skills.includes('decision-guard'))
+  assert.ok(skills.includes('paranoid-principal-architect'))
+  assert.ok(skills.includes('observability-and-slo-architect'))
+  assert.equal(skills.includes('apple-craft-and-interaction-physics'), false)
+})
+
+test('Setup: role preset frontend selects frontend and UI craft skills', () => {
+  const result = inDisposableProject(['--agent=codex', '--preset=frontend', '--dry-run', '--json'])
+  assert.equal(result.status, 0, result.stderr)
+  const skills = JSON.parse(result.stdout).skills
+  assert.ok(skills.includes('anti-slop-engineering'))
+  assert.ok(skills.includes('ui-and-copy-discipline'))
+  assert.ok(skills.includes('apple-craft-and-interaction-physics'))
+  assert.ok(skills.includes('styleseed-guard'))
+  assert.equal(skills.includes('zero-downtime-migration-gate'), false)
+})
+
+test('Setup: role preset lead selects lead and governance skills', () => {
+  const result = inDisposableProject(['--agent=codex', '--preset=lead', '--dry-run', '--json'])
+  assert.equal(result.status, 0, result.stderr)
+  const skills = JSON.parse(result.stdout).skills
+  assert.ok(skills.includes('anti-slop-engineering'))
+  assert.ok(skills.includes('decision-guard'))
+  assert.ok(skills.includes('root-fix-gate'))
+  assert.ok(skills.includes('grumpy-senior-staff-engineer'))
+  assert.ok(skills.includes('pr-boundary-guard'))
+})
+
+test('Setup: domain pack core-decisions selects domain pack skills', () => {
+  const result = inDisposableProject(['--agent=codex', '--preset=core-decisions', '--dry-run', '--json'])
+  assert.equal(result.status, 0, result.stderr)
+  const skills = JSON.parse(result.stdout).skills
+  assert.ok(skills.includes('anti-slop-engineering'))
+  assert.ok(skills.includes('decision-guard'))
+  assert.ok(skills.includes('reduction-guard'))
 })
 
 test('Setup: a checkout uses its shipped core instead of a local agent copy', () => {

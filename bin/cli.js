@@ -184,7 +184,7 @@ if (executableAliases[invokedAs]) args.unshift(executableAliases[invokedAs]);
 
 function printBanner() {
   console.log(`
-🛡️  Anti-Slop Engineering CLI (v1.8.0)
+🛡️  Anti-Slop Engineering CLI (v${cliVersion})
    Clean-Room AI Coding Guard & High-Performance Polyglot Architecture
    Engines: Standard Library Python Guard | Rust Microservice | Go Toil Guard
    Author: Mamdouh Aboammar <mamdouhfces1997@gmail.com>
@@ -533,16 +533,15 @@ if (cmd === "build") {
   process.exit(0);
 } else if (cmd === "contribute") {
   console.log(`
-🤝 How to Contribute "Noted Slop" to Anti-Slop Engineering:
+🤝 Contributing to Anti-Slop Engineering:
 
-Path A: Report Observed Slop (No code required)
-  Spotted a new recurring AI slop pattern in Claude, Cursor, Copilot, etc.?
+Reporting Slop:
   Open an issue: https://github.com/imMamdouhaboammar/anti-slop-engineering/issues/new?template=noted_slop.yml
 
-Path B: Submit a PR (Problem + Solution Integrated)
+Submitting Contributions:
   1. Add diagnostic pattern to references/anti-pattern-catalog.md
   2. Update SKILL.md & AGENTS.md with concise agent directives
-  3. (Optional) Add heuristic to scripts/diff_guard.py or scripts/sre_guard.py or native Rust/Go services
+  3. Add heuristic to scripts/diff_guard.py or native services
   4. Run verification: make check-all
   5. Open a Pull Request: https://github.com/imMamdouhaboammar/anti-slop-engineering/pulls
 `);
