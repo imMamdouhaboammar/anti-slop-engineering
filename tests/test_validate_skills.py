@@ -28,7 +28,7 @@ class ValidateSkillsTests(unittest.TestCase):
     def test_repository_skills_and_agents_pointers_pass_clean_checkout(self):
         report = validate_skills.validate_repository(REPO_ROOT, strict_cli=False)
         self.assertTrue(report["ok"], report["errors"])
-        self.assertEqual(report["skills_checked"], 44)
+        self.assertEqual(report["skills_checked"], 45)
         self.assertEqual(report["errors"], [])
 
     def test_single_file_skill_without_optional_directories_passes(self):
