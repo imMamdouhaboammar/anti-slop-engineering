@@ -18,15 +18,18 @@ def load_hooks(directory, root):
 
     try:
         resolved = directory.resolve(strict=True)
+        root_stat = pathlib.Path(root).stat()
+        if not resolved.is_dir():
+            raise ValueError("--hooks-dir must point to an existing directory.")
+        if directory != resolved or any(
+            os.path.samestat(parent.stat(), root_stat)
+            for parent in (resolved, *resolved.parents)
+        ):
+            raise ValueError("--hooks-dir must be a canonical path outside the scanned repository.")
     except FileNotFoundError as exc:
         raise ValueError("--hooks-dir must point to an existing directory.") from exc
     except OSError as exc:
         raise ValueError(f"Could not resolve --hooks-dir: {exc.strerror}") from exc
-    root = pathlib.Path(root).resolve()
-    if directory.is_relative_to(root) or resolved.is_relative_to(root) or directory != resolved:
-        raise ValueError("--hooks-dir must be a canonical path outside the scanned repository.")
-    if not directory.is_dir():
-        raise ValueError("--hooks-dir must point to an existing directory.")
 
     hooks = {}
     for event_type in HOOK_EVENTS:

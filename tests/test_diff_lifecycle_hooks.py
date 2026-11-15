@@ -177,3 +177,19 @@ class DiffLifecycleTests(unittest.TestCase):
 
         self.assertEqual(result.returncode, 1, result.stderr)
         self.assertIn("could not resolve --hooks-dir", json.loads(result.stdout)["error"].lower())
+
+    def test_case_alias_cannot_hide_checkout_hook_directory(self):
+        checkout_hooks = self.repo / "hooks"
+        self.install_hooks(checkout_hooks)
+        case_alias = self.repo.with_name(self.repo.name.upper())
+
+        if case_alias.is_dir():
+            candidate = case_alias / "hooks"
+        else:
+            candidate = checkout_hooks
+
+        result = self.scan("--hooks-dir", str(candidate), check=False)
+
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertIn("outside the scanned repository", json.loads(result.stdout)["error"])
+        self.assertFalse(list(self.root.rglob("events.jsonl")))
