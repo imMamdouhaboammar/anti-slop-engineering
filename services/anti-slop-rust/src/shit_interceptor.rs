@@ -1,5 +1,5 @@
 use crate::model::{Finding, Severity, ViolationCategory};
-use crate::path_utils::{is_doc_file, is_test_file, DiffPaths};
+use crate::path_utils::{is_doc_file, is_git_file_header, is_test_file, DiffPaths};
 use regex::Regex;
 
 fn is_transfer(line: &str) -> bool {
@@ -105,7 +105,7 @@ impl ShitInterceptor {
         let mut metadata = MetadataChange::default();
 
         for line in diff_text.lines() {
-            if line.starts_with("diff --git") {
+            if is_git_file_header(line) {
                 metadata.record(&mut findings, &paths, allowed_files, read_only_intent);
                 paths.update(line);
                 line_no = 0;
@@ -383,5 +383,18 @@ mod review_regression_tests {
         assert!(ShitInterceptor::new()
             .audit_diff(diff, Some(&["src/"]), true)
             .is_empty());
+    }
+
+    #[test]
+    fn malformed_metadata_boundary_does_not_reuse_prior_path() {
+        let diff = "diff --git a/src/first.rs b/src/first.rs\n@@ -0,0 +1 @@\n+first\ndiff --git\nold mode 100644\nnew mode 100755\n";
+        let findings = ShitInterceptor::new().audit_diff(diff, Some(&["src/"]), false);
+        assert_eq!(
+            findings
+                .iter()
+                .filter(|f| f.code == "STS-S01" && f.file == "unknown")
+                .count(),
+            1
+        );
     }
 }

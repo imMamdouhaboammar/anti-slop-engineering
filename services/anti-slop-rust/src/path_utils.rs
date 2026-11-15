@@ -23,13 +23,18 @@ pub(crate) struct DiffPaths {
     target: Option<String>,
 }
 
+pub(crate) fn is_git_file_header(line: &str) -> bool {
+    line == "diff --git" || line.starts_with("diff --git ")
+}
+
 impl DiffPaths {
     pub(crate) fn update(&mut self, line: &str) {
-        if let Some(header) = line.strip_prefix("diff --git ") {
-            (self.source, self.target) = match parse_file_header(header) {
-                Some((source, target)) => (Some(source), Some(target)),
-                None => (None, None),
-            };
+        if is_git_file_header(line) {
+            (self.source, self.target) =
+                match line.strip_prefix("diff --git ").and_then(parse_file_header) {
+                    Some((source, target)) => (Some(source), Some(target)),
+                    None => (None, None),
+                };
         } else if let Some(operand) = line.strip_prefix("--- ") {
             self.source = parse_path(operand.strip_suffix('\t').unwrap_or(operand), "a/");
         } else if let Some(operand) = line.strip_prefix("+++ ") {
