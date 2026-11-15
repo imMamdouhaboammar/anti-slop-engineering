@@ -123,40 +123,75 @@ class ProfilerGuardTests(unittest.TestCase):
         finally:
             tmp_path.unlink(missing_ok=True)
 
-    def test_batched_streaming_benchmark_allocations_handles_gc(self):
-        clean_ts = TS_EXAMPLE.read_text(encoding="utf-8")
-        self.assertIn("allocEventCount", clean_ts)
-        self.assertIn("totalAllocatedBytes", clean_ts)
-        self.assertNotIn("Math.max(0, heapEnd - heapStart)", clean_ts)
-
     def test_benchmark_executes_with_bun_if_available(self):
         bun = shutil.which("bun")
         if not bun:
             self.skipTest("bun not installed")
+        runtimes = [bun]
+        if node := shutil.which("node"):
+            output = subprocess.check_output([node, "--version"], text=True)
+            major, minor, *_ = output.strip().lstrip("v").split(".")
+            if (int(major), int(minor)) >= (22, 18):
+                runtimes.append(node)
         test_script = """
+import assert from 'node:assert/strict';
 import { runPercentileAndAllocBenchmark } from './skills/mechanical-sympathy-profiler/examples/batched-streaming-hot-path.ts';
-let allocations = 0;
-let heap = 1000;
-const res = runPercentileAndAllocBenchmark(
-  () => { allocations++; },
-  () => 1000,
-  () => {
-    if (allocations % 20 === 0) {
-      heap = 500;
-    } else {
-      heap += 100;
-    }
-    return heap;
-  },
-  10,
-  50
-);
-if (res.allocBytesPerOp <= 0) {
-  throw new Error('Expected positive allocBytesPerOp despite GC');
+
+function measure(readings) {
+  let reads = 0;
+  return runPercentileAndAllocBenchmark(
+    () => {},
+    () => 1000,
+    () => readings[reads++],
+    0,
+    readings.length - 1
+  );
+}
+
+const mixed = measure([1000, 1200, 900, 1100, 800]);
+assert.equal(mixed.allocBytesPerOp, 100);
+assert.equal(mixed.allocationMeasurement.method, 'positive_heap_growth_proxy');
+assert.equal(mixed.allocationMeasurement.confidence, 'inconclusive');
+assert.equal(mixed.allocationMeasurement.heapDrops, 2);
+
+const flat = measure([1000, 1000, 1000]);
+assert.equal(flat.allocBytesPerOp, 0);
+assert.equal(flat.allocationMeasurement.confidence, 'inconclusive');
+
+const falling = measure([1000, 900, 800]);
+assert.equal(falling.allocBytesPerOp, 0);
+assert.equal(falling.allocationMeasurement.confidence, 'inconclusive');
+assert.equal(falling.allocationMeasurement.heapDrops, 2);
+
+const rising = measure([1000, 1200, 1400]);
+assert.equal(rising.allocBytesPerOp, 200);
+assert.equal(rising.allocationMeasurement.confidence, 'low');
+
+const forceGC = typeof Bun === 'undefined' ? globalThis.gc : () => Bun.gc(true);
+for (const operation of [() => {}, () => Array.from({ length: 2048 }, () => ({}))]) {
+  const measured = runPercentileAndAllocBenchmark(
+    () => { operation(); forceGC(); },
+    () => Number(process.hrtime.bigint()),
+    () => process.memoryUsage().heapUsed,
+    0,
+    6
+  );
+  assert.equal(measured.iterations, 6);
+  assert.ok(Number.isFinite(measured.p99Ms));
+  assert.equal(measured.allocationMeasurement.method, 'positive_heap_growth_proxy');
+  if (measured.allocBytesPerOp === 0 || measured.allocationMeasurement.heapDrops) {
+    assert.equal(measured.allocationMeasurement.confidence, 'inconclusive');
+  }
 }
 """
-        proc = subprocess.run([bun, "-e", test_script], cwd=str(ROOT), capture_output=True, text=True)
-        self.assertEqual(proc.returncode, 0, proc.stderr)
+        for executable in runtimes:
+            with self.subTest(runtime=executable):
+                args = ["--input-type=module", "--expose-gc"] if executable == node else []
+                result = subprocess.run(
+                    [executable, *args, "-e", test_script], cwd=ROOT,
+                    capture_output=True, text=True, check=False,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
 
 
 if __name__ == "__main__":

@@ -22,68 +22,11 @@ Always execute `EXPLAIN (ANALYZE, BUFFERS, VERBOSE)` (inside `BEGIN; ... ROLLBAC
 
 A valid application micro-benchmark must measure **both time distribution (`P50`, `P95`, `P99`) and memory allocation volume (`bytes/op`, `allocs/op`)**. Average (`mean`) latency alone hides GC spikes.
 
-### TypeScript / Bun / Node Allocation & P99 Harness
+### TypeScript / Bun / Node Heap Sampling & P99 Harness
 
-```typescript
-export interface BenchmarkMetrics {
-  readonly iterations: number;
-  readonly p50Ms: number;
-  readonly p99Ms: number;
-  readonly allocBytesPerOp: number;
-}
+\`runPercentileAndAllocBenchmark\` in [the batched streaming example](../examples/batched-streaming-hot-path.ts) measures latency and reports a heap-growth proxy. Supply \`() => process.memoryUsage().heapUsed\` as the heap reader.
 
-export function runAllocationBenchmark(
-  fn: () => unknown,
-  warmupIterations = 100,
-  sampleIterations = 500
-): BenchmarkMetrics {
-  if (typeof (globalThis as { gc?: () => void }).gc === 'function') {
-    (globalThis as { gc?: () => void }).gc?.();
-  }
-
-  for (let i = 0; i < warmupIterations; i++) {
-    fn();
-  }
-
-  if (typeof (globalThis as { gc?: () => void }).gc === 'function') {
-    (globalThis as { gc?: () => void }).gc?.();
-  }
-
-  const samplesMs = new Float64Array(sampleIterations);
-  let totalAllocatedBytes = 0;
-  let allocEventCount = 0;
-  let prevHeap = process.memoryUsage().heapUsed;
-
-  for (let i = 0; i < sampleIterations; i++) {
-    const startNs = Bun.nanoseconds();
-    fn();
-    const elapsedNs = Bun.nanoseconds() - startNs;
-    samplesMs[i] = elapsedNs / 1_000_000;
-
-    const currentHeap = process.memoryUsage().heapUsed;
-    if (currentHeap > prevHeap) {
-      totalAllocatedBytes += (currentHeap - prevHeap);
-      allocEventCount++;
-    }
-    prevHeap = currentHeap;
-  }
-
-  samplesMs.sort();
-
-  const p50Index = Math.floor(sampleIterations * 0.5);
-  const p99Index = Math.floor(sampleIterations * 0.99);
-  const allocBytesPerOp = allocEventCount > 0
-    ? Math.round(totalAllocatedBytes / allocEventCount)
-    : 0;
-
-  return {
-    iterations: sampleIterations,
-    p50Ms: Number(samplesMs[p50Index].toFixed(4)),
-    p99Ms: Number(samplesMs[p99Index].toFixed(4)),
-    allocBytesPerOp,
-  };
-}
-```
+The legacy numeric field \`allocBytesPerOp\` sums sampled positive heap changes and divides by all measured operations. Read it alongside \`allocationMeasurement.method\`, \`confidence\` and \`heapDrops\`. A drop can mask allocations between samples, while sampling or unrelated activity can add measured bytes. Runs with heap drops or no observed positive growth are inconclusive for allocation volume. Remaining runs have low confidence as a proxy. Use runtime allocation profiling or counters to establish allocation volume or compare allocation rates.
 
 ### Go Native Allocation & Latency Benchmark (`testing.B`)
 

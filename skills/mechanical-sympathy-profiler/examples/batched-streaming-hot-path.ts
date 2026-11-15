@@ -30,7 +30,13 @@ export interface MicroBenchmarkSummary {
   readonly iterations: number;
   readonly p50Ms: number;
   readonly p99Ms: number;
+  /** Observed positive heap growth per sample, kept for existing consumers. */
   readonly allocBytesPerOp: number;
+  readonly allocationMeasurement: {
+    readonly method: 'positive_heap_growth_proxy';
+    readonly confidence: 'low' | 'inconclusive';
+    readonly heapDrops: number;
+  };
 }
 
 export function indexActiveTenants(tenants: readonly TenantConfig[]): Map<string, number> {
@@ -149,21 +155,13 @@ export function runPercentileAndAllocBenchmark(
   warmupRuns = 50,
   sampleRuns = 200
 ): MicroBenchmarkSummary {
-  if (typeof (globalThis as { gc?: () => void }).gc === 'function') {
-    (globalThis as { gc?: () => void }).gc?.();
-  }
-
   for (let i = 0; i < warmupRuns; i++) {
     operation();
   }
 
-  if (typeof (globalThis as { gc?: () => void }).gc === 'function') {
-    (globalThis as { gc?: () => void }).gc?.();
-  }
-
   const latenciesMs = new Float64Array(sampleRuns);
-  let totalAllocatedBytes = 0;
-  let allocEventCount = 0;
+  let positiveHeapGrowth = 0;
+  let heapDrops = 0;
   let prevHeap = readHeapUsedBytes();
 
   for (let i = 0; i < sampleRuns; i++) {
@@ -174,8 +172,9 @@ export function runPercentileAndAllocBenchmark(
 
     const currentHeap = readHeapUsedBytes();
     if (currentHeap > prevHeap) {
-      totalAllocatedBytes += (currentHeap - prevHeap);
-      allocEventCount++;
+      positiveHeapGrowth += currentHeap - prevHeap;
+    } else if (currentHeap < prevHeap) {
+      heapDrops++;
     }
     prevHeap = currentHeap;
   }
@@ -184,14 +183,16 @@ export function runPercentileAndAllocBenchmark(
 
   const p50Idx = Math.floor(sampleRuns * 0.5);
   const p99Idx = Math.floor(sampleRuns * 0.99);
-  const allocBytesPerOp = allocEventCount > 0
-    ? Math.round(totalAllocatedBytes / allocEventCount)
-    : 0;
 
   return {
     iterations: sampleRuns,
     p50Ms: Number(latenciesMs[p50Idx].toFixed(4)),
     p99Ms: Number(latenciesMs[p99Idx].toFixed(4)),
-    allocBytesPerOp,
+    allocBytesPerOp: Math.round(positiveHeapGrowth / sampleRuns),
+    allocationMeasurement: {
+      method: 'positive_heap_growth_proxy',
+      confidence: heapDrops > 0 || positiveHeapGrowth === 0 ? 'inconclusive' : 'low',
+      heapDrops,
+    },
   };
 }
