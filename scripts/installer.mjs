@@ -14,10 +14,16 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const rootDir = path.resolve(__dirname, '..')
 
-const pkgPath = path.join(rootDir, 'package.json')
-export const VERSION = fs.existsSync(pkgPath)
-  ? JSON.parse(fs.readFileSync(pkgPath, 'utf8')).version
-  : '1.6.0'
+function readPackageVersion() {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(rootDir, 'package.json'), 'utf8')).version
+  } catch (error) {
+    if (error.code === 'ENOENT') return '1.6.0'
+    throw error
+  }
+}
+
+export const VERSION = readPackageVersion()
 
 export const CORE_SKILL = 'anti-slop-engineering'
 
@@ -89,67 +95,37 @@ export function listAvailableModules() {
   })
 }
 
-export const DOMAIN_PACKS = {
-  'core-decisions': [
-    'anti-slop-engineering',
-    'decision-guard',
-    'root-fix-gate',
-    'future-scale-gate',
-    'grumpy-senior-staff-engineer',
-    'repo-memory-and-invariant-steward',
-    'backprop-guard',
-    'reduction-guard',
-  ],
-  'code-contracts': [
-    'anti-slop-engineering',
-    'api-ergonomics-and-contract-governor',
-    'type-level-and-ast-slop-gate',
-    'comment-budget-guard',
-    'pr-boundary-guard',
-    'demock-guard',
-    'install-anti-slop',
-  ],
-  'systems-architecture': [
-    'anti-slop-engineering',
-    'paranoid-principal-architect',
-    'safe-evolution-and-rollout-choreographer',
-    'zero-downtime-migration-gate',
-    'privacy-and-data-lineage-gate',
-    'observability-and-slo-architect',
-    'observability-and-slo-gate',
-  ],
-  'performance-diagnostics': [
-    'anti-slop-engineering',
-    'mechanical-sympathy-and-perf-gate',
-    'mechanical-sympathy-profiler',
-    'scientific-fault-isolation',
-  ],
-  'testing-verification': [
-    'anti-slop-engineering',
-    'deterministic-simulation-and-property-testing',
-    'verification-oracle-architect',
-    'mandela-guard',
-    'honeypot-trap-guard',
-  ],
-  'ui-motion-craft': [
-    'anti-slop-engineering',
-    'ui-and-copy-discipline',
-    'apple-craft-and-interaction-physics',
-    'apple-craft-and-frame-budget',
-    'design-system-drift-guard',
-    'chromatic-drift-guard',
-    'styleseed-guard',
-    'motion-runtime-guard',
-    'asset-provenance-guard',
-  ],
-  'discourse-handoffs': [
-    'anti-slop-engineering',
-    'tagore-guard',
-    're0-handoff-guard',
-    'cognitive-load-and-attention-governor',
-    'house-tell-guard',
-  ],
+function readDomainGroups() {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(rootDir, 'skills.sh.json'), 'utf8')).groupings
+  } catch (error) {
+    if (error.code === 'ENOENT') return []
+    throw error
+  }
 }
+
+const domainGroups = readDomainGroups()
+export const DOMAIN_PACKS = Object.fromEntries(domainGroups.map(({ title, skills }) => [
+  title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''), skills,
+]))
+
+const BACKEND = [
+  'decision-guard', 'root-fix-gate', 'future-scale-gate',
+  ...(DOMAIN_PACKS['systems-architecture'] ?? []),
+  ...(DOMAIN_PACKS['performance-diagnostics'] ?? []),
+  'deterministic-simulation-and-property-testing', 'verification-oracle-architect',
+  'demock-guard', 'api-ergonomics-and-contract-governor',
+]
+const FRONTEND = [
+  ...(DOMAIN_PACKS['ui-motion-craft'] ?? []),
+  'type-level-and-ast-slop-gate', 'comment-budget-guard', 'mechanical-sympathy-and-perf-gate',
+]
+const LEAD = [
+  ...(DOMAIN_PACKS['core-decisions'] ?? []),
+  'api-ergonomics-and-contract-governor', 'type-level-and-ast-slop-gate',
+  'comment-budget-guard', 'pr-boundary-guard', 'demock-guard', 'mandela-guard', 'honeypot-trap-guard',
+  ...(DOMAIN_PACKS['discourse-handoffs'] ?? []),
+]
 
 export const PRESETS = {
   minimal: [CORE_SKILL],
@@ -157,125 +133,16 @@ export const PRESETS = {
   full: 'all',
   all: 'all',
   ci: [
-    CORE_SKILL,
-    'decision-guard',
-    'root-fix-gate',
-    'pr-boundary-guard',
-    'type-level-and-ast-slop-gate',
-    'comment-budget-guard',
-    'cognitive-load-and-attention-governor',
-    'demock-guard',
-    'mandela-guard',
-    'honeypot-trap-guard',
+    'decision-guard', 'root-fix-gate', 'pr-boundary-guard', 'type-level-and-ast-slop-gate',
+    'comment-budget-guard', 'cognitive-load-and-attention-governor', 'demock-guard',
+    'mandela-guard', 'honeypot-trap-guard',
   ],
-  backend: [
-    CORE_SKILL,
-    'decision-guard',
-    'root-fix-gate',
-    'future-scale-gate',
-    'paranoid-principal-architect',
-    'safe-evolution-and-rollout-choreographer',
-    'zero-downtime-migration-gate',
-    'privacy-and-data-lineage-gate',
-    'observability-and-slo-architect',
-    'observability-and-slo-gate',
-    'mechanical-sympathy-and-perf-gate',
-    'mechanical-sympathy-profiler',
-    'scientific-fault-isolation',
-    'deterministic-simulation-and-property-testing',
-    'verification-oracle-architect',
-    'demock-guard',
-    'api-ergonomics-and-contract-governor',
-  ],
-  'backend-sre': [
-    CORE_SKILL,
-    'decision-guard',
-    'root-fix-gate',
-    'future-scale-gate',
-    'paranoid-principal-architect',
-    'safe-evolution-and-rollout-choreographer',
-    'zero-downtime-migration-gate',
-    'privacy-and-data-lineage-gate',
-    'observability-and-slo-architect',
-    'observability-and-slo-gate',
-    'mechanical-sympathy-and-perf-gate',
-    'mechanical-sympathy-profiler',
-    'scientific-fault-isolation',
-    'deterministic-simulation-and-property-testing',
-    'verification-oracle-architect',
-    'demock-guard',
-    'api-ergonomics-and-contract-governor',
-  ],
-  frontend: [
-    CORE_SKILL,
-    'ui-and-copy-discipline',
-    'apple-craft-and-interaction-physics',
-    'apple-craft-and-frame-budget',
-    'design-system-drift-guard',
-    'chromatic-drift-guard',
-    'styleseed-guard',
-    'motion-runtime-guard',
-    'asset-provenance-guard',
-    'type-level-and-ast-slop-gate',
-    'comment-budget-guard',
-    'mechanical-sympathy-and-perf-gate',
-  ],
-  'frontend-ui': [
-    CORE_SKILL,
-    'ui-and-copy-discipline',
-    'apple-craft-and-interaction-physics',
-    'apple-craft-and-frame-budget',
-    'design-system-drift-guard',
-    'chromatic-drift-guard',
-    'styleseed-guard',
-    'motion-runtime-guard',
-    'asset-provenance-guard',
-    'type-level-and-ast-slop-gate',
-    'comment-budget-guard',
-    'mechanical-sympathy-and-perf-gate',
-  ],
-  lead: [
-    CORE_SKILL,
-    'decision-guard',
-    'root-fix-gate',
-    'future-scale-gate',
-    'grumpy-senior-staff-engineer',
-    'repo-memory-and-invariant-steward',
-    'backprop-guard',
-    'reduction-guard',
-    'api-ergonomics-and-contract-governor',
-    'type-level-and-ast-slop-gate',
-    'comment-budget-guard',
-    'pr-boundary-guard',
-    'demock-guard',
-    'mandela-guard',
-    'honeypot-trap-guard',
-    'tagore-guard',
-    're0-handoff-guard',
-    'cognitive-load-and-attention-governor',
-    'house-tell-guard',
-  ],
-  'lead-review': [
-    CORE_SKILL,
-    'decision-guard',
-    'root-fix-gate',
-    'future-scale-gate',
-    'grumpy-senior-staff-engineer',
-    'repo-memory-and-invariant-steward',
-    'backprop-guard',
-    'reduction-guard',
-    'api-ergonomics-and-contract-governor',
-    'type-level-and-ast-slop-gate',
-    'comment-budget-guard',
-    'pr-boundary-guard',
-    'demock-guard',
-    'mandela-guard',
-    'honeypot-trap-guard',
-    'tagore-guard',
-    're0-handoff-guard',
-    'cognitive-load-and-attention-governor',
-    'house-tell-guard',
-  ],
+  backend: BACKEND,
+  'backend-sre': BACKEND,
+  frontend: FRONTEND,
+  'frontend-ui': FRONTEND,
+  lead: LEAD,
+  'lead-review': LEAD,
   ...DOMAIN_PACKS,
 }
 
@@ -292,7 +159,9 @@ export function resolvePreset(presetName, available = listAvailableSkills()) {
     return available
   }
   const availableSet = new Set(available)
-  return [CORE_SKILL, ...selection.filter((s) => s !== CORE_SKILL && availableSet.has(s))]
+  const missing = [...new Set(selection.filter((id) => !availableSet.has(id)))]
+  if (missing.length > 0) console.error(`Preset "${normalized}" has unavailable skills: ${missing.join(', ')}`)
+  return resolveSkillSelection(selection.filter((id) => availableSet.has(id)), available)
 }
 
 export function resolveSkillSelection(requested, available = listAvailableSkills()) {
@@ -728,13 +597,13 @@ export async function promptForSkills(modules, targets, input = process.stdin, o
         packKeys.forEach((key, idx) => {
           output.write(`  ${idx + 1}. ${key} (${DOMAIN_PACKS[key].length} skills)\n`)
         })
-        const packChoice = (await ask('Domain pack [1-7, name, or b]: '))?.trim().toLowerCase()
+        const packChoice = (await ask(`Domain pack [1-${packKeys.length}, name, or b]: `))?.trim().toLowerCase()
         if (packChoice == null || packChoice === 'q') return null
         if (packChoice === 'b') continue
         let chosenPack = null
         if (/^\d+$/.test(packChoice)) {
           chosenPack = packKeys[Number(packChoice) - 1]
-        } else if (DOMAIN_PACKS[packChoice]) {
+        } else if (Object.hasOwn(DOMAIN_PACKS, packChoice)) {
           chosenPack = packChoice
         }
         if (!chosenPack) {
