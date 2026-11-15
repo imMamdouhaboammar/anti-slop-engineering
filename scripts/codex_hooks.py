@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
 """Install and evaluate opt-in Codex project hooks for apply_patch."""
-import argparse
 import json
 import os
 import shlex
@@ -11,7 +10,7 @@ from pathlib import Path
 if not __package__:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from scripts.claude_hooks import PHASES, configure_hooks, translate_policy
+from scripts.claude_hooks import PHASES, configure_hooks, run_hook_cli, translate_policy
 from scripts.exec_guard import (
     HOOK_EVENT_MAX_PATH_LENGTH,
     HOOK_EVENT_MAX_PATHS,
@@ -39,18 +38,17 @@ def patch_paths(patch):
         raise ValueError("Expected a Codex apply_patch envelope")
     targets = []
     for line in lines[1:-1]:
-        for marker in (*PATCH_FILE_HEADERS, PATCH_MOVE_HEADER):
-            if line.startswith(marker):
-                path = line[len(marker):]
-                if not 0 < len(path) <= HOOK_EVENT_MAX_PATH_LENGTH or path != path.strip():
-                    raise ValueError("Invalid Codex patch target")
-                if len(targets) >= HOOK_EVENT_MAX_PATHS:
-                    raise ValueError("Too many Codex patch targets")
-                targets.append(path)
-                break
-        else:
+        marker = next((item for item in (*PATCH_FILE_HEADERS, PATCH_MOVE_HEADER) if line.startswith(item)), None)
+        if marker is None:
             if line.startswith("*** ") and line != "*** End of File":
                 raise ValueError("Unknown Codex patch header")
+            continue
+        path = line[len(marker):]
+        if not 0 < len(path) <= HOOK_EVENT_MAX_PATH_LENGTH or path != path.strip():
+            raise ValueError("Invalid Codex patch target")
+        if len(targets) >= HOOK_EVENT_MAX_PATHS:
+            raise ValueError("Too many Codex patch targets")
+        targets.append(path)
     if not targets:
         raise ValueError("Codex patch did not expose target paths")
     return targets
@@ -111,30 +109,5 @@ def configure(project, install, dry_run, consent):
     return 0
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    commands = parser.add_subparsers(dest="command", required=True)
-    for command in ("install", "uninstall"):
-        config = commands.add_parser(command)
-        config.add_argument("--project", type=Path, default=Path.cwd())
-        config.add_argument("--dry-run", action="store_true")
-        config.add_argument("--yes", action="store_true")
-    evaluate_parser = commands.add_parser("evaluate")
-    evaluate_parser.add_argument("--project", type=Path, required=True)
-    evaluate_parser.add_argument("--phase", choices=PHASES, required=True)
-    args = parser.parse_args()
-
-    try:
-        project = args.project.resolve(strict=True)
-        if not project.is_dir():
-            raise ValueError("Expected a local project directory")
-        if args.command == "evaluate":
-            return evaluate(project, args.phase)
-        return configure(project, args.command == "install", args.dry_run, args.yes)
-    except (OSError, ValueError, RuntimeError) as exc:
-        print(f"Codex hook configuration failed: {exc}", file=sys.stderr)
-        return 1
-
-
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(run_hook_cli(__doc__, evaluate, configure))

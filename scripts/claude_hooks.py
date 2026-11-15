@@ -200,8 +200,8 @@ def configure(project, install, dry_run, consent):
     return 0
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+def run_hook_cli(description, evaluate, configure):
+    parser = argparse.ArgumentParser(description=description)
     commands = parser.add_subparsers(dest="command", required=True)
     for command in ("install", "uninstall"):
         config = commands.add_parser(command)
@@ -221,9 +221,9 @@ def main():
             return evaluate(project, args.phase)
         return configure(project, args.command == "install", args.dry_run, args.yes)
     except (OSError, ValueError, RuntimeError) as exc:
-        print(f"Claude hook configuration failed: {exc}", file=sys.stderr)
+        print(f"Hook configuration failed: {exc}", file=sys.stderr)
         return 1
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(run_hook_cli(__doc__, evaluate, configure))
