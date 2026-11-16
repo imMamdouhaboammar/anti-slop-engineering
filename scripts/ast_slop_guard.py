@@ -165,18 +165,42 @@ def scan_directory(dir_path):
     return findings
 
 
+def _git_output(repo, args, base):
+    """Run a git command, raising RuntimeError instead of failing open."""
+    res = subprocess.run(['git', '-C', str(repo), *args], capture_output=True, text=True)
+    if res.returncode != 0:
+        detail = res.stderr.strip() or 'unknown git error'
+        raise RuntimeError(f"git {' '.join(args)} failed for base '{base}': {detail}")
+    return res.stdout
+
+
+def _flush_diff_file(findings, current_file, added_lines):
+    """Audit one file's accumulated added lines, remapping line numbers."""
+    if not current_file or not is_eligible_file(current_file) or not added_lines:
+        return
+    text_lines = [line for _, line in added_lines]
+    file_findings = audit_source_lines(text_lines, current_file)
+    for finding in file_findings:
+        relative_idx = finding['line'] - 1
+        if 0 <= relative_idx < len(added_lines):
+            finding['line'] = added_lines[relative_idx][0]
+    findings.extend(file_findings)
+
+
 def scan_diff(repo, base):
-    """Scan added lines from git diff."""
+    """Scan added lines from git diff.
+
+    The diff is taken from the merge-base of ``base`` and HEAD against the
+    working tree, so one scan covers committed branch changes plus staged
+    and unstaged edits. A three-dot ``base...HEAD`` diff alone is empty for
+    the advertised pre-commit invocation ``--base HEAD`` and would report
+    PASS while uncommitted changes go unexamined. An unresolvable base
+    raises RuntimeError instead of producing an empty PASS report.
+    Untracked files are not scanned; stage them for complete analysis.
+    """
     findings = []
-    try:
-        cmd = ['git', '-C', str(repo), 'diff', '-U0', f'{base}...HEAD']
-        res = subprocess.run(cmd, capture_output=True, text=True, check=True)
-        diff_text = res.stdout
-    except subprocess.CalledProcessError:
-        # Fall back to 2-dot diff
-        cmd = ['git', '-C', str(repo), 'diff', '-U0', base]
-        res = subprocess.run(cmd, capture_output=True, text=True)
-        diff_text = res.stdout
+    merge_base = _git_output(repo, ['merge-base', base, 'HEAD'], base).strip()
+    diff_text = _git_output(repo, ['diff', '-U0', merge_base], base)
 
     current_file = None
     current_line_num = 0
@@ -184,16 +208,7 @@ def scan_diff(repo, base):
 
     for line in diff_text.splitlines():
         if line.startswith('+++ b/'):
-            if current_file and is_eligible_file(current_file) and added_lines:
-                # Audit accumulated lines
-                text_lines = [l for _, l in added_lines]
-                file_findings = audit_source_lines(text_lines, current_file)
-                # Remap line numbers to diff line numbers
-                for f in file_findings:
-                    relative_idx = f['line'] - 1
-                    if 0 <= relative_idx < len(added_lines):
-                        f['line'] = added_lines[relative_idx][0]
-                findings.extend(file_findings)
+            _flush_diff_file(findings, current_file, added_lines)
             current_file = line[6:].strip()
             added_lines = []
             continue
@@ -208,14 +223,7 @@ def scan_diff(repo, base):
             added_lines.append((current_line_num, code))
             current_line_num += 1
 
-    if current_file and is_eligible_file(current_file) and added_lines:
-        text_lines = [l for _, l in added_lines]
-        file_findings = audit_source_lines(text_lines, current_file)
-        for f in file_findings:
-            relative_idx = f['line'] - 1
-            if 0 <= relative_idx < len(added_lines):
-                f['line'] = added_lines[relative_idx][0]
-        findings.extend(file_findings)
+    _flush_diff_file(findings, current_file, added_lines)
 
     return findings
 
@@ -251,21 +259,25 @@ def main():
     parser.add_argument('--version', action='version', version=f'%(prog)s {__version__}')
     args = parser.parse_args()
 
-    if args.base:
-        findings = scan_diff(args.repo, args.base)
-        report = build_report(findings, 'diff', args.base)
-    elif args.path:
-        target = pathlib.Path(args.path)
-        if target.is_dir():
-            findings = scan_directory(target)
-            report = build_report(findings, 'directory', target)
+    try:
+        if args.base:
+            findings = scan_diff(args.repo, args.base)
+            report = build_report(findings, 'diff', args.base)
+        elif args.path:
+            target = pathlib.Path(args.path)
+            if target.is_dir():
+                findings = scan_directory(target)
+                report = build_report(findings, 'directory', target)
+            else:
+                findings = scan_file(target)
+                report = build_report(findings, 'file', target)
         else:
-            findings = scan_file(target)
-            report = build_report(findings, 'file', target)
-    else:
-        # Default to diff against HEAD
-        findings = scan_diff(args.repo, 'HEAD')
-        report = build_report(findings, 'diff', 'HEAD')
+            # Default to diff against HEAD
+            findings = scan_diff(args.repo, 'HEAD')
+            report = build_report(findings, 'diff', 'HEAD')
+    except RuntimeError as exc:
+        print(json.dumps({'error': str(exc)}) if args.json else f'ERROR: {exc}')
+        sys.exit(1)
 
     if args.json:
         print(json.dumps(report, indent=2))
