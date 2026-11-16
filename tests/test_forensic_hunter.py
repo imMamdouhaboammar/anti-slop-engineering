@@ -204,6 +204,30 @@ class ForensicHunterTests(unittest.TestCase):
             self.assertEqual(data_crit["verdict"], "COMPROMISED (BLOCK)")
             self.assertEqual(data_crit["counts"]["CRITICAL"], 1)
 
+    def test_cli_path_scan_recurses_into_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            src_dir = os.path.join(tmpdir, "src")
+            nested_dir = os.path.join(src_dir, "nested")
+            os.makedirs(nested_dir)
+            trap_file = os.path.join(nested_dir, "trap.py")
+            with open(trap_file, "w", encoding="utf-8") as f:
+                f.write("def bad_fn(items=[]):\n    pass\n")
+
+            ignored_dir = os.path.join(src_dir, "node_modules")
+            os.makedirs(ignored_dir)
+            with open(os.path.join(ignored_dir, "ignored.py"), "w", encoding="utf-8") as f:
+                f.write("def ignored_fn(items=[]):\n    pass\n")
+
+            out = io.StringIO()
+            with redirect_stdout(out):
+                code = forensic_hunter.main(["--path", src_dir, "--fail-on-critical", "--json"])
+            self.assertEqual(code, 2)
+            data = json.loads(out.getvalue())
+            self.assertEqual(data["counts"]["CRITICAL"], 1)
+            self.assertEqual(len(data["findings"]), 1)
+            self.assertEqual(data["findings"][0]["code"], "PY-01")
+            self.assertEqual(data["findings"][0]["file"], trap_file)
+
     def test_cli_parse_git_diff_failure(self) -> None:
         with patch("subprocess.run") as mock_run:
             mock_run.return_value.returncode = 128

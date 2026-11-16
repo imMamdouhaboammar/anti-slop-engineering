@@ -805,8 +805,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = argparse.ArgumentParser(
         description="Zero-Trust Forensic Bug-Hunter CLI Scanner (K8s, Docker, Python, TS, Bun, Rust, Go, React, Arch)"
     )
-    parser.add_argument("--base", default="HEAD", help="Git ref to diff against when --files is not provided.")
+    parser.add_argument("--base", default="HEAD", help="Git ref to diff against when --files/--path is not provided.")
     parser.add_argument("--files", nargs="*", help="Specific files or directories to audit line-by-line.")
+    parser.add_argument("--path", help="Specific file or directory to audit line-by-line.")
     parser.add_argument(
         "--stack",
         help="Comma-separated list of stacks to filter (k8s,docker,python,ts,bun,react,rust,go,shell,arch).",
@@ -827,8 +828,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     allowed_stacks = {s.strip().lower() for s in args.stack.split(",") if s.strip()} if args.stack else None
 
     try:
-        if args.files:
-            all_findings = _scan_target_files(collect_files(args.files), allowed_stacks)
+        target_paths = list(args.files) if args.files else []
+        if args.path:
+            target_paths.append(args.path)
+        if target_paths:
+            all_findings = _scan_target_files(collect_files(target_paths), allowed_stacks)
         else:
             all_findings = _scan_git_diff_targets(args.base, allowed_stacks)
     except Exception as exc:
