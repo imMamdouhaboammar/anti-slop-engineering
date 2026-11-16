@@ -26,10 +26,11 @@ class ValidateSkillsTests(unittest.TestCase):
             (skill_dir / "SKILL.md").write_text(content, encoding="utf-8")
 
     def test_repository_skills_and_agents_pointers_pass_clean_checkout(self):
-        report = validate_skills.validate_repository(REPO_ROOT, strict_cli=False)
+        report = validate_skills.validate_repository(REPO_ROOT)
         self.assertTrue(report["ok"], report["errors"])
         self.assertEqual(report["skills_checked"], 46)
         self.assertEqual(report["errors"], [])
+        self.assertEqual(report["missing_cli_handlers"], [])
 
     def test_single_file_skill_without_optional_directories_passes(self):
         with tempfile.TemporaryDirectory() as tmp:
