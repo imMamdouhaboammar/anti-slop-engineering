@@ -152,6 +152,34 @@ class SreGuardTests(unittest.TestCase):
             [f['id'] for f in report['findings']],
         )
 
+    def test_strict_implicit_head_diff_does_not_block_on_pre_existing_dead_flag(self):
+        dead = self.repo / 'src' / 'dead.py'
+        dead.write_text(
+            "def compute():\n"
+            "    if False:\n"
+            "        return 999\n"
+            "    return 1\n"
+        )
+        git(self.repo, 'add', 'src/dead.py')
+        git(self.repo, 'commit', '-qm', 'add dead flag')
+        dead.write_text(
+            "def compute():\n"
+            "    if False:\n"
+            "        return 999\n"
+            "    return 1\n"
+            "# comment only\n"
+        )
+        res, report = self.run_sre('--json', '--strict')
+        self.assertEqual(res.returncode, 0)
+        self.assertEqual(report['base'], 'HEAD')
+        matches = [f for f in report['findings'] if f['id'] == 'YAGNI_DEAD_SPECULATIVE_FLAG']
+        self.assertEqual(len(matches), 1)
+        self.assertIs(matches[0]['in_active_diff'], False)
+        self.assertEqual(report['summary']['blockers'], 1)
+        text_res, _ = self.run_sre('--strict')
+        self.assertEqual(text_res.returncode, 0)
+        self.assertIn('non-blocking in diff mode', text_res.stdout)
+
     def test_strict_diff_blocks_on_dead_flag_added_in_diff(self):
         (self.repo / 'src' / 'worker.py').write_text(
             "def execute():\n"

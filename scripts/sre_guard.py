@@ -477,7 +477,7 @@ def main():
             diff_mode = False
             report = scan_paths(args.files, **common_kwargs)
         else:
-            diff_mode = args.base is not None
+            diff_mode = True
             base = args.base or 'HEAD'
             report = scan_git_diff(
                 pathlib.Path(args.repo).resolve(),
