@@ -668,7 +668,7 @@ Spotted a recurring failure mode from an AI agent — test tampering, scope cree
 2. Document symptom, root cause, and remediation using the 5-part catalog schema.
 3. Update [`SKILL.md`](SKILL.md) with explicit agent rules.
 4. Add heuristics to `scripts/diff_guard.py` with unit tests.
-5. Run `make check-all` — all unit and polyglot tests (392 Python, 21 Rust, 26 Go, 96 Node/Bun) and linters must stay green.
+5. Run `make check-all` — all unit and polyglot tests and linters must stay green.
 
 ```bash
 npx anti-slop-engineering contribute
