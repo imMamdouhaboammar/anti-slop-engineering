@@ -181,6 +181,13 @@ diff --git a/src/api/checkout.ts b/src/api/checkout.ts
         self.assertFalse(res["drift_detected"])
         self.assertIn("inv-paranoid-idempotency", res["waived_invariants"])
 
+    def test_cli_drift_invalid_base_fails_closed(self):
+        cmd = [sys.executable, str(SCRIPT), "drift", "--base", "NOPE_INVALID_REF",
+               "--ledger", str(EXAMPLE_LEDGER), "--json"]
+        proc = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, check=False)
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("NOPE_INVALID_REF", proc.stdout + proc.stderr)
+
     def test_cli_invocation_text_and_json(self):
         cmd = [sys.executable, str(SCRIPT), "audit", str(EXAMPLE_LEDGER), "--json"]
         proc = subprocess.run(cmd, capture_output=True, text=True, check=True)

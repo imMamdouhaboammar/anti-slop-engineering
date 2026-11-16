@@ -93,20 +93,19 @@ def is_detached_head(repo_root: Optional[str] = None) -> bool:
 
 
 def resolve_base_ref(base: str, repo_root: Optional[str] = None) -> str:
-    """Resolve base ref safely against local and remote references."""
+    """Resolve base ref against local and remote references.
+
+    Only the requested ref (or its ``origin/`` counterpart) may resolve;
+    an unresolvable base raises RuntimeError instead of silently
+    substituting a different ref.
+    """
     candidates = [base, f"origin/{base}"]
     for candidate in candidates:
         code, _, _ = run_git(["rev-parse", "--verify", candidate], cwd=repo_root)
         if code == 0:
             return candidate
 
-    # Try merge-base with origin/main or origin/master if base is missing
-    for default_branch in ["origin/main", "origin/master", "HEAD~1"]:
-        code, _, _ = run_git(["rev-parse", "--verify", default_branch], cwd=repo_root)
-        if code == 0:
-            return default_branch
-
-    return "HEAD"
+    raise RuntimeError(f"Unresolvable base ref {base!r}: neither {base!r} nor 'origin/{base}' exists")
 
 
 def get_commit_list(base_ref: str, repo_root: Optional[str] = None) -> List[Dict[str, str]]:
@@ -418,14 +417,21 @@ def main():
         with open(args.template_file, "r", encoding="utf-8") as f:
             template_content = f.read()
 
-    record = audit_pr_boundary(
-        base=args.base,
-        repo_root=args.repo,
-        pr_title=args.pr_title,
-        pr_body=pr_body,
-        template_content=template_content,
-        require_conventional=args.require_conventional,
-    )
+    try:
+        record = audit_pr_boundary(
+            base=args.base,
+            repo_root=args.repo,
+            pr_title=args.pr_title,
+            pr_body=pr_body,
+            template_content=template_content,
+            require_conventional=args.require_conventional,
+        )
+    except RuntimeError as exc:
+        if args.json:
+            print(json.dumps({"error": str(exc)}))
+        else:
+            print(f"ERROR: {exc}", file=sys.stderr)
+        sys.exit(1)
 
     if args.json:
         print(json.dumps(record, indent=2))

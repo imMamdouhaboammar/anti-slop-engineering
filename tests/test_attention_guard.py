@@ -150,6 +150,17 @@ class AttentionGuardTests(unittest.TestCase):
         self.assertEqual(max_len, 7)
         self.assertEqual(len(violations), 1)
 
+    def test_cli_invalid_base_fails_closed(self):
+        proc = subprocess.run(
+            [sys.executable, str(SCRIPTS_DIR / "attention_guard.py"), "--base", "NOPE_INVALID_REF", "--json"],
+            cwd=str(SCRIPTS_DIR.parent),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("NOPE_INVALID_REF", proc.stdout + proc.stderr)
+
     def test_cli_help(self):
         proc = subprocess.run(
             [sys.executable, str(SCRIPTS_DIR / "attention_guard.py"), "--help"],

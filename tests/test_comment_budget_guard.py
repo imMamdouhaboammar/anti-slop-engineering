@@ -1,7 +1,11 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 Mamdouh Aboammar <mamdouhfces1997@gmail.com> and contributors
 
+import subprocess
+import sys
 import unittest
+from pathlib import Path
+
 from scripts.comment_budget_guard import (
     audit_diff_comments,
     is_exempt_file,
@@ -69,6 +73,16 @@ class TestCommentBudgetGuard(unittest.TestCase):
         record = audit_diff_comments(diff, density_threshold=0.35, min_comment_floor=20)
         self.assertEqual(record["code"], "NO_COMMENT_FINDINGS")
         self.assertEqual(len(record["findings"]), 0)
+
+    def test_cli_invalid_base_fails_closed(self):
+        root = Path(__file__).resolve().parents[1]
+        proc = subprocess.run(
+            [sys.executable, str(root / "scripts" / "comment_budget_guard.py"),
+             "--base", "NOPE_INVALID_REF", "--json"],
+            cwd=root, capture_output=True, text=True, check=False,
+        )
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("NOPE_INVALID_REF", proc.stdout + proc.stderr)
 
 
 if __name__ == "__main__":

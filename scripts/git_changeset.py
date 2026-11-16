@@ -25,6 +25,15 @@ def git(repo, *args):
     return completed.stdout
 
 
+def validate_base_ref(repo, base):
+    """Resolve ``base`` to a commit id, raising RuntimeError if it cannot be resolved."""
+    try:
+        resolved = git(repo, "rev-parse", "--verify", "--end-of-options", f"{base}^{{commit}}")
+    except RuntimeError as error:
+        raise RuntimeError(f"Unresolvable base ref {base!r}: {error}") from error
+    return resolved.strip().decode("ascii")
+
+
 def path_record(raw):
     if raw is None:
         return None

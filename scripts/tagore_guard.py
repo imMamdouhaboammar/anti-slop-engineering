@@ -19,10 +19,16 @@ import argparse
 import json
 import math
 import os
+import pathlib
 import re
 import subprocess
 import sys
 from typing import Any, Dict, List, Optional, Tuple
+
+if not __package__:
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+
+from scripts.git_changeset import validate_base_ref
 
 # Word extractor
 _WORD_RE = re.compile(r"\b[\w'-]+\b")
@@ -670,16 +676,20 @@ def profile_voice(sample_text: str) -> Dict[str, Any]:
 
 def run_git_diff_prose(base_ref: str = "HEAD") -> str:
     """Extract added prose lines from git diff on markdown, text, and doc files."""
+    validate_base_ref(".", base_ref)
+    cmd = ["git", "diff", base_ref, "--", "*.md", "*.txt", "*.rst", "docs/"]
     try:
-        cmd = ["git", "diff", base_ref, "--", "*.md", "*.txt", "*.rst", "docs/"]
-        res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
-        added_lines = []
-        for line in res.stdout.splitlines():
-            if line.startswith("+") and not line.startswith("+++"):
-                added_lines.append(line[1:])
-        return "\n".join(added_lines)
-    except Exception:
-        return ""
+        res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False)
+    except OSError as exc:
+        raise RuntimeError(f"Git diff failed for base ref {base_ref!r}: {exc}") from exc
+    if res.returncode != 0:
+        detail = res.stderr.strip() or f"Git exited {res.returncode}"
+        raise RuntimeError(f"Git diff failed for base ref {base_ref!r}: {detail}")
+    added_lines = []
+    for line in res.stdout.splitlines():
+        if line.startswith("+") and not line.startswith("+++"):
+            added_lines.append(line[1:])
+    return "\n".join(added_lines)
 
 
 def main() -> int:
@@ -769,13 +779,18 @@ def main() -> int:
     elif args.text:
         raw_text = args.text
         target_name = "inline_text"
-    elif args.base:
-        raw_text = run_git_diff_prose(args.base)
-        target_name = f"git_diff_{args.base}"
     else:
-        # Default: check git diff against HEAD
-        raw_text = run_git_diff_prose("HEAD")
-        target_name = "git_diff_HEAD"
+        # Diff mode: the requested --base, or HEAD by default
+        base_ref = args.base or "HEAD"
+        try:
+            raw_text = run_git_diff_prose(base_ref)
+        except RuntimeError as exc:
+            if args.json:
+                print(json.dumps({"error": str(exc)}))
+            else:
+                sys.stderr.write(f"Error: {exc}\n")
+            return 1
+        target_name = f"git_diff_{base_ref}"
 
     if not raw_text.strip():
         # Clean diff or empty

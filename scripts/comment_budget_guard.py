@@ -12,10 +12,16 @@ formal docstrings, license headers, and // SAFETY: invariants.
 import argparse
 import json
 import os
+import pathlib
 import re
 import subprocess
 import sys
 from typing import Any, Dict, List, Optional, Set, Tuple
+
+if not __package__:
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+
+from scripts.git_changeset import validate_base_ref
 
 # Comment prefixes across supported polyglot languages
 LINE_COMMENT_PREFIXES: Dict[str, Tuple[str, ...]] = {
@@ -249,19 +255,17 @@ def audit_git_diff(
     min_comment_floor: int = 20,
 ) -> Dict[str, Any]:
     """Run comment budget audit against git diff."""
-    cmd = ["git", "diff", base]
+    validate_base_ref(repo_root or ".", base)
     try:
         proc = subprocess.run(
-            cmd, cwd=repo_root, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False
+            ["git", "diff", base], cwd=repo_root, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False
         )
-        if proc.returncode != 0:
-            # Fallback to inspecting staged or uncommitted diff
-            proc = subprocess.run(
-                ["git", "diff", "HEAD"], cwd=repo_root, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False
-            )
-        diff_text = proc.stdout
-    except Exception as exc:
-        diff_text = ""
+    except OSError as exc:
+        raise RuntimeError(f"Git diff failed for base ref {base!r}: {exc}") from exc
+    if proc.returncode != 0:
+        detail = proc.stderr.strip() or f"Git exited {proc.returncode}"
+        raise RuntimeError(f"Git diff failed for base ref {base!r}: {detail}")
+    diff_text = proc.stdout
 
     return audit_diff_comments(
         diff_text,
@@ -291,12 +295,19 @@ def main():
             min_comment_floor=args.min_floor,
         )
     else:
-        record = audit_git_diff(
-            base=args.base,
-            repo_root=args.repo,
-            density_threshold=args.threshold,
-            min_comment_floor=args.min_floor,
-        )
+        try:
+            record = audit_git_diff(
+                base=args.base,
+                repo_root=args.repo,
+                density_threshold=args.threshold,
+                min_comment_floor=args.min_floor,
+            )
+        except RuntimeError as exc:
+            if args.json:
+                print(json.dumps({"error": str(exc)}))
+            else:
+                print(f"ERROR: {exc}", file=sys.stderr)
+            sys.exit(1)
 
     if args.json:
         print(json.dumps(record, indent=2))

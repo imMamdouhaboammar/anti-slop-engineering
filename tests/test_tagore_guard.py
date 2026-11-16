@@ -97,6 +97,17 @@ class TagoreGuardTests(unittest.TestCase):
         self.assertGreater(profile["empirical_token_ratio"], 0.05)
         self.assertIn("type_token_ratio", profile)
 
+    def test_cli_invalid_base_fails_closed(self):
+        res = subprocess.run(
+            [sys.executable, str(SCRIPTS_DIR / "tagore_guard.py"), "--base", "NOPE_INVALID_REF", "--json"],
+            cwd=str(SCRIPTS_DIR.parent),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        self.assertNotEqual(res.returncode, 0)
+        self.assertIn("NOPE_INVALID_REF", res.stdout + res.stderr)
+
     def test_cli_selftest(self):
         res = subprocess.run(
             [sys.executable, str(SCRIPTS_DIR / "tagore_guard.py"), "--selftest"],
