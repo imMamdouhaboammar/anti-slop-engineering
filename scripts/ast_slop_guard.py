@@ -129,9 +129,14 @@ def object_groups(line):
             yield children
 
 
-def is_conditional_empty_spread(expression):
+def unwrap_parentheses(expression):
     while len(expression) == 1 and isinstance(expression[0], tuple) and expression[0][0] == '(':
         expression = expression[0][1]
+    return expression
+
+
+def is_conditional_empty_spread(expression):
+    expression = unwrap_parentheses(expression)
     if '?' not in expression:
         return False
 
@@ -144,7 +149,10 @@ def is_conditional_empty_spread(expression):
         elif token == ':':
             if not nested:
                 empty = [('{', [])]
-                return expression[question + 1:colon] == empty or expression[colon + 1:] == empty
+                return (
+                    unwrap_parentheses(expression[question + 1:colon]) == empty
+                    or unwrap_parentheses(expression[colon + 1:]) == empty
+                )
             nested -= 1
     return False
 
@@ -261,8 +269,9 @@ def scan_diff(repo, base):
     findings = []
     cmd = ['git', '-C', str(repo), 'diff', '-U2', '--inter-hunk-context=0',
            '--no-color', '--no-ext-diff', '--no-textconv', '--src-prefix=a/', '--dst-prefix=b/']
-    res = subprocess.run([*cmd, f'{base}...HEAD', '--'], capture_output=True, text=True)
-    if res.returncode:
+    target = 'HEAD' if base == 'HEAD' else f'{base}...HEAD'
+    res = subprocess.run([*cmd, target, '--'], capture_output=True, text=True)
+    if res.returncode and base != 'HEAD':
         res = subprocess.run([*cmd, base, '--'], capture_output=True, text=True)
 
     current_file = None

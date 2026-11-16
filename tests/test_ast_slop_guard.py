@@ -168,6 +168,29 @@ class AstSlopGuardTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.finding_lines(result, 'CONDITIONAL_EMPTY_SPREAD'), [1, 2, 3, 4, 5])
 
+    def test_parenthesized_empty_spread_branches(self):
+        file_path = self.repo / 'branches.ts'
+        file_path.write_text(
+            'const opts = { ...(ready ? props : (({}))) };\n'
+            'const other = { ...(ready ? ({}) : props) };\n'
+            'const safe = { ...(ready ? ({ item: 1 }) : props) };\n'
+        )
+        result = self.run_guard(str(file_path), '--json')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.finding_lines(result, 'CONDITIONAL_EMPTY_SPREAD'), [1, 2])
+
+    def test_default_and_explicit_head_scan_tracked_working_tree(self):
+        file_path = self.repo / 'review.ts'
+        file_path.write_text('const value = 1;\n')
+        subprocess.run(['git', 'init', '-q'], cwd=self.repo, check=True)
+        self.commit_fixture()
+        file_path.write_text('const value = raw as unknown as User;\n')
+        for args in ((), ('--base', 'HEAD')):
+            with self.subTest(args=args):
+                result = self.run_guard('--repo', str(self.repo), '--strict', '--json', *args)
+                self.assertEqual(result.returncode, 2, result.stderr)
+                self.assertEqual(self.finding_lines(result, 'CHAINED_TYPE_ASSERTION'), [1])
+
     def test_spread_after_a_multiline_call_closer(self):
         file_path = self.repo / 'continuation.ts'
         file_path.write_text(
