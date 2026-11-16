@@ -1,8 +1,13 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 Mamdouh Aboammar <mamdouhfces1997@gmail.com> and contributors
 
+import json
+import re
+import subprocess
+import sys
 import tempfile
 import unittest
+from pathlib import Path
 from scripts.pr_boundary_guard import (
     count_emojis,
     count_code_references,
@@ -134,6 +139,83 @@ Refactor core mathematical calculation for cleaner separation.
             branch_findings = [f for f in record["findings"] if f["rule"] == "BLOCKED_SOURCE_BRANCH"]
             self.assertEqual(len(branch_findings), 1)
             self.assertEqual(branch_findings[0]["severity"], "review")
+
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+GUARD_SCRIPT = REPO_ROOT / "scripts" / "pr_boundary_guard.py"
+
+
+def _action_template_default():
+    lines = (REPO_ROOT / "action.yml").read_text(encoding="utf-8").splitlines()
+    for i, line in enumerate(lines):
+        if line.strip() == "template-file:":
+            for following in lines[i + 1:]:
+                match = re.match(r'\s+default:\s*"([^"]+)"', following)
+                if match:
+                    return match.group(1)
+                if following.strip() and not following.startswith(" " * 4):
+                    break
+    raise AssertionError("template-file default not found in action.yml")
+
+
+class TestPrBoundaryGuardCli(unittest.TestCase):
+    def _run_cli(self, repo_root, *extra_args):
+        return subprocess.run(
+            [sys.executable, str(GUARD_SCRIPT), "--base", "HEAD",
+             "--repo", str(repo_root), "--json", *extra_args],
+            cwd=REPO_ROOT, text=True, capture_output=True,
+        )
+
+    def _make_repo(self, temp_dir):
+        run_git(["init"], cwd=temp_dir)
+        run_git(["checkout", "-b", "feature/cli-test"], cwd=temp_dir)
+        run_git(["config", "user.name", "Test Committer"], cwd=temp_dir)
+        run_git(["config", "user.email", "test@example.com"], cwd=temp_dir)
+        run_git(["commit", "--allow-empty", "-m", "feat: initial commit"], cwd=temp_dir)
+
+    def test_missing_template_file_fails_loudly(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            self._make_repo(temp_dir)
+            body = Path(temp_dir) / "body.md"
+            body.write_text("## Type of Change\n- [x] Bugfix\n", encoding="utf-8")
+            missing = Path(temp_dir) / "does-not-exist.md"
+            result = self._run_cli(temp_dir, "--pr-body-file", str(body),
+                                   "--template-file", str(missing))
+            self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertNotIn("NO_PR_BOUNDARY_FINDINGS", result.stdout)
+            record = json.loads(result.stdout)
+            errors = [f for f in record["findings"]
+                      if f["rule"] == "TEMPLATE_FILE_NOT_FOUND"]
+            self.assertEqual(len(errors), 1, record["findings"])
+            self.assertIn(errors[0]["severity"], ("blocker", "error"))
+
+    def test_violating_body_flagged_via_action_default_template(self):
+        default = _action_template_default()
+        self.assertEqual(default, ".github/PULL_REQUEST_TEMPLATE.md")
+        template_path = REPO_ROOT / default
+        self.assertTrue(template_path.is_file(), f"missing {template_path}")
+        with tempfile.TemporaryDirectory() as temp_dir:
+            self._make_repo(temp_dir)
+            body = Path(temp_dir) / "body.md"
+            body.write_text(
+                "## Scope & compatibility\n"
+                "- [x] Change is one coherent review unit or larger scope is justified\n"
+                "- [x] Existing consumers and old contracts assessed\n"
+                "- [ ] Unrelated refactors/dependency/config churn excluded or justified\n",
+                encoding="utf-8",
+            )
+            result = self._run_cli(temp_dir, "--pr-body-file", str(body),
+                                   "--template-file", str(template_path))
+            record = json.loads(result.stdout)
+            violations = [f for f in record["findings"]
+                          if f["rule"] == "RADIO_BUTTON_TEMPLATE_VIOLATION"]
+            self.assertEqual(len(violations), 1, record["findings"])
+
+    def test_skill_doc_uses_correct_template_path(self):
+        skill = (REPO_ROOT / "skills" / "pr-boundary-guard" / "SKILL.md").read_text(
+            encoding="utf-8")
+        self.assertIn("--template-file .github/PULL_REQUEST_TEMPLATE.md", skill)
+        self.assertNotIn(".github/pull_request_template.md", skill)
 
 
 if __name__ == "__main__":

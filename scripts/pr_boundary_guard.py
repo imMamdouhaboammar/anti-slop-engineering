@@ -414,7 +414,8 @@ def main():
             pr_body = f.read()
 
     template_content = None
-    if args.template_file and os.path.exists(args.template_file):
+    template_missing = bool(args.template_file and not os.path.exists(args.template_file))
+    if args.template_file and not template_missing:
         with open(args.template_file, "r", encoding="utf-8") as f:
             template_content = f.read()
 
@@ -426,6 +427,22 @@ def main():
         template_content=template_content,
         require_conventional=args.require_conventional,
     )
+
+    if template_missing:
+        record["findings"].append({
+            "rule": "TEMPLATE_FILE_NOT_FOUND",
+            "severity": "blocker",
+            "message": f"Template file '{args.template_file}' does not exist. Template checks cannot run.",
+            "evidence": f"template_file={args.template_file}",
+        })
+        record["status"] = 400
+        record["code"] = "ERR_TEMPLATE_FILE_NOT_FOUND"
+        record["detail"] = (
+            f"Found {len(record['findings'])} boundary findings across git topology and metadata."
+        )
+        record["remediation"]["guidance"] = (
+            "Provide an existing PR template file path, or omit --template-file to skip template checks."
+        )
 
     if args.json:
         print(json.dumps(record, indent=2))
@@ -440,6 +457,9 @@ def main():
         else:
             print("  ✅ All PR boundary and Git topology checks passed clean.")
 
+    if template_missing:
+        print(f"Error: Template file '{args.template_file}' not found.", file=sys.stderr)
+        sys.exit(2)
     if args.fail_on_blocker and any(f["severity"] == "blocker" for f in record["findings"]):
         sys.exit(2)
     sys.exit(0)

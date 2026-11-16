@@ -18,7 +18,7 @@ inputs:
   template-file:
     description: "Path to repository PR template markdown"
     required: false
-    default: ".github/pull_request_template.md"
+    default: ".github/PULL_REQUEST_TEMPLATE.md"
   fail-on-blocker:
     description: "Whether to fail the action if blocker-severity findings are detected"
     required: false
