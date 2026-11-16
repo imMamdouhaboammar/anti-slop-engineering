@@ -13,10 +13,23 @@ import argparse
 import datetime
 import json
 import os
+import pathlib
 import re
 import subprocess
 import sys
 from typing import Any, Dict, List, Optional, Set, Tuple
+
+if not __package__:
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+
+from scripts.git_changeset import collect_changes, repository_root
+
+TEST_FILE_EXTENSIONS = {".py", ".ts", ".js", ".tsx", ".jsx", ".go", ".rs"}
+
+TEST_PATH_RE = re.compile(
+    r"(?i)(?:^|/)(?:tests?|__tests__|specs?|evals?)(?:/|$)"
+    r"|(?:^|/)(?:test_[^/]+|[^/]+[._](?:test|spec)\.[a-z0-9]+)$"
+)
 
 # Patterns for Tautological Assertions
 TAUTOLOGY_PATTERNS = [
@@ -130,6 +143,27 @@ def scan_test_file_content(path: str, content: str) -> List[Dict[str, Any]]:
     return findings
 
 
+def build_record(
+    all_findings: List[Dict[str, Any]], scanned_count: int, strict: bool = False
+) -> Dict[str, Any]:
+    blocking_count = sum(1 for f in all_findings if f["severity"] == "BLOCKING")
+    if blocking_count > 0 or (strict and len(all_findings) > 0):
+        verdict = "REJECT"
+    elif len(all_findings) > 0:
+        verdict = "WARNING"
+    else:
+        verdict = "PROCEED"
+
+    return {
+        "schema_version": "1.0.0",
+        "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "verdict": verdict,
+        "scanned_files": scanned_count,
+        "findings_count": len(all_findings),
+        "findings": all_findings,
+    }
+
+
 def audit_test_paths(paths: List[str], strict: bool = False) -> Dict[str, Any]:
     all_findings = []
     scanned_count = 0
@@ -141,7 +175,7 @@ def audit_test_paths(paths: List[str], strict: bool = False) -> Dict[str, Any]:
             for root, _, files in os.walk(p):
                 for f in files:
                     ext = os.path.splitext(f)[1].lower()
-                    if ext in [".py", ".ts", ".js", ".tsx", ".jsx", ".go", ".rs"]:
+                    if ext in TEST_FILE_EXTENSIONS:
                         fpath = os.path.join(root, f)
                         try:
                             with open(fpath, "r", encoding="utf-8", errors="replace") as fh:
@@ -159,23 +193,54 @@ def audit_test_paths(paths: List[str], strict: bool = False) -> Dict[str, Any]:
             except Exception:
                 pass
 
-    blocking_count = sum(1 for f in all_findings if f["severity"] == "BLOCKING")
-    if blocking_count > 0 or (strict and len(all_findings) > 0):
-        verdict = "REJECT"
-    elif len(all_findings) > 0:
-        verdict = "WARNING"
-    else:
-        verdict = "PROCEED"
+    return build_record(all_findings, scanned_count, strict=strict)
 
-    record = {
-        "schema_version": "1.0.0",
-        "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-        "verdict": verdict,
-        "scanned_files": scanned_count,
-        "findings_count": len(all_findings),
-        "findings": all_findings,
-    }
-    return record
+
+def audit_git_diff(base: str, strict: bool = False) -> Dict[str, Any]:
+    """Scan only test files changed against base, via git_changeset evidence."""
+    repo = pathlib.Path(repository_root(".")).resolve()
+    all_findings = []
+    scanned_count = 0
+
+    for change in collect_changes(repo, base)["files"]:
+        path = change["new_path"]
+        if path is None or change["binary"] or change["new_mode"] not in {"100644", "100755"}:
+            continue
+        name = path["text"]
+        if name is None:
+            print("[mandela-guard] Warning: skipped a non-UTF-8 Git path.", file=sys.stderr)
+            continue
+        if os.path.splitext(name)[1].lower() not in TEST_FILE_EXTENSIONS:
+            continue
+        if not TEST_PATH_RE.search(name):
+            continue
+        full_path = repo / name
+        if full_path.is_symlink() or not full_path.is_file():
+            continue
+        if not full_path.resolve().is_relative_to(repo):
+            continue
+        try:
+            with open(full_path, "r", encoding="utf-8", errors="replace") as fh:
+                content = fh.read()
+        except Exception:
+            continue
+        all_findings.extend(scan_test_file_content(name, content))
+        scanned_count += 1
+
+    return build_record(all_findings, scanned_count, strict=strict)
+
+
+def audit_default_paths(paths: List[str], strict: bool = False) -> Dict[str, Any]:
+    targets = list(paths)
+    if not targets:
+        # Default to tests/ and evals/
+        for candidate in ["tests", "test", "__tests__", "evals"]:
+            if os.path.isdir(candidate):
+                targets.append(candidate)
+        if not targets:
+            targets = ["."]
+
+    return audit_test_paths(targets, strict=strict)
 
 
 def main() -> int:
@@ -186,16 +251,17 @@ def main() -> int:
     parser.add_argument("--strict", action="store_true", help="Treat warnings as blocking failures")
     args = parser.parse_args()
 
-    targets = list(args.paths)
-    if not targets:
-        # Default to tests/ and evals/
-        for candidate in ["tests", "test", "__tests__", "evals"]:
-            if os.path.isdir(candidate):
-                targets.append(candidate)
-        if not targets:
-            targets = ["."]
-
-    record = audit_test_paths(targets, strict=args.strict)
+    if args.base is not None:
+        try:
+            record = audit_git_diff(args.base, strict=args.strict)
+        except (RuntimeError, ValueError) as exc:
+            if args.json:
+                print(json.dumps({"error": str(exc)}))
+            else:
+                print(f"ERROR: {exc}", file=sys.stderr)
+            return 1
+    else:
+        record = audit_default_paths(args.paths, strict=args.strict)
 
     if args.json:
         print(json.dumps(record, indent=2))
