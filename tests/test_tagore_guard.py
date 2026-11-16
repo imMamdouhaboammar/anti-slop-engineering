@@ -99,15 +99,16 @@ class TagoreGuardTests(unittest.TestCase):
         self.assertIn("type_token_ratio", profile)
 
     def test_cli_invalid_base_fails_closed(self):
-        res = subprocess.run(
-            [sys.executable, str(SCRIPTS_DIR / "tagore_guard.py"), "--base", "NOPE_INVALID_REF", "--json"],
-            cwd=str(SCRIPTS_DIR.parent),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-        )
-        self.assertNotEqual(res.returncode, 0)
-        self.assertIn("NOPE_INVALID_REF", res.stdout + res.stderr)
+        for bad_base in ("NOPE_INVALID_REF", ""):
+            res = subprocess.run(
+                [sys.executable, str(SCRIPTS_DIR / "tagore_guard.py"), "--base", bad_base, "--json"],
+                cwd=str(SCRIPTS_DIR.parent),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            self.assertNotEqual(res.returncode, 0)
+            self.assertIn("Unresolvable base ref", res.stdout + res.stderr)
 
     def test_cli_base_matching_filename_succeeds(self):
         with tempfile.TemporaryDirectory() as tmpdir:

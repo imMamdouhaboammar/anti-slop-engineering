@@ -781,7 +781,7 @@ def main() -> int:
         target_name = "inline_text"
     else:
         # Diff mode: the requested --base, or HEAD by default
-        base_ref = args.base or "HEAD"
+        base_ref = args.base if args.base is not None else "HEAD"
         try:
             raw_text = run_git_diff_prose(base_ref)
         except RuntimeError as exc:
