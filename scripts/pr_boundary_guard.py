@@ -14,6 +14,7 @@ import os
 import re
 import subprocess
 import sys
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 # Conventional Commits regex pattern for commit subjects and PR titles
@@ -395,6 +396,31 @@ def audit_pr_boundary(
     }
 
 
+def is_exact_case_file(path_str: str) -> bool:
+    """Return True only when path_str is an existing regular file with exact on-disk casing."""
+    if not path_str or not os.path.isfile(path_str):
+        return False
+    path = Path(path_str)
+    cur = Path(path.anchor) if path.is_absolute() else Path(".")
+    for part in path.parts:
+        if part in ("", ".", path.anchor):
+            continue
+        if part == "..":
+            cur = cur / part
+            continue
+        try:
+            entries = os.listdir(cur)
+        except PermissionError:
+            cur = cur / part
+            continue
+        except OSError:
+            return False
+        if part not in entries:
+            return False
+        cur = cur / part
+    return True
+
+
 def main():
     parser = argparse.ArgumentParser(description="PR Boundary & Git Topology Guard")
     parser.add_argument("--base", default="HEAD", help="Base commit or branch to compare against")
@@ -409,12 +435,12 @@ def main():
     args = parser.parse_args()
 
     pr_body = None
-    if args.pr_body_file and os.path.exists(args.pr_body_file):
+    if args.pr_body_file and is_exact_case_file(args.pr_body_file):
         with open(args.pr_body_file, "r", encoding="utf-8") as f:
             pr_body = f.read()
 
     template_content = None
-    template_missing = bool(args.template_file and not os.path.exists(args.template_file))
+    template_missing = bool(args.template_file and not is_exact_case_file(args.template_file))
     if args.template_file and not template_missing:
         with open(args.template_file, "r", encoding="utf-8") as f:
             template_content = f.read()
@@ -429,19 +455,26 @@ def main():
     )
 
     if template_missing:
+        template_guidance = (
+            "Provide an existing PR template file path, or omit --template-file to skip template checks."
+        )
+        had_prior_findings = bool(record["findings"])
         record["findings"].append({
             "rule": "TEMPLATE_FILE_NOT_FOUND",
             "severity": "blocker",
-            "message": f"Template file '{args.template_file}' does not exist. Template checks cannot run.",
+            "message": f"Template file '{args.template_file}' does not exist or is not a regular file. Template checks cannot run.",
             "evidence": f"template_file={args.template_file}",
         })
         record["status"] = 400
-        record["code"] = "ERR_TEMPLATE_FILE_NOT_FOUND"
+        if not had_prior_findings:
+            record["code"] = "ERR_TEMPLATE_FILE_NOT_FOUND"
+            record["remediation"]["guidance"] = template_guidance
+        else:
+            record["remediation"]["guidance"] = (
+                f"{record['remediation']['guidance']} {template_guidance}"
+            )
         record["detail"] = (
             f"Found {len(record['findings'])} boundary findings across git topology and metadata."
-        )
-        record["remediation"]["guidance"] = (
-            "Provide an existing PR template file path, or omit --template-file to skip template checks."
         )
 
     if args.json:

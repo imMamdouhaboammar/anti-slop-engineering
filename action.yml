@@ -16,9 +16,9 @@ inputs:
     required: false
     default: ""
   template-file:
-    description: "Path to repository PR template markdown"
+    description: "Path to repository PR template markdown (auto-discovers standard GitHub templates when omitted)"
     required: false
-    default: ".github/PULL_REQUEST_TEMPLATE.md"
+    default: ""
   fail-on-blocker:
     description: "Whether to fail the action if blocker-severity findings are detected"
     required: false
@@ -70,6 +70,40 @@ runs:
             if value and not pathlib.Path(value).resolve().is_relative_to(workspace):
                 sys.exit("Input file path must stay inside GITHUB_WORKSPACE")
         ' "$GITHUB_WORKSPACE" "$PR_BODY_FILE" "$TEMPLATE_FILE"
+
+        if [ -z "$TEMPLATE_FILE" ] && [ -n "$PR_BODY_FILE" ]; then
+          TEMPLATE_FILE="$(python3 -c '
+        import os, pathlib, sys
+        workspace = pathlib.Path(sys.argv[1])
+        resolved_ws = workspace.resolve()
+        for rel in (
+            ".github/PULL_REQUEST_TEMPLATE.md",
+            ".github/pull_request_template.md",
+            "docs/PULL_REQUEST_TEMPLATE.md",
+            "docs/pull_request_template.md",
+            "PULL_REQUEST_TEMPLATE.md",
+            "pull_request_template.md",
+        ):
+            target = workspace / rel
+            if not target.is_file() or not target.resolve().is_relative_to(resolved_ws):
+                continue
+            cur = workspace
+            exact = True
+            for part in pathlib.PurePosixPath(rel).parts:
+                try:
+                    entries = os.listdir(cur)
+                except OSError:
+                    exact = False
+                    break
+                if part not in entries:
+                    exact = False
+                    break
+                cur = cur / part
+            if exact:
+                print(rel)
+                break
+        ' "$GITHUB_WORKSPACE")"
+        fi
 
         audit_args=(audit --base "$AUDIT_BASE" --json)
         if [ -n "$PR_TITLE" ]; then audit_args+=(--pr-title "$PR_TITLE"); fi

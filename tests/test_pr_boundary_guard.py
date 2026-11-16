@@ -2,15 +2,18 @@
 # Copyright (c) 2026 Mamdouh Aboammar <mamdouhfces1997@gmail.com> and contributors
 
 import json
-import re
+import os
 import subprocess
 import sys
 import tempfile
+import textwrap
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 from scripts.pr_boundary_guard import (
     count_emojis,
     count_code_references,
+    is_exact_case_file,
     parse_markdown_sections,
     audit_pr_boundary,
     run_git,
@@ -145,17 +148,82 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 GUARD_SCRIPT = REPO_ROOT / "scripts" / "pr_boundary_guard.py"
 
 
-def _action_template_default():
+def _load_composite_action():
     lines = (REPO_ROOT / "action.yml").read_text(encoding="utf-8").splitlines()
-    for i, line in enumerate(lines):
-        if line.strip() == "template-file:":
-            for following in lines[i + 1:]:
-                match = re.match(r'\s+default:\s*"([^"]+)"', following)
-                if match:
-                    return match.group(1)
-                if following.strip() and not following.startswith(" " * 4):
-                    break
-    raise AssertionError("template-file default not found in action.yml")
+    inputs_defaults = {}
+    env_bindings = {}
+    run_lines = []
+    section = None
+    current_input = None
+    in_env = False
+    run_indent = None
+
+    for line in lines:
+        stripped = line.strip()
+        if run_indent is not None:
+            if stripped and (len(line) - len(line.lstrip())) <= run_indent:
+                run_indent = None
+            else:
+                run_lines.append(line)
+                continue
+
+        if not stripped or stripped.startswith("#"):
+            continue
+        indent = len(line) - len(line.lstrip())
+        if indent == 0 and stripped.endswith(":"):
+            section = stripped[:-1]
+            current_input = None
+            in_env = False
+            continue
+        if section == "inputs":
+            if indent == 2 and stripped.endswith(":"):
+                current_input = stripped[:-1]
+                inputs_defaults[current_input] = ""
+            elif indent == 4 and current_input and stripped.startswith("default:"):
+                raw = stripped.split(":", 1)[1].strip()
+                inputs_defaults[current_input] = raw.strip('"').strip("'")
+        elif section == "runs":
+            if stripped == "env:":
+                in_env = True
+            elif stripped == "run: |":
+                in_env = False
+                run_indent = indent
+            elif in_env and ":" in stripped:
+                key, val = stripped.split(":", 1)
+                env_bindings[key.strip()] = val.strip()
+
+    return inputs_defaults, env_bindings, textwrap.dedent("\n".join(run_lines))
+
+
+def _run_composite_action(workspace, **input_overrides):
+    inputs_defaults, env_bindings, shell = _load_composite_action()
+    inputs = {**inputs_defaults, **input_overrides}
+    env = os.environ.copy()
+    env["GITHUB_WORKSPACE"] = str(workspace)
+    output_file = Path(workspace) / "github_output"
+    env["GITHUB_OUTPUT"] = str(output_file)
+    for var_name, expr in env_bindings.items():
+        if expr == "${{ github.action_path }}":
+            env[var_name] = str(REPO_ROOT)
+        elif expr.startswith("${{ inputs.") and expr.endswith(" }}"):
+            input_key = expr[len("${{ inputs."):-len(" }}")].strip()
+            env[var_name] = inputs[input_key]
+    proc = subprocess.run(
+        ["bash", "-eo", "pipefail", "-c", shell],
+        cwd=workspace,
+        env=env,
+        text=True,
+        capture_output=True,
+    )
+    outputs = {}
+    if output_file.exists():
+        for line in output_file.read_text(encoding="utf-8").splitlines():
+            if "=" in line:
+                k, v = line.split("=", 1)
+                outputs[k] = v
+    result_path = Path(workspace) / "audit_result.json"
+    report = json.loads(result_path.read_text(encoding="utf-8")) if result_path.exists() else None
+    return proc, outputs, report
 
 
 class TestPrBoundaryGuardCli(unittest.TestCase):
@@ -166,9 +234,9 @@ class TestPrBoundaryGuardCli(unittest.TestCase):
             cwd=REPO_ROOT, text=True, capture_output=True,
         )
 
-    def _make_repo(self, temp_dir):
+    def _make_repo(self, temp_dir, branch="feature/cli-test"):
         run_git(["init"], cwd=temp_dir)
-        run_git(["checkout", "-b", "feature/cli-test"], cwd=temp_dir)
+        run_git(["checkout", "-b", branch], cwd=temp_dir)
         run_git(["config", "user.name", "Test Committer"], cwd=temp_dir)
         run_git(["config", "user.email", "test@example.com"], cwd=temp_dir)
         run_git(["commit", "--allow-empty", "-m", "feat: initial commit"], cwd=temp_dir)
@@ -189,14 +257,56 @@ class TestPrBoundaryGuardCli(unittest.TestCase):
             self.assertEqual(len(errors), 1, record["findings"])
             self.assertIn(errors[0]["severity"], ("blocker", "error"))
 
-    def test_violating_body_flagged_via_action_default_template(self):
-        default = _action_template_default()
-        self.assertEqual(default, ".github/PULL_REQUEST_TEMPLATE.md")
-        template_path = REPO_ROOT / default
-        self.assertTrue(template_path.is_file(), f"missing {template_path}")
+    def test_directory_template_file_reports_boundary_finding(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             self._make_repo(temp_dir)
-            body = Path(temp_dir) / "body.md"
+            tpl_dir = Path(temp_dir) / ".github" / "PULL_REQUEST_TEMPLATE"
+            tpl_dir.mkdir(parents=True)
+            result = self._run_cli(temp_dir, "--template-file", str(tpl_dir))
+            self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+            self.assertNotIn("IsADirectoryError", result.stderr)
+            record = json.loads(result.stdout)
+            errors = [f for f in record["findings"]
+                      if f["rule"] == "TEMPLATE_FILE_NOT_FOUND"]
+            self.assertEqual(len(errors), 1, record["findings"])
+            self.assertEqual(errors[0]["severity"], "blocker")
+
+    def test_wrong_case_path_rejected_on_case_insensitive_fs(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            github_dir = Path(temp_dir) / ".github"
+            github_dir.mkdir()
+            (github_dir / "PULL_REQUEST_TEMPLATE.md").write_text("## Summary\n", encoding="utf-8")
+            wrong_case = str(github_dir / "pull_request_template.md")
+            exact_case = str(github_dir / "PULL_REQUEST_TEMPLATE.md")
+            with patch("scripts.pr_boundary_guard.os.path.isfile", return_value=True):
+                self.assertFalse(is_exact_case_file(wrong_case))
+                self.assertTrue(is_exact_case_file(exact_case))
+
+    def test_missing_template_preserves_prior_findings_and_guidance(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            self._make_repo(temp_dir, branch="main")
+            missing = Path(temp_dir) / "missing-template.md"
+            result = self._run_cli(temp_dir, "--template-file", str(missing))
+            self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+            record = json.loads(result.stdout)
+            rules = [f["rule"] for f in record["findings"]]
+            self.assertIn("BLOCKED_SOURCE_BRANCH", rules)
+            self.assertIn("TEMPLATE_FILE_NOT_FOUND", rules)
+            self.assertNotEqual(record["code"], "ERR_TEMPLATE_FILE_NOT_FOUND")
+            self.assertIn("branch topology", record["remediation"]["guidance"])
+            self.assertIn("--template-file", record["remediation"]["guidance"])
+
+    def test_action_default_flags_violating_body_with_repo_template(self):
+        template_src = REPO_ROOT / ".github" / "PULL_REQUEST_TEMPLATE.md"
+        self.assertTrue(template_src.is_file(), f"missing {template_src}")
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            self._make_repo(temp_dir)
+            (workspace / ".github").mkdir()
+            (workspace / ".github" / "PULL_REQUEST_TEMPLATE.md").write_text(
+                template_src.read_text(encoding="utf-8"), encoding="utf-8"
+            )
+            body = workspace / "body.md"
             body.write_text(
                 "## Scope & compatibility\n"
                 "- [x] Change is one coherent review unit or larger scope is justified\n"
@@ -204,12 +314,54 @@ class TestPrBoundaryGuardCli(unittest.TestCase):
                 "- [ ] Unrelated refactors/dependency/config churn excluded or justified\n",
                 encoding="utf-8",
             )
-            result = self._run_cli(temp_dir, "--pr-body-file", str(body),
-                                   "--template-file", str(template_path))
-            record = json.loads(result.stdout)
-            violations = [f for f in record["findings"]
-                          if f["rule"] == "RADIO_BUTTON_TEMPLATE_VIOLATION"]
-            self.assertEqual(len(violations), 1, record["findings"])
+            run_git(["add", ".github/PULL_REQUEST_TEMPLATE.md", "body.md"], cwd=temp_dir)
+            run_git(["commit", "-m", "chore: add template fixture"], cwd=temp_dir)
+
+            proc, outputs, report = _run_composite_action(
+                workspace,
+                **{"base": "HEAD", "pr-body-file": "body.md"},
+            )
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            self.assertIsNotNone(report)
+            self.assertEqual(outputs["status"], "PASSED")
+            self.assertEqual(report["guards"]["pr_boundary_guard"]["status"], "FINDINGS")
+            violations = [
+                f for f in report["findings"]
+                if f["guard"] == "pr_boundary_guard"
+                and f["rule"] == "RADIO_BUTTON_TEMPLATE_VIOLATION"
+            ]
+            self.assertEqual(len(violations), 1, report["findings"])
+
+    def test_action_default_passes_without_repo_template(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            self._make_repo(temp_dir)
+            proc, outputs, report = _run_composite_action(workspace, base="HEAD")
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            self.assertEqual(outputs["status"], "PASSED")
+            self.assertEqual(outputs["blockers-count"], "0")
+            self.assertIsNotNone(report)
+            self.assertEqual(report["guards"]["pr_boundary_guard"]["status"], "PASS")
+
+    def test_action_explicit_missing_template_blocks(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            self._make_repo(temp_dir)
+            proc, outputs, report = _run_composite_action(
+                workspace,
+                **{"base": "HEAD", "template-file": "does-not-exist.md"},
+            )
+            self.assertEqual(proc.returncode, 2, proc.stderr)
+            self.assertEqual(outputs["status"], "BLOCKED")
+            self.assertEqual(outputs["blockers-count"], "1")
+            self.assertIsNotNone(report)
+            errors = [
+                f for f in report["findings"]
+                if f["guard"] == "pr_boundary_guard"
+                and f["rule"] == "TEMPLATE_FILE_NOT_FOUND"
+            ]
+            self.assertEqual(len(errors), 1, report["findings"])
+            self.assertEqual(errors[0]["severity"], "BLOCKER")
 
     def test_skill_doc_uses_correct_template_path(self):
         skill = (REPO_ROOT / "skills" / "pr-boundary-guard" / "SKILL.md").read_text(
