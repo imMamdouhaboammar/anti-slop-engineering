@@ -179,6 +179,54 @@ class AstSlopGuardTests(unittest.TestCase):
         chained_lines = [f['line'] for f in report['findings'] if f['id'] == 'CHAINED_TYPE_ASSERTION']
         self.assertEqual(chained_lines, [2])
 
+    def test_chained_assertion_inside_template_interpolation_still_flagged(self):
+        file_path = self.repo / 'interp.ts'
+        file_path.write_text('const s = `text ${v as unknown as T} end`;\n')
+        res = self.run_guard(str(file_path), '--json')
+        report = json.loads(res.stdout)
+        finding_ids = [f['id'] for f in report['findings']]
+        self.assertIn('CHAINED_TYPE_ASSERTION', finding_ids)
+
+    def test_chained_assertion_inside_multiline_template_not_flagged(self):
+        file_path = self.repo / 'multiline_template.ts'
+        file_path.write_text(
+            'const s = `start\n'
+            'as unknown as\n'
+            'end`;\n'
+            'const x = v as unknown as T;\n'
+        )
+        res = self.run_guard(str(file_path), '--json')
+        report = json.loads(res.stdout)
+        chained_lines = [f['line'] for f in report['findings'] if f['id'] == 'CHAINED_TYPE_ASSERTION']
+        self.assertEqual(chained_lines, [4])
+
+    def test_typeof_inside_string_not_flagged_but_real_typeof_flagged(self):
+        file_path = self.repo / 'typeof_mask.ts'
+        file_path.write_text(
+            'const msg = \'typeof a === "object"\'; if (typeof b === "object") { run(); }\n'
+        )
+        res = self.run_guard(str(file_path), '--json')
+        report = json.loads(res.stdout)
+        typeof_hits = [f for f in report['findings'] if f['id'] == 'RUNTIME_TYPEOF_AD_HOC']
+        self.assertEqual(len(typeof_hits), 1)
+
+    def test_chained_assertion_inside_comment_not_flagged(self):
+        file_path = self.repo / 'comment_mask.ts'
+        file_path.write_text('const y = 1; // avoid "v as unknown as T"\n')
+        res = self.run_guard(str(file_path), '--json')
+        report = json.loads(res.stdout)
+        finding_ids = [f['id'] for f in report['findings']]
+        self.assertNotIn('CHAINED_TYPE_ASSERTION', finding_ids)
+        self.assertEqual(report['verdict'], 'PASS')
+
+    def test_regex_with_backtick_does_not_desync_masking(self):
+        file_path = self.repo / 'regex_backtick.ts'
+        file_path.write_text('const re = /`/;\nconst x = v as unknown as T;\n')
+        res = self.run_guard(str(file_path), '--json')
+        report = json.loads(res.stdout)
+        chained_lines = [f['line'] for f in report['findings'] if f['id'] == 'CHAINED_TYPE_ASSERTION']
+        self.assertEqual(chained_lines, [2])
+
     def test_strict_exit_code_on_blocker(self):
         file_path = self.repo / 'blocker.ts'
         file_path.write_text('const x = val as any as Target;\n')
