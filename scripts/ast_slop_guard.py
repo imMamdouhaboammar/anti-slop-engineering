@@ -83,6 +83,66 @@ SAFETY_COMMENT_RE = re.compile(r'(?i)//\s*(?:SAFETY|INVARIANT)\s*:')
 TYPE_ASSERTION_RE = re.compile(r'\bas\s+(?!const\b)[A-Z]\w*\b')
 
 
+_QUOTE_TO_STATE = {"'": 'single', '"': 'double', '`': 'template'}
+_STATE_TO_QUOTE = {v: k for k, v in _QUOTE_TO_STATE.items()}
+
+
+def _mask_string_literals(lines):
+    """Return lines with string-literal contents replaced by spaces.
+
+    Delimiters are preserved and each masked character becomes one space,
+    so lengths/columns are unchanged. Handles single/double/template
+    literals, escapes, ``${...}`` interpolation (code inside is kept), and
+    ``//`` / ``/* */`` comments. Template literals and block comments may
+    span lines; single/double literals reset at end of line.
+    """
+    masked_lines, state, interp = [], 'code', []
+    for line in lines:
+        out, i, n = list(line), 0, len(line)
+        while i < n:
+            ch, nxt = line[i], line[i + 1] if i + 1 < n else ''
+            if state in _STATE_TO_QUOTE and ch == '\\' and nxt:
+                out[i] = out[i + 1] = ' '
+                i += 2
+            elif state == 'code':
+                if ch == '/' and nxt == '/':
+                    state, i = 'line_comment', i + 2
+                elif ch == '/' and nxt == '*':
+                    state, i = 'block_comment', i + 2
+                elif ch in _QUOTE_TO_STATE:
+                    state, i = _QUOTE_TO_STATE[ch], i + 1
+                elif ch == '{' and interp:
+                    interp[-1] += 1
+                    i += 1
+                elif ch == '}' and interp:
+                    interp[-1] -= 1
+                    i += 1
+                    if interp[-1] == 0:
+                        interp.pop()
+                        state = 'template'
+                else:
+                    i += 1
+            elif state == 'line_comment':
+                i += 1
+            elif state == 'block_comment':
+                if ch == '*' and nxt == '/':
+                    state, i = 'code', i + 2
+                else:
+                    i += 1
+            elif ch == _STATE_TO_QUOTE[state]:
+                state, i = 'code', i + 1
+            elif state == 'template' and ch == '$' and nxt == '{':
+                interp.append(1)
+                state, i = 'code', i + 2
+            else:
+                out[i] = ' '
+                i += 1
+        if state in ('line_comment', 'single', 'double'):
+            state = 'code'
+        masked_lines.append(''.join(out))
+    return masked_lines
+
+
 def is_eligible_file(path_str):
     """Check if file is a non-ignored JS/TS file."""
     p = pathlib.Path(path_str)
@@ -97,11 +157,13 @@ def audit_source_lines(lines, file_path):
     """Audit lines of code in a single file with line numbers."""
     findings = []
     is_test = bool(TEST_PATH_RE.search(file_path))
+    masked_lines = _mask_string_literals(lines)
 
     for idx, line in enumerate(lines, 1):
         stripped = line.strip()
         if not stripped or stripped.startswith('//') or stripped.startswith('/*') or stripped.startswith('*'):
             continue
+        masked = masked_lines[idx - 1].strip()
 
         for rule in RULES:
             if rule.get('test_only') and not is_test:
@@ -109,7 +171,19 @@ def audit_source_lines(lines, file_path):
             if rule.get('exclude_tests') and is_test:
                 continue
 
-            if rule['pattern'].search(stripped):
+            if rule['id'] == 'RUNTIME_TYPEOF_AD_HOC':
+                # This rule needs the literal type name inside the quotes,
+                # so it cannot run on the masked line. Require instead
+                # that the `typeof` anchor itself lies outside any string.
+                # Use the unstripped lines so indices align exactly with
+                # the masked line (masking preserves length/columns).
+                raw_masked = masked_lines[idx - 1]
+                match = rule['pattern'].search(line)
+                matched = bool(match) and raw_masked[match.start():match.start() + 6] == 'typeof'
+            else:
+                matched = bool(rule['pattern'].search(masked))
+
+            if matched:
                 findings.append({
                     'id': rule['id'],
                     'severity': rule['severity'],
@@ -121,7 +195,7 @@ def audit_source_lines(lines, file_path):
 
         # Check for ungrounded type assertions in non-test TS files
         if file_path.endswith(('.ts', '.tsx')) and not is_test:
-            if TYPE_ASSERTION_RE.search(stripped) and not stripped.startswith('import '):
+            if TYPE_ASSERTION_RE.search(masked) and not stripped.startswith('import '):
                 # Look backwards for SAFETY comment on previous line
                 prev_line = lines[idx - 2].strip() if idx >= 2 else ''
                 curr_has_safety = bool(SAFETY_COMMENT_RE.search(stripped))

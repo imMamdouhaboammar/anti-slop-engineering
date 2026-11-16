@@ -106,6 +106,58 @@ class AstSlopGuardTests(unittest.TestCase):
         finding_ids = [f['id'] for f in report['findings']]
         self.assertNotIn('UNJUSTIFIED_TYPE_ASSERTION', finding_ids)
 
+    def test_chained_assertion_inside_double_quoted_string_not_flagged(self):
+        file_path = self.repo / 'msg_double.ts'
+        file_path.write_text('const msg = "never use as unknown as here";\n')
+        res = self.run_guard(str(file_path), '--json')
+        report = json.loads(res.stdout)
+        finding_ids = [f['id'] for f in report['findings']]
+        self.assertNotIn('CHAINED_TYPE_ASSERTION', finding_ids)
+        self.assertEqual(report['verdict'], 'PASS')
+
+    def test_chained_assertion_inside_single_quoted_string_not_flagged(self):
+        file_path = self.repo / 'msg_single.ts'
+        file_path.write_text("const msg = 'never use as unknown as here';\n")
+        res = self.run_guard(str(file_path), '--json')
+        report = json.loads(res.stdout)
+        finding_ids = [f['id'] for f in report['findings']]
+        self.assertNotIn('CHAINED_TYPE_ASSERTION', finding_ids)
+        self.assertEqual(report['verdict'], 'PASS')
+
+    def test_chained_assertion_inside_template_literal_not_flagged(self):
+        file_path = self.repo / 'msg_template.ts'
+        file_path.write_text('const msg = `never use as unknown as here`;\n')
+        res = self.run_guard(str(file_path), '--json')
+        report = json.loads(res.stdout)
+        finding_ids = [f['id'] for f in report['findings']]
+        self.assertNotIn('CHAINED_TYPE_ASSERTION', finding_ids)
+        self.assertEqual(report['verdict'], 'PASS')
+
+    def test_chained_assertion_with_escaped_quote_inside_string_not_flagged(self):
+        file_path = self.repo / 'msg_escaped.ts'
+        file_path.write_text('const msg = "a \\" as unknown as b";\n')
+        res = self.run_guard(str(file_path), '--json')
+        report = json.loads(res.stdout)
+        finding_ids = [f['id'] for f in report['findings']]
+        self.assertNotIn('CHAINED_TYPE_ASSERTION', finding_ids)
+
+    def test_chained_assertion_in_code_still_flagged(self):
+        file_path = self.repo / 'real_cast.ts'
+        file_path.write_text('const x = v as unknown as T;\n')
+        res = self.run_guard(str(file_path), '--json')
+        report = json.loads(res.stdout)
+        self.assertEqual(report['verdict'], 'FAIL')
+        finding_ids = [f['id'] for f in report['findings']]
+        self.assertIn('CHAINED_TYPE_ASSERTION', finding_ids)
+
+    def test_chained_assertion_after_string_literal_still_flagged(self):
+        file_path = self.repo / 'after_string.ts'
+        file_path.write_text('const msg = "hello"; const x = v as unknown as T;\n')
+        res = self.run_guard(str(file_path), '--json')
+        report = json.loads(res.stdout)
+        finding_ids = [f['id'] for f in report['findings']]
+        self.assertIn('CHAINED_TYPE_ASSERTION', finding_ids)
+
     def test_strict_exit_code_on_blocker(self):
         file_path = self.repo / 'blocker.ts'
         file_path.write_text('const x = val as any as Target;\n')
