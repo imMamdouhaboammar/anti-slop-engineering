@@ -255,10 +255,10 @@ def audit_git_diff(
     min_comment_floor: int = 20,
 ) -> Dict[str, Any]:
     """Run comment budget audit against git diff."""
-    validate_base_ref(repo_root or ".", base)
+    base_id = validate_base_ref(repo_root or ".", base)
     try:
         proc = subprocess.run(
-            ["git", "diff", base], cwd=repo_root, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False
+            ["git", "diff", base_id, "--"], cwd=repo_root, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False
         )
     except OSError as exc:
         raise RuntimeError(f"Git diff failed for base ref {base!r}: {exc}") from exc

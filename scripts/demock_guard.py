@@ -73,10 +73,10 @@ def is_test_file(path: str) -> bool:
 
 def get_git_diff_files(base_ref: str = "HEAD") -> List[Tuple[str, str]]:
     """Returns list of (filepath, status) modified relative to base_ref."""
-    validate_base_ref(".", base_ref)
+    base_id = validate_base_ref(".", base_ref)
     try:
         res = subprocess.run(
-            ["git", "diff", "--name-status", base_ref],
+            ["git", "diff", "--name-status", base_id, "--"],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,

@@ -136,6 +136,29 @@ Refactor core mathematical calculation for cleaner separation.
                 self.assertNotEqual(proc.returncode, 0)
                 self.assertIn(bad_base, proc.stdout + proc.stderr)
 
+    def test_base_matching_filename_succeeds_for_diff_checks(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            run_git(["init", "-q", "-b", "main"], cwd=temp_dir)
+            run_git(["config", "user.name", "Test Committer"], cwd=temp_dir)
+            run_git(["config", "user.email", "test@example.com"], cwd=temp_dir)
+            (Path(temp_dir) / "main").write_text("binary placeholder\n", encoding="utf-8")
+            (Path(temp_dir) / "README.md").write_text("Initial\n", encoding="utf-8")
+            run_git(["add", "."], cwd=temp_dir)
+            run_git(["commit", "-qm", "feat: initial"], cwd=temp_dir)
+            run_git(["checkout", "-q", "-b", "feat/docs"], cwd=temp_dir)
+            (Path(temp_dir) / "README.md").write_text("Initial\nSmall tweak\n", encoding="utf-8")
+            run_git(["add", "README.md"], cwd=temp_dir)
+            run_git(["commit", "-qm", "docs: tiny readme update"], cwd=temp_dir)
+
+            record = audit_pr_boundary(
+                base="main",
+                repo_root=temp_dir,
+                pr_title="docs: tiny readme update",
+                blocked_source_branches=[],
+            )
+            rules = [f["rule"] for f in record["findings"]]
+            self.assertIn("METADATA_ONLY_MICRO_EDIT", rules)
+
     def test_blocked_source_branch_flags_review(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             run_git(["init"], cwd=temp_dir)

@@ -433,9 +433,9 @@ def audit_text(
 
 def audit_git_diff_markdown(base: str = "HEAD", repo_root: Optional[str] = None) -> Dict[str, Any]:
     """Audit newly added markdown files or lines in a git diff."""
-    validate_base_ref(repo_root or ".", base)
+    base_id = validate_base_ref(repo_root or ".", base)
     try:
-        proc = subprocess.run(["git", "diff", base], cwd=repo_root, capture_output=True, text=True, check=False)
+        proc = subprocess.run(["git", "diff", base_id, "--"], cwd=repo_root, capture_output=True, text=True, check=False)
     except OSError as exc:
         raise RuntimeError(f"Git diff failed for base ref {base!r}: {exc}") from exc
     if proc.returncode != 0:

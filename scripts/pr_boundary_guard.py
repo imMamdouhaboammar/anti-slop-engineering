@@ -120,7 +120,7 @@ def get_commit_list(base_ref: str, repo_root: Optional[str] = None) -> List[Dict
         log_range = [f"{base_ref}..HEAD"]
 
     code, out, _ = run_git(
-        ["log"] + log_range + ["--format=%H%x1f%an%x1f%ae%x1f%s%x1f%b%x1e"], cwd=repo_root
+        ["log"] + log_range + ["--format=%H%x1f%an%x1f%ae%x1f%s%x1f%b%x1e", "--"], cwd=repo_root
     )
     if code != 0 or not out:
         # Fallback to inspecting current HEAD commit
@@ -254,13 +254,13 @@ def audit_pr_boundary(
         })
 
     # 3. Path Fencing & Metadata Spam Checks
-    code, changed_files_out, _ = run_git(["diff", "--name-only", resolved_base, "HEAD"], cwd=repo_root)
+    code, changed_files_out, _ = run_git(["diff", "--name-only", resolved_base, "HEAD", "--"], cwd=repo_root)
     if code == 0 and changed_files_out:
         changed_files = [f.strip() for f in changed_files_out.splitlines() if f.strip()]
         metadata_paths = {"README.md", "LICENSE", "SECURITY.md", "CODE_OF_CONDUCT.md"}
         if all(os.path.basename(f) in metadata_paths for f in changed_files):
             # Check diff size
-            code, diff_numstat, _ = run_git(["diff", "--numstat", resolved_base, "HEAD"], cwd=repo_root)
+            code, diff_numstat, _ = run_git(["diff", "--numstat", resolved_base, "HEAD", "--"], cwd=repo_root)
             total_added = sum(
                 int(line.split()[0])
                 for line in diff_numstat.splitlines()

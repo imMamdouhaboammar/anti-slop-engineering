@@ -415,11 +415,11 @@ def check_file_scope(file_path: str, scope: Dict[str, Any]) -> bool:
 
 
 def get_git_diff(base: str = "HEAD") -> Tuple[str, List[str]]:
-    validate_base_ref(".", base)
+    base_id = validate_base_ref(".", base)
     try:
-        proc = subprocess.run(["git", "diff", base], capture_output=True, text=True, check=False)
+        proc = subprocess.run(["git", "diff", base_id, "--"], capture_output=True, text=True, check=False)
         # Also get list of modified files
-        name_proc = subprocess.run(["git", "diff", "--name-only", base], capture_output=True, text=True, check=False)
+        name_proc = subprocess.run(["git", "diff", "--name-only", base_id, "--"], capture_output=True, text=True, check=False)
     except OSError as exc:
         raise RuntimeError(f"Git diff failed for base ref {base!r}: {exc}") from exc
     for result in (proc, name_proc):

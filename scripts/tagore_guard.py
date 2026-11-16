@@ -676,8 +676,8 @@ def profile_voice(sample_text: str) -> Dict[str, Any]:
 
 def run_git_diff_prose(base_ref: str = "HEAD") -> str:
     """Extract added prose lines from git diff on markdown, text, and doc files."""
-    validate_base_ref(".", base_ref)
-    cmd = ["git", "diff", base_ref, "--", "*.md", "*.txt", "*.rst", "docs/"]
+    base_id = validate_base_ref(".", base_ref)
+    cmd = ["git", "diff", base_id, "--", "*.md", "*.txt", "*.rst", "docs/"]
     try:
         res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False)
     except OSError as exc:
