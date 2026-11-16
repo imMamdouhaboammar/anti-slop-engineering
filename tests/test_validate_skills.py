@@ -139,6 +139,33 @@ class ValidateSkillsTests(unittest.TestCase):
             self.assertFalse(payload["ok"])
             self.assertTrue(any("nonexistent-cmd" in err for err in payload["errors"]))
 
+    def test_cli_exits_nonzero_on_unrouted_command_by_default(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._build_fixture_repo(
+                root,
+                skills={
+                    "unrouted-skill": (
+                        "---\n"
+                        "name: unrouted-skill\n"
+                        "description: Advertises an unrouted CLI command.\n"
+                        "---\n"
+                        "Run `npx anti-slop-engineering nonexistent-cmd audit record.json`.\n"
+                    )
+                },
+                agents_md="",
+            )
+            proc = subprocess.run(
+                [sys.executable, str(REPO_ROOT / "scripts" / "validate_skills.py"), "--repo", str(root), "--json"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(proc.returncode, 1, proc.stdout)
+            payload = json.loads(proc.stdout)
+            self.assertFalse(payload["ok"])
+            self.assertTrue(any("nonexistent-cmd" in err for err in payload["errors"]))
+
 
 if __name__ == "__main__":
     unittest.main()

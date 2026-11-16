@@ -258,7 +258,7 @@ def validate_skill_dir(
     return errors, missing_cli
 
 
-def validate_repository(repo_root: Path, strict_cli: bool = False) -> Dict[str, object]:
+def validate_repository(repo_root: Path, strict_cli: bool = True) -> Dict[str, object]:
     """Validate AGENTS.md pointers, all skills/*/SKILL.md files, and CLI contracts."""
     repo_root = repo_root.resolve()
     skills_root = repo_root / "skills"
@@ -312,7 +312,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument(
         "--strict-cli",
         action="store_true",
-        help="Treat advertised anti-slop-engineering subcommands missing from bin/cli.js as errors",
+        default=True,
+        help="Treat advertised anti-slop-engineering subcommands missing from bin/cli.js as errors (default)",
     )
     args = parser.parse_args(argv)
     report = validate_repository(args.repo, strict_cli=args.strict_cli)

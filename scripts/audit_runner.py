@@ -302,6 +302,33 @@ GUARD_REGISTRY: Dict[str, Dict[str, Any]] = {
         "skip_reason": "Requires dedicated Verification Oracle JSON record (--verification-record <file>)",
         "description": "Audits verified fakes, metamorphic oracles, seeded chaos, and red-green proof.",
     },
+    "profiler_guard": {
+        "title": "Mechanical Sympathy & Empirical Profiler Guard",
+        "script": "profiler_guard.py",
+        "input_type": "record_audit",
+        "requires_input": True,
+        "input_flag": "--profiler-record",
+        "skip_reason": "Requires dedicated Mechanical Sympathy Profiler JSON record (--profiler-record <file>)",
+        "description": "Validates baseline/post-change measurements, bounded streaming, and zero-allocation hot paths.",
+    },
+    "fault_isolation_guard": {
+        "title": "Scientific Fault Isolation Guard",
+        "script": "fault_isolation_guard.py",
+        "input_type": "record_audit",
+        "requires_input": True,
+        "input_flag": "--fault-isolation-record",
+        "skip_reason": "Requires dedicated Scientific Fault Isolation JSON record (--fault-isolation-record <file>)",
+        "description": "Validates 3-hypothesis differential diagnosis, binary search isolation, and determinism pinning.",
+    },
+    "migration_guard": {
+        "title": "Zero-Downtime Migration Guard",
+        "script": "migration_guard.py",
+        "input_type": "record_audit",
+        "requires_input": True,
+        "input_flag": "--migration-record",
+        "skip_reason": "Requires dedicated Zero-Downtime Migration JSON record (--migration-record <file>)",
+        "description": "Validates Expand-Migrate-Contract phases, lock-free DDL, and N/N-1 wire compatibility.",
+    },
     "backprop_guard": {
         "title": "Rule & Invariant Backpropagation Guard",
         "script": "backprop_guard.py",
@@ -458,6 +485,15 @@ CLI_COMMAND_TO_GUARD_MAP: Dict[str, str] = {
     "verification-oracle": "verification_oracle_guard",
     "counterfactual": "verification_oracle_guard",
     "proof": "verification_oracle_guard",
+    "profiler": "profiler_guard",
+    "profiler-guard": "profiler_guard",
+    "profiler audit": "profiler_guard",
+    "fault-isolation": "fault_isolation_guard",
+    "fault-isolation-guard": "fault_isolation_guard",
+    "fault-isolation audit": "fault_isolation_guard",
+    "migration": "migration_guard",
+    "migration-guard": "migration_guard",
+    "migration audit": "migration_guard",
 }
 
 EXCLUDED_CLI_COMMANDS: Dict[str, str] = {
@@ -505,6 +541,9 @@ RECORD_FLAG_TO_GUARD_MAP: Dict[str, str] = {
     "apple_craft_record": "apple_craft_guard",
     "observability_record": "observability_guard",
     "motion_record": "motion_runtime_guard",
+    "profiler_record": "profiler_guard",
+    "fault_isolation_record": "fault_isolation_guard",
+    "migration_record": "migration_guard",
 }
 
 ENGINE_REGISTRY: Dict[str, Dict[str, str]] = {
@@ -1561,6 +1600,9 @@ def handle_audit(args: List[str]) -> int:
     parser.add_argument("--apple-craft-record", default="", help="Path to Apple Craft JSON record")
     parser.add_argument("--observability-record", default="", help="Path to Observability & SLO JSON record")
     parser.add_argument("--motion-record", default="", help="Path to Runtime Motion profile JSON record")
+    parser.add_argument("--profiler-record", default="", help="Path to Mechanical Sympathy Profiler JSON record")
+    parser.add_argument("--fault-isolation-record", default="", help="Path to Scientific Fault Isolation JSON record")
+    parser.add_argument("--migration-record", default="", help="Path to Zero-Downtime Migration JSON record")
     options = parser.parse_args(args)
     return run_audit(
         options.base, options.json, options.pr_title,
@@ -1579,6 +1621,9 @@ def handle_audit(args: List[str]) -> int:
         apple_craft_record=options.apple_craft_record,
         observability_record=options.observability_record,
         motion_record=options.motion_record,
+        profiler_record=options.profiler_record,
+        fault_isolation_record=options.fault_isolation_record,
+        migration_record=options.migration_record,
     )
 
 
