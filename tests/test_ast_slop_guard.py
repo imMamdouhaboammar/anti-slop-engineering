@@ -113,8 +113,11 @@ class AstSlopGuardTests(unittest.TestCase):
         self.assertIsNotNone(match)
         res = self.run_guard('--version')
         self.assertEqual(res.returncode, 0)
-        self.assertTrue(
-            res.stdout.strip().endswith(match.group(1)),
+        tokens = res.stdout.strip().split()
+        self.assertTrue(tokens, f"Empty --version output: {res.stdout!r}")
+        self.assertEqual(
+            tokens[-1],
+            match.group(1),
             f"ast_slop_guard --version {res.stdout.strip()!r} does not match pyproject.toml version {match.group(1)!r}",
         )
 
