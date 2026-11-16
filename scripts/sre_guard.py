@@ -460,7 +460,7 @@ def main():
     p.add_argument('--files', nargs='*', help='Explicit file paths or directories to analyze')
     p.add_argument('--json', action='store_true', help='Output machine-readable JSON report')
     p.add_argument('--strict', '--fail-on-violation', dest='strict', action='store_true',
-                   help='Exit code 2 if any SRE blocker is identified')
+                   help='Exit code 2 if a blocking SRE blocker is identified (diff mode: active-diff blockers only)')
     p.add_argument('--max-nesting', type=int, default=4, help='Max allowed nesting depth for KISS check (default: 4)')
     p.add_argument('--min-dup-lines', type=int, default=4, help='Min consecutive lines to flag as DRY duplicate (default: 4)')
     p.add_argument('--max-function-lines', type=int, default=80, help='Max lines for single function (default: 80)')
