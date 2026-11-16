@@ -158,6 +158,27 @@ class AstSlopGuardTests(unittest.TestCase):
         finding_ids = [f['id'] for f in report['findings']]
         self.assertIn('CHAINED_TYPE_ASSERTION', finding_ids)
 
+    def test_regex_after_arrow_does_not_desync_masking(self):
+        file_path = self.repo / 'arrow_regex.ts'
+        file_path.write_text(
+            'const hasBacktick = (s: string) => /`/.test(s);\n'
+            'const hasQuote = (s: string) => /"/.test(s); const y = v as unknown as T;\n'
+            'const hasCast = (s: string) => /v as unknown as T/.test(s);\n'
+            'const x = w as unknown as U;\n'
+        )
+        res = self.run_guard(str(file_path), '--json')
+        report = json.loads(res.stdout)
+        chained_lines = [f['line'] for f in report['findings'] if f['id'] == 'CHAINED_TYPE_ASSERTION']
+        self.assertEqual(chained_lines, [2, 4])
+
+    def test_regex_after_default_does_not_desync_masking(self):
+        file_path = self.repo / 'default_regex.ts'
+        file_path.write_text('export default /"/.source;\nconst x = v as unknown as T;\n')
+        res = self.run_guard(str(file_path), '--json')
+        report = json.loads(res.stdout)
+        chained_lines = [f['line'] for f in report['findings'] if f['id'] == 'CHAINED_TYPE_ASSERTION']
+        self.assertEqual(chained_lines, [2])
+
     def test_strict_exit_code_on_blocker(self):
         file_path = self.repo / 'blocker.ts'
         file_path.write_text('const x = val as any as Target;\n')

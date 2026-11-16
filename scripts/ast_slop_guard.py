@@ -87,7 +87,7 @@ _QUOTE_TO_STATE = {"'": 'single', '"': 'double', '`': 'template'}
 _STATE_TO_QUOTE = {v: k for k, v in _QUOTE_TO_STATE.items()}
 _REGEX_KEYWORDS = {
     'return', 'throw', 'case', 'typeof', 'void', 'delete',
-    'await', 'yield', 'in', 'of', 'instanceof', 'new', 'else', 'do',
+    'await', 'yield', 'in', 'of', 'instanceof', 'new', 'else', 'do', 'default',
 }
 _REGEX_PRECEDERS = set('=({[,:;?&|^~+-*%')
 
@@ -121,13 +121,17 @@ def _is_regex_start(out, idx):
         return True
     if prefix.endswith(('++', '--')):
         return False
+    if prefix.endswith('=>'):
+        return True
     last = prefix[-1]
     if last in _REGEX_PRECEDERS:
         return True
     if last == '!':
         return len(prefix) == 1 or not (prefix[-2].isalnum() or prefix[-2] in '_$)]')
     m = re.search(r'[A-Za-z_$][A-Za-z0-9_$]*$', prefix)
-    return bool(m and m.group(0) in _REGEX_KEYWORDS)
+    if not m or m.group(0) not in _REGEX_KEYWORDS:
+        return False
+    return not prefix[:m.start()].rstrip().endswith('.')
 
 
 def _step_code_char(line, out, i, interp):
