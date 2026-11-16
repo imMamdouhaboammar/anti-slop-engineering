@@ -375,6 +375,21 @@ def build_sre_summary(file_count, findings, base=None):
     return report
 
 
+def count_blocking_blockers(findings, diff_mode=False):
+    """Count blockers that block the exit verdict.
+
+    In diff mode, a blocker whose line is outside the active diff
+    (``in_active_diff`` is False) is pre-existing: it is still reported
+    and still counted in ``summary['blockers']``, but it does not block.
+    Findings without ``in_active_diff`` (full-file scans) always block.
+    """
+    return sum(
+        1 for f in findings
+        if f['severity'] == 'blocker'
+        and not (diff_mode and f.get('in_active_diff') is False)
+    )
+
+
 def scan_git_diff(repo, base='HEAD', max_nesting=4, min_dup_lines=4, max_function_lines=80):
     """Analyze the worktree against a base commit using Git change-set evidence."""
     repo = pathlib.Path(repository_root(repo)).resolve()
@@ -459,8 +474,10 @@ def main():
             'max_function_lines': args.max_function_lines
         }
         if args.files:
+            diff_mode = False
             report = scan_paths(args.files, **common_kwargs)
         else:
+            diff_mode = args.base is not None
             base = args.base or 'HEAD'
             report = scan_git_diff(
                 pathlib.Path(args.repo).resolve(),
@@ -489,9 +506,11 @@ def main():
             print(f"[{sev}][{cat}] {f['id']} at {loc}")
             print(f"  Evidence: {f.get('evidence', '')}")
             print(f"  Action:   {f.get('action', '')}")
+            if diff_mode and f.get('in_active_diff') is False:
+                print("  Note:     Pre-existing finding outside the active diff; non-blocking in diff mode.")
             print()
 
-    if args.strict and report['summary']['blockers'] > 0:
+    if args.strict and count_blocking_blockers(report['findings'], diff_mode=diff_mode) > 0:
         return 2
 
     return 0

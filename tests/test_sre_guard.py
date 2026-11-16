@@ -120,6 +120,66 @@ class SreGuardTests(unittest.TestCase):
         finding_ids = [f['id'] for f in report['findings']]
         self.assertIn('YAGNI_DEAD_SPECULATIVE_FLAG', finding_ids)
 
+    def test_strict_diff_does_not_block_on_pre_existing_dead_flag(self):
+        dead = self.repo / 'src' / 'dead.py'
+        dead.write_text(
+            "def compute():\n"
+            "    if False:\n"
+            "        return 999\n"
+            "    return 1\n"
+        )
+        git(self.repo, 'add', 'src/dead.py')
+        git(self.repo, 'commit', '-qm', 'add dead flag')
+        dead.write_text(
+            "def compute():\n"
+            "    if False:\n"
+            "        return 999\n"
+            "    return 1\n"
+            "# comment only\n"
+        )
+        res, report = self.run_sre('--base', 'HEAD', '--json', '--strict')
+        self.assertEqual(res.returncode, 0)
+        matches = [f for f in report['findings'] if f['id'] == 'YAGNI_DEAD_SPECULATIVE_FLAG']
+        self.assertEqual(len(matches), 1)
+        self.assertEqual(matches[0]['severity'], 'blocker')
+        self.assertIs(matches[0]['in_active_diff'], False)
+        self.assertEqual(report['summary']['blockers'], 1)
+        self.assertGreaterEqual(report['summary']['total_findings'], 1)
+        res, report = self.run_sre('--base', 'HEAD', '--json')
+        self.assertEqual(res.returncode, 0)
+        self.assertIn(
+            'YAGNI_DEAD_SPECULATIVE_FLAG',
+            [f['id'] for f in report['findings']],
+        )
+
+    def test_strict_diff_blocks_on_dead_flag_added_in_diff(self):
+        (self.repo / 'src' / 'worker.py').write_text(
+            "def execute():\n"
+            "    if False:\n"
+            "        return 999\n"
+            "    return 42\n"
+        )
+        res, report = self.run_sre('--base', 'HEAD', '--json', '--strict')
+        self.assertEqual(res.returncode, 2)
+        matches = [f for f in report['findings'] if f['id'] == 'YAGNI_DEAD_SPECULATIVE_FLAG']
+        self.assertEqual(len(matches), 1)
+        self.assertIs(matches[0]['in_active_diff'], True)
+
+    def test_strict_files_scan_blocks_on_dead_flag(self):
+        file_path = self.repo / 'src' / 'direct_dead.py'
+        file_path.write_text(
+            "def compute():\n"
+            "    if False:\n"
+            "        return 999\n"
+            "    return 1\n"
+        )
+        res, report = self.run_sre('--files', str(file_path), '--json', '--strict')
+        self.assertEqual(res.returncode, 2)
+        self.assertIn(
+            'YAGNI_DEAD_SPECULATIVE_FLAG',
+            [f['id'] for f in report['findings']],
+        )
+
     def test_flags_yagni_speculative_parameter(self):
         (self.repo / 'src' / 'params.py').write_text(
             "def execute_task(task_id, future_kwargs=None):\n"
