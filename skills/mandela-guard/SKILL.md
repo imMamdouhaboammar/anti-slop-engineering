@@ -30,6 +30,9 @@ The target state is independent ground truth: every test assertion must be capab
 ## CLI Usage
 
 ```bash
+# Scan git diff test files against base commit
+bunx anti-slop-engineering mandela --base HEAD
+
 # Scan test directory for Mandela leakage patterns
 bunx anti-slop-engineering mandela tests/ --json
 
