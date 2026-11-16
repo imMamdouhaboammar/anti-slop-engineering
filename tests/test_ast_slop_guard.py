@@ -106,6 +106,75 @@ class AstSlopGuardTests(unittest.TestCase):
         finding_ids = [f['id'] for f in report['findings']]
         self.assertNotIn('UNJUSTIFIED_TYPE_ASSERTION', finding_ids)
 
+    def git(self, *args):
+        return subprocess.run(
+            ['git', '-C', str(self.repo), *args], text=True, capture_output=True, check=True
+        )
+
+    def init_git_repo(self):
+        self.git('init', '-q')
+        self.git('config', 'user.email', 'fixture@example.invalid')
+        self.git('config', 'user.name', 'AST Guard Fixture')
+        clean = self.repo / 'clean.ts'
+        clean.write_text('export const answer: number = 42;\n')
+        self.git('add', 'clean.ts')
+        self.git('commit', '-qm', 'initial clean commit')
+
+    def run_diff_guard(self, base):
+        return self.run_guard('--repo', str(self.repo), '--base', base, '--json')
+
+    def test_scan_diff_detects_staged_blocker_with_base_head(self):
+        self.init_git_repo()
+        bad = self.repo / 'bad.ts'
+        bad.write_text('export const user = rawData as unknown as User;\n')
+        self.git('add', 'bad.ts')
+        res = self.run_diff_guard('HEAD')
+        self.assertEqual(res.returncode, 0, res.stdout)
+        report = json.loads(res.stdout)
+        self.assertEqual(report['verdict'], 'FAIL')
+        finding_ids = [f['id'] for f in report['findings']]
+        self.assertIn('CHAINED_TYPE_ASSERTION', finding_ids)
+
+    def test_scan_diff_detects_unstaged_blocker_with_base_head(self):
+        self.init_git_repo()
+        tracked = self.repo / 'clean.ts'
+        tracked.write_text('export const user = rawData as unknown as User;\n')
+        res = self.run_diff_guard('HEAD')
+        self.assertEqual(res.returncode, 0, res.stdout)
+        report = json.loads(res.stdout)
+        self.assertEqual(report['verdict'], 'FAIL')
+        finding_ids = [f['id'] for f in report['findings']]
+        self.assertIn('CHAINED_TYPE_ASSERTION', finding_ids)
+
+    def test_scan_diff_detects_committed_blocker_against_parent(self):
+        self.init_git_repo()
+        bad = self.repo / 'bad.ts'
+        bad.write_text('export const user = rawData as unknown as User;\n')
+        self.git('add', 'bad.ts')
+        self.git('commit', '-qm', 'add chained assertion')
+        res = self.run_diff_guard('HEAD~1')
+        self.assertEqual(res.returncode, 0, res.stdout)
+        report = json.loads(res.stdout)
+        self.assertEqual(report['verdict'], 'FAIL')
+        finding_ids = [f['id'] for f in report['findings']]
+        self.assertIn('CHAINED_TYPE_ASSERTION', finding_ids)
+
+    def test_scan_diff_clean_tree_passes_with_base_head(self):
+        self.init_git_repo()
+        res = self.run_diff_guard('HEAD')
+        self.assertEqual(res.returncode, 0, res.stdout)
+        report = json.loads(res.stdout)
+        self.assertEqual(report['verdict'], 'PASS')
+        self.assertEqual(report['summary']['total_findings'], 0)
+
+    def test_scan_diff_invalid_base_fails_closed(self):
+        self.init_git_repo()
+        res = self.run_diff_guard('nonexistent-ref-xyz')
+        self.assertEqual(res.returncode, 1)
+        report = json.loads(res.stdout)
+        self.assertIn('error', report)
+        self.assertIn('nonexistent-ref-xyz', report['error'])
+
     def test_strict_exit_code_on_blocker(self):
         file_path = self.repo / 'blocker.ts'
         file_path.write_text('const x = val as any as Target;\n')
