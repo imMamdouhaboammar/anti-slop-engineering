@@ -716,18 +716,36 @@ def parse_git_diff(base: str) -> Dict[str, List[Tuple[int, str]]]:
     return added_by_file
 
 
+def _walk_directory(root_dir: pathlib.Path, ignored_dirs: Set[str]) -> List[str]:
+    files_found: List[str] = []
+    for root, dirs, files in os.walk(root_dir, followlinks=False):
+        dirs[:] = [
+            d
+            for d in dirs
+            if d not in ignored_dirs and not os.path.islink(os.path.join(root, d))
+        ]
+        for f in files:
+            entry = os.path.join(root, f)
+            if not os.path.islink(entry) and os.path.isfile(entry):
+                files_found.append(entry)
+    return files_found
+
+
 def collect_files(paths: Sequence[str]) -> List[str]:
     ignored_dirs = {".git", "node_modules", "target", "dist", "build", ".next", "__pycache__", ".venv", "venv"}
     collected: List[str] = []
     for raw in paths:
+        if not raw or not raw.strip():
+            raise ValueError("Target path must not be empty.")
         p = pathlib.Path(raw)
         if p.is_file():
             collected.append(str(p))
         elif p.is_dir():
-            for root, dirs, files in os.walk(p):
-                dirs[:] = [d for d in dirs if d not in ignored_dirs]
-                for f in files:
-                    collected.append(os.path.join(root, f))
+            collected.extend(_walk_directory(p, ignored_dirs))
+        elif not p.exists():
+            raise FileNotFoundError(f"Target path does not exist: {raw}")
+        else:
+            raise ValueError(f"Target path is neither a file nor a directory: {raw}")
     return sorted(set(collected))
 
 
@@ -828,8 +846,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     allowed_stacks = {s.strip().lower() for s in args.stack.split(",") if s.strip()} if args.stack else None
 
     try:
-        target_paths = list(args.files) if args.files else []
-        if args.path:
+        target_paths: List[str] = []
+        if args.files is not None:
+            if not args.files:
+                raise ValueError("--files requires at least one file or directory path.")
+            target_paths.extend(args.files)
+        if args.path is not None:
+            if not args.path.strip():
+                raise ValueError("--path requires a non-empty file or directory path.")
             target_paths.append(args.path)
         if target_paths:
             all_findings = _scan_target_files(collect_files(target_paths), allowed_stacks)
