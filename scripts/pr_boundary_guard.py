@@ -101,7 +101,10 @@ def resolve_base_ref(base: str, repo_root: Optional[str] = None) -> str:
     """
     candidates = [base, f"origin/{base}"]
     for candidate in candidates:
-        code, _, _ = run_git(["rev-parse", "--verify", candidate], cwd=repo_root)
+        code, _, _ = run_git(
+            ["rev-parse", "--verify", "--end-of-options", f"{candidate}^{{commit}}"],
+            cwd=repo_root,
+        )
         if code == 0:
             return candidate
 

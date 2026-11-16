@@ -125,13 +125,16 @@ Refactor core mathematical calculation for cleaner separation.
 
     def test_cli_invalid_base_fails_closed(self):
         root = Path(__file__).resolve().parents[1]
-        proc = subprocess.run(
-            [sys.executable, str(root / "scripts" / "pr_boundary_guard.py"),
-             "--base", "NOPE_INVALID_REF", "--json"],
-            cwd=root, capture_output=True, text=True, check=False,
-        )
-        self.assertNotEqual(proc.returncode, 0)
-        self.assertIn("NOPE_INVALID_REF", proc.stdout + proc.stderr)
+        _, tree_sha, _ = run_git(["rev-parse", "HEAD^{tree}"], cwd=str(root))
+        for bad_base in ("NOPE_INVALID_REF", "--symbolic-full-name", tree_sha):
+            with self.subTest(base=bad_base):
+                proc = subprocess.run(
+                    [sys.executable, str(root / "scripts" / "pr_boundary_guard.py"),
+                     f"--base={bad_base}", "--json"],
+                    cwd=root, capture_output=True, text=True, check=False,
+                )
+                self.assertNotEqual(proc.returncode, 0)
+                self.assertIn(bad_base, proc.stdout + proc.stderr)
 
     def test_blocked_source_branch_flags_review(self):
         with tempfile.TemporaryDirectory() as temp_dir:
