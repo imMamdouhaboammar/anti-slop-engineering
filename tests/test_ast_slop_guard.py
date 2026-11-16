@@ -3,6 +3,7 @@
 """Unit and behavioral tests for the AST and Type Slop Guard."""
 import json
 import pathlib
+import re
 import subprocess
 import sys
 import tempfile
@@ -105,6 +106,17 @@ class AstSlopGuardTests(unittest.TestCase):
         report = json.loads(res.stdout)
         finding_ids = [f['id'] for f in report['findings']]
         self.assertNotIn('UNJUSTIFIED_TYPE_ASSERTION', finding_ids)
+
+    def test_version_matches_project_version(self):
+        pyproject = (ROOT / 'pyproject.toml').read_text(encoding='utf-8')
+        match = re.search(r'(?m)^version\s*=\s*"([^"]+)"', pyproject)
+        self.assertIsNotNone(match)
+        res = self.run_guard('--version')
+        self.assertEqual(res.returncode, 0)
+        self.assertTrue(
+            res.stdout.strip().endswith(match.group(1)),
+            f"ast_slop_guard --version {res.stdout.strip()!r} does not match pyproject.toml version {match.group(1)!r}",
+        )
 
     def test_strict_exit_code_on_blocker(self):
         file_path = self.repo / 'blocker.ts'
