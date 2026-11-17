@@ -161,7 +161,7 @@ class AstSlopGuardTests(unittest.TestCase):
         finding_ids = [f['id'] for f in report['findings']]
         self.assertIn('CHAINED_TYPE_ASSERTION', finding_ids)
 
-    def test_scan_diff_combines_committed_staged_and_unstaged_against_named_base(self):
+    def test_scan_diff_keeps_named_base_on_committed_source(self):
         self.init_git_repo()
         self.git('branch', 'scan-base')
         committed = self.repo / 'committed.ts'
@@ -174,13 +174,21 @@ class AstSlopGuardTests(unittest.TestCase):
         (self.repo / 'clean.ts').write_text('export const unstaged = rawData as unknown as User;\n')
         (self.repo / 'untracked.ts').write_text('export const untracked = rawData as unknown as User;\n')
 
-        result = self.run_diff_guard('scan-base')
-        self.assertEqual(result.returncode, 0, result.stderr)
-        report = json.loads(result.stdout)
-        self.assertEqual(
-            {finding['file'] for finding in report['findings'] if finding['id'] == 'CHAINED_TYPE_ASSERTION'},
-            {'clean.ts', 'committed.ts', 'staged.ts'},
-        )
+        committed.write_text('export const committed = rawData;\n')
+
+        for base, expected in (
+            ('scan-base', {'committed.ts'}),
+            ('HEAD', {'clean.ts', 'staged.ts'}),
+        ):
+            with self.subTest(base=base):
+                result = self.run_diff_guard(base)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                report = json.loads(result.stdout)
+                self.assertEqual(
+                    {finding['file'] for finding in report['findings']
+                     if finding['id'] == 'CHAINED_TYPE_ASSERTION'},
+                    expected,
+                )
 
     def test_scan_diff_clean_tree_passes_with_base_head(self):
         self.init_git_repo()

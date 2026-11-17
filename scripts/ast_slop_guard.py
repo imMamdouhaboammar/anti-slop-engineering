@@ -269,13 +269,13 @@ def _flush_diff_lines(current_file, source_lines, changed_lines, findings):
 
 
 def scan_diff(repo, base):
-    """Scan tracked additions from the merge base through the working tree."""
+    """Scan working changes for HEAD, or committed changes for a named base."""
     findings = []
     try:
         target = 'HEAD'
         if base != target:
             revision = git(repo, 'rev-parse', '--verify', '--end-of-options', f'{base}^{{commit}}')
-            target = git(repo, 'merge-base', revision.decode('ascii').strip(), 'HEAD').decode('ascii').strip()
+            target = f"{revision.decode('ascii').strip()}...HEAD"
         patch = git(
             repo, 'diff', '-U2', '--inter-hunk-context=0', '--no-color',
             '--no-ext-diff', '--no-textconv', '--src-prefix=a/', '--dst-prefix=b/', target, '--',
