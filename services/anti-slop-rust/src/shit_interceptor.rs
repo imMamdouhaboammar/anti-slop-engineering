@@ -108,6 +108,18 @@ impl ShitInterceptor {
         }
     }
 
+    /// Refine JS/TS catch findings with blob evidence from the current Git repository.
+    pub fn audit_git_patch(
+        &self,
+        diff_text: &str,
+        allowed_files: Option<&[&str]>,
+        read_only_intent: bool,
+    ) -> Vec<Finding> {
+        let mut findings = self.audit_diff(diff_text, allowed_files, read_only_intent);
+        crate::git_triage::refine_catch_findings(diff_text, &mut findings);
+        findings
+    }
+
     /// Audit a unified git diff for SHIT violations
     pub fn audit_diff(
         &self,
