@@ -4,11 +4,23 @@
 
 import json
 import os
+import pathlib
 import shutil
+import subprocess
+import sys
 import tempfile
 import unittest
 
 from scripts.mandela_guard import audit_test_paths, scan_test_file_content
+
+ROOT = pathlib.Path(__file__).resolve().parents[1]
+SCRIPT = ROOT / "scripts" / "mandela_guard.py"
+
+
+def git(path, *args):
+    return subprocess.run(
+        ["git", *args], cwd=path, text=True, capture_output=True, check=True
+    ).stdout.strip()
 
 
 class MandelaGuardTests(unittest.TestCase):
@@ -188,6 +200,88 @@ class MandelaStringLiteralTests(unittest.TestCase):
         tautologies = [f for f in findings if f["pattern"] == "TAUTOLOGICAL_ASSERTION"]
         self.assertEqual(len(tautologies), 1)
         self.assertEqual(tautologies[0]["line"], 3)
+
+
+class MandelaGuardBaseCliTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.repo = pathlib.Path(self.temp.name)
+        git(self.repo, "init", "-q")
+        git(self.repo, "config", "user.email", "test@example.invalid")
+        git(self.repo, "config", "user.name", "Test")
+        (self.repo / "tests").mkdir()
+        (self.repo / "tests" / "test_clean.py").write_text(
+            "def test_addition():\n    assert 2 + 2 == 4\n"
+        )
+        git(self.repo, "add", ".")
+        git(self.repo, "commit", "-qm", "initial")
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def commit_file(self, rel_path, content):
+        target = self.repo / rel_path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content)
+        git(self.repo, "add", ".")
+        git(self.repo, "commit", "-qm", f"add {rel_path}")
+
+    def run_mandela(self, *extra):
+        res = subprocess.run(
+            [sys.executable, str(SCRIPT), *extra],
+            cwd=self.repo, text=True, capture_output=True,
+        )
+        report = None
+        if "--json" in extra and res.stdout.strip().startswith("{"):
+            report = json.loads(res.stdout)
+        return res, report
+
+    def test_base_scans_changed_test_file_outside_default_paths(self):
+        self.commit_file("other/test_evil.py", "def test_evil():\n    assert True\n")
+        res, report = self.run_mandela("--base", "HEAD~1", "--json")
+        self.assertEqual(res.returncode, 1)
+        self.assertEqual(report["verdict"], "REJECT")
+        self.assertEqual(report["scanned_files"], 1)
+        self.assertTrue(
+            any(f["file"].endswith("other/test_evil.py") for f in report["findings"])
+        )
+        self.assertTrue(
+            any(f["pattern"] == "TAUTOLOGICAL_ASSERTION" for f in report["findings"])
+        )
+
+    def test_base_clean_diff_proceeds_and_ignores_unchanged_files(self):
+        self.commit_file("tests/test_evil.py", "def test_evil():\n    assert True\n")
+        self.commit_file("other/test_good.py", "def test_good():\n    assert 3 * 3 == 9\n")
+        res, report = self.run_mandela("--base", "HEAD~1", "--json")
+        self.assertEqual(res.returncode, 0)
+        self.assertEqual(report["verdict"], "PROCEED")
+        self.assertEqual(report["scanned_files"], 1)
+        self.assertEqual(report["findings_count"], 0)
+
+    def test_base_ignores_changed_non_test_files(self):
+        self.commit_file("src/prod.py", "def check():\n    assert True\n")
+        res, report = self.run_mandela("--base", "HEAD~1", "--json")
+        self.assertEqual(res.returncode, 0)
+        self.assertEqual(report["verdict"], "PROCEED")
+        self.assertEqual(report["scanned_files"], 0)
+        self.assertEqual(report["findings_count"], 0)
+
+    def test_base_invalid_ref_fails_closed(self):
+        res, report = self.run_mandela("--base", "no-such-ref", "--json")
+        self.assertNotEqual(res.returncode, 0)
+        output = (res.stdout + res.stderr).lower()
+        self.assertIn("error", output)
+
+    def test_no_base_default_scan_unchanged(self):
+        (self.repo / "tests" / "test_evil.py").write_text(
+            "def test_evil():\n    assert True\n"
+        )
+        res, report = self.run_mandela("--json")
+        self.assertEqual(res.returncode, 1)
+        self.assertEqual(report["verdict"], "REJECT")
+        self.assertTrue(
+            any(f["pattern"] == "TAUTOLOGICAL_ASSERTION" for f in report["findings"])
+        )
 
 
 if __name__ == "__main__":

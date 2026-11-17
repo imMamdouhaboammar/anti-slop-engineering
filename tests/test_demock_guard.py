@@ -5,10 +5,16 @@
 import json
 import os
 import shutil
+import subprocess
+import sys
 import tempfile
 import unittest
+from pathlib import Path
 
 from scripts.demock_guard import audit_paths, is_test_file, scan_file_content
+
+ROOT = Path(__file__).resolve().parents[1]
+SCRIPT = ROOT / "scripts" / "demock_guard.py"
 
 
 class DemockGuardTests(unittest.TestCase):
@@ -104,6 +110,62 @@ export async function authenticate(req: Request): Promise<UserSession> {
 """
         findings = scan_file_content("src/auth_clean.ts", clean_code)
         self.assertEqual(len(findings), 0)
+
+    def test_cli_invalid_base_fails_closed(self):
+        proc = subprocess.run(
+            [sys.executable, str(SCRIPT), "--base", "NOPE_INVALID_REF", "--json"],
+            cwd=ROOT, capture_output=True, text=True, check=False,
+        )
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("NOPE_INVALID_REF", proc.stdout + proc.stderr)
+
+    def test_cli_valid_base_empty_diff_scans_nothing(self):
+        repo = Path(self.temp_dir) / "repo"
+        repo.mkdir()
+        def git(*args):
+            subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, check=True)
+        git("init", "-q")
+        git("config", "user.name", "Test Committer")
+        git("config", "user.email", "test@example.com")
+        (repo / "service.py").write_text(
+            "from unittest.mock import MagicMock\nclient = MagicMock()\n", encoding="utf-8"
+        )
+        git("add", ".")
+        git("commit", "-qm", "feat: committed file with a test double")
+        proc = subprocess.run(
+            [sys.executable, str(SCRIPT), "--base", "HEAD", "--json"],
+            cwd=repo, capture_output=True, text=True, check=False,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        record = json.loads(proc.stdout)
+        self.assertEqual(record["verdict"], "PROCEED")
+        self.assertEqual(record["scanned_files"], 0)
+        self.assertEqual(record["findings_count"], 0)
+
+    def test_cli_base_matching_filename_scans_diff(self):
+        repo = Path(self.temp_dir) / "ambiguous_repo"
+        repo.mkdir()
+        def git(*args):
+            subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, check=True)
+        git("init", "-q", "-b", "main")
+        git("config", "user.name", "Test Committer")
+        git("config", "user.email", "test@example.com")
+        (repo / "main").write_text("binary placeholder\n", encoding="utf-8")
+        (repo / "service.py").write_text("def run():\n    return 1\n", encoding="utf-8")
+        git("add", ".")
+        git("commit", "-qm", "initial")
+        (repo / "service.py").write_text(
+            "from unittest.mock import MagicMock\ndef run():\n    return MagicMock()\n",
+            encoding="utf-8",
+        )
+        proc = subprocess.run(
+            [sys.executable, str(SCRIPT), "--base", "main", "--json"],
+            cwd=repo, capture_output=True, text=True, check=False,
+        )
+        self.assertEqual(proc.returncode, 1, proc.stdout + proc.stderr)
+        record = json.loads(proc.stdout)
+        self.assertEqual(record["verdict"], "REJECT")
+        self.assertEqual(record["scanned_files"], 1)
 
     def test_audit_paths_directory_scan(self):
         prod_file = os.path.join(self.temp_dir, "service.ts")

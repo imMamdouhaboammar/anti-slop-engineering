@@ -26,10 +26,11 @@ class ValidateSkillsTests(unittest.TestCase):
             (skill_dir / "SKILL.md").write_text(content, encoding="utf-8")
 
     def test_repository_skills_and_agents_pointers_pass_clean_checkout(self):
-        report = validate_skills.validate_repository(REPO_ROOT, strict_cli=False)
+        report = validate_skills.validate_repository(REPO_ROOT)
         self.assertTrue(report["ok"], report["errors"])
         self.assertEqual(report["skills_checked"], 46)
         self.assertEqual(report["errors"], [])
+        self.assertEqual(report["missing_cli_handlers"], [])
 
     def test_single_file_skill_without_optional_directories_passes(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -136,6 +137,33 @@ class ValidateSkillsTests(unittest.TestCase):
             )
             self.assertEqual(strict_proc.returncode, 1)
             payload = json.loads(strict_proc.stdout)
+            self.assertFalse(payload["ok"])
+            self.assertTrue(any("nonexistent-cmd" in err for err in payload["errors"]))
+
+    def test_cli_exits_nonzero_on_unrouted_command_by_default(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._build_fixture_repo(
+                root,
+                skills={
+                    "unrouted-skill": (
+                        "---\n"
+                        "name: unrouted-skill\n"
+                        "description: Advertises an unrouted CLI command.\n"
+                        "---\n"
+                        "Run `npx anti-slop-engineering nonexistent-cmd audit record.json`.\n"
+                    )
+                },
+                agents_md="",
+            )
+            proc = subprocess.run(
+                [sys.executable, str(REPO_ROOT / "scripts" / "validate_skills.py"), "--repo", str(root), "--json"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(proc.returncode, 1, proc.stdout)
+            payload = json.loads(proc.stdout)
             self.assertFalse(payload["ok"])
             self.assertTrue(any("nonexistent-cmd" in err for err in payload["errors"]))
 

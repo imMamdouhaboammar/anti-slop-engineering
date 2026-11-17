@@ -38,4 +38,4 @@ The fixture identifies one canonical owner for the observed error-swallow and bl
 | Deletion-only diff | Exits `0`, `sli.status == "PASSED"` | Exits `0`, `summary.total_findings == 0` | Shared |
 | Renamed, whitespace, & non-ASCII filenames | Handled without crash | Handled without crash | Shared |
 | SLI error budget (`error_budget_left`), `serve` HTTP daemon, `stream` | Enforced | Not implemented | Native-only (Go) |
-| `SCALE_MISLEADING_HEALTH_CHECK`, `in_active_diff` hunk annotation | Not implemented | Enforced | Fallback-only (Python) |
+| `SCALE_MISLEADING_HEALTH_CHECK`, `in_active_diff` hunk annotation, active-diff `--strict` scoping | Not implemented | Enforced | Fallback-only (Python) |

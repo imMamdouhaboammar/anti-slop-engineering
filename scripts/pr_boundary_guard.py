@@ -14,6 +14,7 @@ import os
 import re
 import subprocess
 import sys
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 # Conventional Commits regex pattern for commit subjects and PR titles
@@ -93,20 +94,22 @@ def is_detached_head(repo_root: Optional[str] = None) -> bool:
 
 
 def resolve_base_ref(base: str, repo_root: Optional[str] = None) -> str:
-    """Resolve base ref safely against local and remote references."""
+    """Resolve base ref against local and remote references.
+
+    Only the requested ref (or its ``origin/`` counterpart) may resolve;
+    an unresolvable base raises RuntimeError instead of silently
+    substituting a different ref.
+    """
     candidates = [base, f"origin/{base}"]
     for candidate in candidates:
-        code, _, _ = run_git(["rev-parse", "--verify", candidate], cwd=repo_root)
+        code, _, _ = run_git(
+            ["rev-parse", "--verify", "--end-of-options", f"{candidate}^{{commit}}"],
+            cwd=repo_root,
+        )
         if code == 0:
             return candidate
 
-    # Try merge-base with origin/main or origin/master if base is missing
-    for default_branch in ["origin/main", "origin/master", "HEAD~1"]:
-        code, _, _ = run_git(["rev-parse", "--verify", default_branch], cwd=repo_root)
-        if code == 0:
-            return default_branch
-
-    return "HEAD"
+    raise RuntimeError(f"Unresolvable base ref {base!r}: neither {base!r} nor 'origin/{base}' exists")
 
 
 def get_commit_list(base_ref: str, repo_root: Optional[str] = None) -> List[Dict[str, str]]:
@@ -118,7 +121,7 @@ def get_commit_list(base_ref: str, repo_root: Optional[str] = None) -> List[Dict
         log_range = [f"{base_ref}..HEAD"]
 
     code, out, _ = run_git(
-        ["log"] + log_range + ["--format=%H%x1f%an%x1f%ae%x1f%s%x1f%b%x1e"], cwd=repo_root
+        ["log"] + log_range + ["--format=%H%x1f%an%x1f%ae%x1f%s%x1f%b%x1e", "--"], cwd=repo_root
     )
     if code != 0 or not out:
         # Fallback to inspecting current HEAD commit
@@ -252,13 +255,13 @@ def audit_pr_boundary(
         })
 
     # 3. Path Fencing & Metadata Spam Checks
-    code, changed_files_out, _ = run_git(["diff", "--name-only", resolved_base, "HEAD"], cwd=repo_root)
+    code, changed_files_out, _ = run_git(["diff", "--name-only", resolved_base, "HEAD", "--"], cwd=repo_root)
     if code == 0 and changed_files_out:
         changed_files = [f.strip() for f in changed_files_out.splitlines() if f.strip()]
         metadata_paths = {"README.md", "LICENSE", "SECURITY.md", "CODE_OF_CONDUCT.md"}
         if all(os.path.basename(f) in metadata_paths for f in changed_files):
             # Check diff size
-            code, diff_numstat, _ = run_git(["diff", "--numstat", resolved_base, "HEAD"], cwd=repo_root)
+            code, diff_numstat, _ = run_git(["diff", "--numstat", resolved_base, "HEAD", "--"], cwd=repo_root)
             total_added = sum(
                 int(line.split()[0])
                 for line in diff_numstat.splitlines()
@@ -395,6 +398,31 @@ def audit_pr_boundary(
     }
 
 
+def is_exact_case_file(path_str: str) -> bool:
+    """Return True only when path_str is an existing regular file with exact on-disk casing."""
+    if not path_str or not os.path.isfile(path_str):
+        return False
+    path = Path(path_str)
+    cur = Path(path.anchor) if path.is_absolute() else Path(".")
+    for part in path.parts:
+        if part in ("", ".", path.anchor):
+            continue
+        if part == "..":
+            cur = cur / part
+            continue
+        try:
+            entries = os.listdir(cur)
+        except PermissionError:
+            cur = cur / part
+            continue
+        except OSError:
+            return False
+        if part not in entries:
+            return False
+        cur = cur / part
+    return True
+
+
 def main():
     parser = argparse.ArgumentParser(description="PR Boundary & Git Topology Guard")
     parser.add_argument("--base", default="HEAD", help="Base commit or branch to compare against")
@@ -409,23 +437,54 @@ def main():
     args = parser.parse_args()
 
     pr_body = None
-    if args.pr_body_file and os.path.exists(args.pr_body_file):
+    if args.pr_body_file and is_exact_case_file(args.pr_body_file):
         with open(args.pr_body_file, "r", encoding="utf-8") as f:
             pr_body = f.read()
 
     template_content = None
-    if args.template_file and os.path.exists(args.template_file):
+    template_missing = bool(args.template_file and not is_exact_case_file(args.template_file))
+    if args.template_file and not template_missing:
         with open(args.template_file, "r", encoding="utf-8") as f:
             template_content = f.read()
 
-    record = audit_pr_boundary(
-        base=args.base,
-        repo_root=args.repo,
-        pr_title=args.pr_title,
-        pr_body=pr_body,
-        template_content=template_content,
-        require_conventional=args.require_conventional,
-    )
+    try:
+        record = audit_pr_boundary(
+            base=args.base,
+            repo_root=args.repo,
+            pr_title=args.pr_title,
+            pr_body=pr_body,
+            template_content=template_content,
+            require_conventional=args.require_conventional,
+        )
+    except RuntimeError as exc:
+        if args.json:
+            print(json.dumps({"error": str(exc)}))
+        else:
+            print(f"ERROR: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+    if template_missing:
+        template_guidance = (
+            "Provide an existing PR template file path, or omit --template-file to skip template checks."
+        )
+        had_prior_findings = bool(record["findings"])
+        record["findings"].append({
+            "rule": "TEMPLATE_FILE_NOT_FOUND",
+            "severity": "blocker",
+            "message": f"Template file '{args.template_file}' does not exist or is not a regular file. Template checks cannot run.",
+            "evidence": f"template_file={args.template_file}",
+        })
+        record["status"] = 400
+        if not had_prior_findings:
+            record["code"] = "ERR_TEMPLATE_FILE_NOT_FOUND"
+            record["remediation"]["guidance"] = template_guidance
+        else:
+            record["remediation"]["guidance"] = (
+                f"{record['remediation']['guidance']} {template_guidance}"
+            )
+        record["detail"] = (
+            f"Found {len(record['findings'])} boundary findings across git topology and metadata."
+        )
 
     if args.json:
         print(json.dumps(record, indent=2))
@@ -440,6 +499,9 @@ def main():
         else:
             print("  ✅ All PR boundary and Git topology checks passed clean.")
 
+    if template_missing:
+        print(f"Error: Template file '{args.template_file}' not found.", file=sys.stderr)
+        sys.exit(2)
     if args.fail_on_blocker and any(f["severity"] == "blocker" for f in record["findings"]):
         sys.exit(2)
     sys.exit(0)

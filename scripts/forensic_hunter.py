@@ -728,6 +728,8 @@ def collect_files(paths: Sequence[str]) -> List[str]:
                 dirs[:] = [d for d in dirs if d not in ignored_dirs]
                 for f in files:
                     collected.append(os.path.join(root, f))
+        else:
+            raise FileNotFoundError(f"input path does not exist: {raw}")
     return sorted(set(collected))
 
 
@@ -832,7 +834,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         else:
             all_findings = _scan_git_diff_targets(args.base, allowed_stacks)
     except Exception as exc:
-        sys.stderr.write(f"[FORENSIC-HUNTER ERROR] {exc}\n")
+        if args.json:
+            print(json.dumps({"error": str(exc)}))
+        else:
+            print(f"ERROR: {exc}", file=sys.stderr)
         return 1
 
     _, counts = _render_report(all_findings, args.json)

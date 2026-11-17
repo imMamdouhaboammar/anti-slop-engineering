@@ -13,10 +13,16 @@ import argparse
 import datetime
 import json
 import os
+import pathlib
 import re
 import subprocess
 import sys
 from typing import Any, Dict, List, Optional, Set, Tuple
+
+if not __package__:
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+
+from scripts.git_changeset import validate_base_ref
 
 # Patterns to identify test directories and files that are exempt from demock checks
 TEST_PATH_PATTERNS = [
@@ -65,43 +71,33 @@ def is_test_file(path: str) -> bool:
     return False
 
 
-def _base_ref_resolves(base_ref: str) -> bool:
-    """True when base_ref names a commit git can resolve."""
-    try:
-        proc = subprocess.run(
-            ["git", "rev-parse", "--verify", "--quiet", f"{base_ref}^{{commit}}"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-        )
-        return proc.returncode == 0
-    except Exception:
-        return False
-
-
 def get_git_diff_files(base_ref: str = "HEAD") -> List[Tuple[str, str]]:
     """Returns list of (filepath, status) modified relative to base_ref."""
+    base_id = validate_base_ref(".", base_ref)
     try:
         res = subprocess.run(
-            ["git", "diff", "--name-status", base_ref],
+            ["git", "diff", "--name-status", base_id, "--"],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
-            check=True,
+            check=False,
         )
-        files = []
-        for line in res.stdout.splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            parts = line.split(maxsplit=1)
-            if len(parts) == 2:
-                status, path = parts[0], parts[1]
-                if status != "D":  # Exclude deleted files
-                    files.append((path, status))
-        return files
-    except Exception:
-        return []
+    except OSError as exc:
+        raise RuntimeError(f"Git diff failed for base ref {base_ref!r}: {exc}") from exc
+    if res.returncode != 0:
+        detail = res.stderr.strip() or f"Git exited {res.returncode}"
+        raise RuntimeError(f"Git diff failed for base ref {base_ref!r}: {detail}")
+    files = []
+    for line in res.stdout.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        parts = line.split(maxsplit=1)
+        if len(parts) == 2:
+            status, path = parts[0], parts[1]
+            if status != "D":  # Exclude deleted files
+                files.append((path, status))
+    return files
 
 
 def _literal_spans(content: str) -> List[Tuple[int, int]]:
@@ -295,30 +291,21 @@ def main() -> int:
     args = parser.parse_args()
 
     targets = list(args.paths)
-    explicit_base = args.base is not None
-    if explicit_base or not targets:
-        base_ref = args.base if explicit_base else "HEAD"
-        if explicit_base and not _base_ref_resolves(base_ref):
-            message = f"Invalid base ref: {base_ref}"
+    diff_mode = args.base is not None or not targets
+    if diff_mode:
+        base_ref = args.base if args.base is not None else "HEAD"
+        try:
+            diff_files = get_git_diff_files(base_ref)
+        except RuntimeError as exc:
             if args.json:
-                print(json.dumps({"error": message}))
+                print(json.dumps({"error": str(exc)}))
             else:
-                print(f"\n🎭 DEMOCK GUARD AUDIT: ERROR — {message}")
+                print(f"ERROR: {exc}", file=sys.stderr)
             return 1
-        diff_files = get_git_diff_files(base_ref)
         targets.extend([f for f, _ in diff_files])
 
-    if not targets and not explicit_base:
-        # Default to scanning src/ or current dir. Standalone use only:
-        # an explicit --base with an empty diff means nothing changed,
-        # not "scan the whole repository".
-        if os.path.isdir("src"):
-            targets = ["src"]
-        elif os.path.isdir("lib"):
-            targets = ["lib"]
-        else:
-            targets = ["."]
-
+    # In diff mode an empty (valid) diff means there is nothing to scan:
+    # never fall back to scanning src/, lib/ or the whole working tree.
     record = audit_paths(targets, strict=args.strict)
 
     if args.json:
