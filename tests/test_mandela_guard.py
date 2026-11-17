@@ -178,6 +178,17 @@ class MandelaStringLiteralTests(unittest.TestCase):
         findings = scan_test_file_content("evals/prompt_eval.py", content)
         self.assertTrue(any(f["pattern"] == "FRAME_INJECTION_EVAL" for f in findings))
 
+    def test_escaped_triple_quote_and_same_line_shadowing_and_crlf(self):
+        content = (
+            'FIXTURE = """prefix \\""" assert True suffix"""\r\n'
+            'def test_real():\r\n'
+            '    msg = "assert True"; assert True\r\n'
+        )
+        findings = scan_test_file_content("tests/test_crlf.py", content)
+        tautologies = [f for f in findings if f["pattern"] == "TAUTOLOGICAL_ASSERTION"]
+        self.assertEqual(len(tautologies), 1)
+        self.assertEqual(tautologies[0]["line"], 3)
+
 
 if __name__ == "__main__":
     unittest.main()

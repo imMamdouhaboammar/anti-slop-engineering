@@ -65,8 +65,16 @@ def _literal_spans(content: str) -> List[Tuple[int, int]]:
         ch = content[i]
         if ch in ("'", '"', "`"):
             if content.startswith(ch * 3, i):
-                close = content.find(ch * 3, i + 3)
-                end = n if close == -1 else close + 3
+                delim = ch * 3
+                j = i + 3
+                while j < n:
+                    if content[j] == "\\":
+                        j += 2
+                        continue
+                    if content.startswith(delim, j):
+                        break
+                    j += 1
+                end = j + 3 if j < n else n
             else:
                 j = i + 1
                 while j < n:
@@ -99,24 +107,25 @@ def scan_test_file_content(path: str, content: str) -> List[Dict[str, Any]]:
     spans = _literal_spans(content)
     line_offsets: List[int] = []
     _pos = 0
-    for _line in lines:
+    for _raw_line in content.splitlines(keepends=True):
         line_offsets.append(_pos)
-        _pos += len(_line) + 1
+        _pos += len(_raw_line)
 
     # 1. Tautological assertions
     for line_idx, line in enumerate(lines, start=1):
         for pattern, desc in TAUTOLOGY_PATTERNS:
-            match = pattern.search(line)
-            if match and not _inside_spans(line_offsets[line_idx - 1] + match.start(), spans):
-                findings.append({
-                    "id": f"MANDELA-TAUT-{len(findings)+1:03d}",
-                    "file": path,
-                    "line": line_idx,
-                    "pattern": "TAUTOLOGICAL_ASSERTION",
-                    "severity": "BLOCKING",
-                    "evidence": line.strip(),
-                    "independence_fix": f"Replace tautological assertion ({desc}) with validation against external ground truth or real computed result."
-                })
+            for match in pattern.finditer(line):
+                if not _inside_spans(line_offsets[line_idx - 1] + match.start(), spans):
+                    findings.append({
+                        "id": f"MANDELA-TAUT-{len(findings)+1:03d}",
+                        "file": path,
+                        "line": line_idx,
+                        "pattern": "TAUTOLOGICAL_ASSERTION",
+                        "severity": "BLOCKING",
+                        "evidence": line.strip(),
+                        "independence_fix": f"Replace tautological assertion ({desc}) with validation against external ground truth or real computed result."
+                    })
+                    break
 
     # 2. Swallowed failures
     for pattern, desc in SWALLOWED_TEST_PATTERNS:

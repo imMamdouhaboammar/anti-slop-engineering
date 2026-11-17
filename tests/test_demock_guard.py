@@ -140,6 +140,16 @@ class DemockStringLiteralTests(unittest.TestCase):
         findings = scan_file_content("src/service.py", py_code)
         self.assertEqual(findings, [])
 
+    def test_escaped_triple_quote_and_same_line_shadowing_and_crlf(self):
+        py_code = (
+            'DOC = """prefix \\""" client = MagicMock() suffix"""\r\n'
+            'MSG = "MagicMock("; client = MagicMock()\r\n'
+        )
+        findings = scan_file_content("src/service.py", py_code)
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0]["class"], "TEST_DOUBLE_IN_PROD")
+        self.assertEqual(findings[0]["line"], 2)
+
 
 class DemockBaseModeTests(unittest.TestCase):
     """An explicit --base with an empty diff means "nothing changed",
