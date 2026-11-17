@@ -37,6 +37,51 @@ class DiffGuardTests(unittest.TestCase):
         result = subprocess.run([sys.executable, str(SCRIPT), '--repo', str(self.repo), '--base', 'HEAD', '--json', *extra], text=True, capture_output=True)
         return result, json.loads(result.stdout) if result.stdout.strip().startswith('{') else None
 
+    def test_flags_flat_retry_multiline_body(self):
+        (self.repo / 'src' / 'calc.py').write_text(
+            "import time\n"
+            "\n"
+            "def fetch(load):\n"
+            "    for attempt in range(5):\n"
+            "        if load():\n"
+            "            return True\n"
+            "        time.sleep(2)\n"
+            "    return False\n"
+        )
+        git(self.repo, 'add', 'src/calc.py')
+        result, report = self.check()
+        self.assertEqual(result.returncode, 0)
+        self.assertIn('SRE_SCALE_FLAT_RETRY', [x['id'] for x in report['findings']])
+
+    def test_does_not_flag_multiline_backoff_with_jitter(self):
+        (self.repo / 'src' / 'calc.py').write_text(
+            "import time\n"
+            "\n"
+            "def fetch(load, jitter):\n"
+            "    for attempt in range(5):\n"
+            "        if load():\n"
+            "            return True\n"
+            "        time.sleep(jitter(2 ** attempt))\n"
+            "    return False\n"
+        )
+        git(self.repo, 'add', 'src/calc.py')
+        result, report = self.check()
+        self.assertEqual(result.returncode, 0)
+        self.assertNotIn('SRE_SCALE_FLAT_RETRY', [x['id'] for x in report['findings']])
+
+    def test_flat_retry_marks_changed_sleep_in_an_existing_loop(self):
+        target = self.repo / 'src/calc.py'
+        source = 'import time\nwhile attempt < 5:\n    run()\n    time.sleep(next_delay())\n'
+        target.write_text(source)
+        git(self.repo, 'add', 'src/calc.py')
+        git(self.repo, 'commit', '-qm', 'existing retry loop')
+        target.write_text(source.replace('next_delay()', '2'))
+
+        result, report = self.check()
+        hits = [f for f in report['findings'] if f['id'] == 'SRE_SCALE_FLAT_RETRY']
+        self.assertEqual([hit['line'] for hit in hits], [4])
+        self.assertEqual(result.returncode, 0)
+
     def test_flags_existing_test_modification_without_blocking_it(self):
         (self.repo / 'tests' / 'test_calc.py').write_text('def test_value():\n    assert value() == 2\n')
         result, report = self.check()
@@ -75,11 +120,15 @@ class DiffGuardTests(unittest.TestCase):
         self.assertEqual(report['summary']['changed_files'], 0)
 
     def test_documentation_files_are_excluded_from_code_pattern_matching(self):
-        (self.repo / 'README.md').write_text('# Guide\nNever use verify=False or assert True in production.\n')
+        (self.repo / 'README.md').write_text(
+            '# Guide\nNever use verify=False or assert True in production.\n'
+            '~~~python\nfor attempt in range(5):\n    time.sleep(2)\n~~~\n'
+        )
         git(self.repo, 'add', 'README.md')
         _, report = self.check()
         self.assertEqual(report['summary']['changed_files'], 1)
         self.assertEqual(report['findings'], [])
+        self.assertNotIn('SRE_SCALE_FLAT_RETRY', {x['id'] for x in report['findings']})
 
     def test_issue_template_files_are_excluded_from_code_pattern_matching(self):
         tmpl_dir = self.repo / '.github' / 'ISSUE_TEMPLATE'

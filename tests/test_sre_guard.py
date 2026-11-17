@@ -45,6 +45,71 @@ class SreGuardTests(unittest.TestCase):
             report = json.loads(res.stdout)
         return res, report
 
+    def test_flags_scale_flat_retry_multiline_body(self):
+        (self.repo / 'src' / 'retry.py').write_text(
+            "import time\n"
+            "\n"
+            "def fetch(load):\n"
+            "    for attempt in range(5):\n"
+            "        if load():\n"
+            "            return True\n"
+            "        time.sleep(2)\n"
+            "    return False\n"
+        )
+        git(self.repo, 'add', 'src/retry.py')
+        res, report = self.run_sre('--base', 'HEAD', '--json', '--strict')
+        self.assertEqual(res.returncode, 2)
+        finding_ids = [f['id'] for f in report['findings']]
+        self.assertIn('SCALE_UNBOUNDED_OR_FLAT_RETRY', finding_ids)
+
+    def test_flags_scale_flat_retry_counted_while(self):
+        (self.repo / 'src' / 'retry.py').write_text(
+            "import time\n"
+            "\n"
+            "def fetch(load):\n"
+            "    attempt = 0\n"
+            "    while attempt < 5:\n"
+            "        if load():\n"
+            "            return True\n"
+            "        time.sleep(2)\n"
+            "        attempt += 1\n"
+            "    return False\n"
+        )
+        git(self.repo, 'add', 'src/retry.py')
+        res, report = self.run_sre('--base', 'HEAD', '--json')
+        finding_ids = [f['id'] for f in report['findings']]
+        self.assertIn('SCALE_UNBOUNDED_OR_FLAT_RETRY', finding_ids)
+
+    def test_does_not_flag_multiline_backoff_with_jitter(self):
+        (self.repo / 'src' / 'retry.py').write_text(
+            "import time\n"
+            "\n"
+            "def fetch(load, jitter):\n"
+            "    for attempt in range(5):\n"
+            "        if load():\n"
+            "            return True\n"
+            "        time.sleep(jitter(2 ** attempt))\n"
+            "    return False\n"
+        )
+        git(self.repo, 'add', 'src/retry.py')
+        res, report = self.run_sre('--base', 'HEAD', '--json')
+        finding_ids = [f['id'] for f in report['findings']]
+        self.assertNotIn('SCALE_UNBOUNDED_OR_FLAT_RETRY', finding_ids)
+
+    def test_flat_retry_marks_changed_sleep_in_an_existing_loop(self):
+        target = self.repo / 'src/worker.py'
+        source = 'import time\nwhile attempt < 5:\n    run()\n    time.sleep(next_delay())\n'
+        target.write_text(source)
+        git(self.repo, 'add', 'src/worker.py')
+        git(self.repo, 'commit', '-qm', 'existing retry loop')
+        target.write_text(source.replace('next_delay()', '2'))
+
+        result, report = self.run_sre('--base', 'HEAD', '--json', '--strict')
+        hits = [f for f in report['findings'] if f['id'] == 'SCALE_UNBOUNDED_OR_FLAT_RETRY']
+        self.assertEqual([hit['line'] for hit in hits], [4])
+        self.assertEqual(result.returncode, 2)
+        self.assertTrue(hits[0]['in_active_diff'])
+
     def test_flags_kiss_deep_nesting(self):
         code = (
             "def deeply_nested(a, b, c, d, e):\n"

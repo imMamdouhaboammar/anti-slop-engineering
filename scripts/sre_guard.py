@@ -26,6 +26,7 @@ if not __package__:
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 from scripts.git_changeset import collect_changes, repository_root
+from scripts.retry_heuristics import INLINE_FLAT_RETRY, flat_retry_lines
 
 __version__ = '1.8.0'
 
@@ -85,7 +86,7 @@ SRE_PATTERNS = [
         'SCALE',
         'SCALE_UNBOUNDED_OR_FLAT_RETRY',
         'blocker',
-        sre_compile.compile(r'(?i)(?:while\s+True\s*:|while\s*\(\s*true\s*\)|for\s+(?:attempt|retry|i)\s+in\s+range\s*\(\s*\d+\s*\):).*(?:sleep\s*\(\s*[1-9]\d*\s*\))'),
+        sre_compile.compile(INLINE_FLAT_RETRY),
         'SCALE violation: Flat retry without exponential backoff and jitter detected. Under service degradation, flat retries trigger thundering herds and retry storms. Implement exponential backoff with full jitter.'
     ),
     # SCALE: Unbounded concurrency / missing backpressure
@@ -282,7 +283,11 @@ def add_finding(findings, seen, category, key, severity, file_path, line_idx, ev
         })
 
 
-def scan_file_sre(file_path, content, max_nesting=4, max_function_lines=80, is_test_file=False):
+def in_changed_hunks(line, hunks):
+    return any(hunk["new_start"] <= line < hunk["new_start"] + hunk["new_count"] for hunk in hunks)
+
+
+def scan_file_sre(file_path, content, max_nesting=4, max_function_lines=80, is_test_file=False, *, changed_hunks=()):
     """Scan a single file for SRE violations."""
     if is_test_file:
         return []
@@ -319,6 +324,14 @@ def scan_file_sre(file_path, content, max_nesting=4, max_function_lines=80, is_t
                     'SCALE violation: Static health check detected without dependency probe. Distinguish liveness from readiness, and verify critical dependencies before returning ready status.'
                 )
 
+    for header, sleep in flat_retry_lines(lines):
+        line = sleep if in_changed_hunks(sleep, changed_hunks) and not in_changed_hunks(header, changed_hunks) else header
+        add_finding(
+            findings, seen, 'SCALE', 'SCALE_UNBOUNDED_OR_FLAT_RETRY', 'blocker',
+            file_path, line, f"{lines[header - 1].strip()} -> {lines[sleep - 1].strip()}"[:180],
+            'SCALE violation: Replace the fixed sleep in the retry loop with bounded backoff and jitter.'
+        )
+
     nesting_violations = check_kiss_nesting(content, max_nesting=max_nesting)
     for line_idx, depth, snippet in nesting_violations:
         add_finding(
@@ -338,7 +351,7 @@ def scan_file_sre(file_path, content, max_nesting=4, max_function_lines=80, is_t
     return findings
 
 
-def scan_contents_map(file_contents, max_nesting=4, min_dup_lines=4, max_function_lines=80):
+def scan_contents_map(file_contents, max_nesting=4, min_dup_lines=4, max_function_lines=80, *, changed_hunks=None):
     """Scan in-memory file contents mapping for SRE violations."""
     findings = []
     for f, content in file_contents.items():
@@ -347,7 +360,8 @@ def scan_contents_map(file_contents, max_nesting=4, min_dup_lines=4, max_functio
             f, content,
             max_nesting=max_nesting,
             max_function_lines=max_function_lines,
-            is_test_file=is_test
+            is_test_file=is_test,
+            changed_hunks=changed_hunks.get(f, ()) if changed_hunks else (),
         ))
     findings.extend(check_dry_duplication(file_contents, min_dup_lines=min_dup_lines))
     return findings
@@ -413,13 +427,10 @@ def scan_git_diff(repo, base='HEAD', max_nesting=4, min_dup_lines=4, max_functio
             file_contents[name] = content
             changed_hunks[name] = change["hunks"]
 
-    findings = scan_contents_map(file_contents, max_nesting, min_dup_lines, max_function_lines)
+    findings = scan_contents_map(file_contents, max_nesting, min_dup_lines, max_function_lines, changed_hunks=changed_hunks)
     for finding in findings:
         line = finding.get("line")
-        finding["in_active_diff"] = bool(line and any(
-            hunk["new_start"] <= line < hunk["new_start"] + hunk["new_count"]
-            for hunk in changed_hunks.get(finding.get("file"), ())
-        ))
+        finding["in_active_diff"] = bool(line and in_changed_hunks(line, changed_hunks.get(finding.get("file"), ())))
     return build_sre_summary(len(file_contents), findings, base=base)
 
 
