@@ -71,3 +71,228 @@ diff --git a/worker.py b/worker.py
     assert_eq!(findings[0].category, ViolationCategory::HypotheticalHardening);
     assert_eq!(findings[0].code, "STS-H02");
 }
+
+fn swallow_findings(diff: &str) -> Vec<usize> {
+    let interceptor = ShitInterceptor::new();
+    interceptor
+        .audit_diff(diff, None, false)
+        .iter()
+        .filter(|f| f.code == "STS-H02")
+        .map(|f| f.line)
+        .collect()
+}
+
+#[test]
+fn test_multiline_python_error_swallowing() {
+    let diff = r#"
+diff --git a/job.py b/job.py
+--- a/job.py
++++ b/job.py
+@@ -1 +1,5 @@
++try:
++    run()
++except Exception:
++    pass
+ finish()
+"#;
+    assert_eq!(swallow_findings(diff), vec![3]);
+}
+
+#[test]
+fn test_multiline_js_catch_error_swallowing() {
+    let diff = r#"
+diff --git a/app.ts b/app.ts
+--- a/app.ts
++++ b/app.ts
+@@ -1,4 +1,6 @@
++try {
++    invoke();
++} catch (err) {
++}
+"#;
+    assert_eq!(swallow_findings(diff), vec![3]);
+}
+
+#[test]
+fn test_multiline_nonempty_catch_not_flagged() {
+    let diff = r#"
+diff --git a/app.ts b/app.ts
+--- a/app.ts
++++ b/app.ts
+@@ -1,4 +1,6 @@
++try {
++    invoke();
++} catch (err) {
++    console.error(err);
++}
+"#;
+    assert!(swallow_findings(diff).is_empty());
+}
+
+#[test]
+fn test_multiline_python_nonempty_suite_not_flagged() {
+    let diff = r#"
+diff --git a/job.py b/job.py
+--- a/job.py
++++ b/job.py
+@@ -1 +1,5 @@
++try:
++    run()
++except Exception:
++    log_failure()
+ finish()
+"#;
+    assert!(swallow_findings(diff).is_empty());
+}
+
+#[test]
+fn test_python_except_replacement_flagged() {
+    let diff = "diff --git a/worker.py b/worker.py\n--- a/worker.py\n+++ b/worker.py\n@@ -1,5 +1,5 @@\n try:\n     run()\n except RuntimeError:\n-    report()\n+    pass\n finish()\n";
+    assert_eq!(swallow_findings(diff), vec![4]);
+}
+
+#[test]
+fn test_template_literal_catch_skeleton_not_flagged() {
+    let diff = r#"
+diff --git a/tpl.ts b/tpl.ts
+--- a/tpl.ts
++++ b/tpl.ts
+@@ -1 +1,5 @@
++const tpl = `
++} catch (e) {
++}
++`;
+ finish();
+"#;
+    assert!(swallow_findings(diff).is_empty());
+
+    let nested = r#"
+diff --git a/tpl.ts b/tpl.ts
+--- a/tpl.ts
++++ b/tpl.ts
+@@ -1 +1,6 @@
++const tpl = `outer ${`
++try { run(); } catch (e) {
++}
++`} tail ${`{`}`;
++try { real(); } catch (e) {
++}
+"#;
+    assert_eq!(swallow_findings(nested), vec![5]);
+}
+
+#[test]
+fn test_python_triple_quoted_string_not_flagged() {
+    let diff = r#"
+diff --git a/doc.py b/doc.py
+--- a/doc.py
++++ b/doc.py
+@@ -1 +1,5 @@
++message = """
++except Exception:
++    pass
++"""
+ finish()
+"#;
+    assert!(swallow_findings(diff).is_empty());
+}
+
+#[test]
+fn test_catch_with_reason_comment_not_flagged() {
+    let diff = r#"
+diff --git a/app.ts b/app.ts
+--- a/app.ts
++++ b/app.ts
+@@ -1,4 +1,6 @@
++try {
++    invoke();
++} catch (err) {
++    // intentional: best-effort cleanup
++}
+"#;
+    assert!(swallow_findings(diff).is_empty());
+}
+
+#[test]
+fn test_hunk_ending_at_pass_not_flagged() {
+    // Conservative boundary: the suite may continue past the hunk, so a
+    // hunk that ends exactly at the `pass` line is not flagged.
+    let diff = r#"
+diff --git a/job.py b/job.py
+--- a/job.py
++++ b/job.py
+@@ -0,0 +1,4 @@
++try:
++    run()
++except Exception:
++    pass
+"#;
+    assert!(swallow_findings(diff).is_empty());
+}
+
+#[test]
+fn test_catch_opening_line_and_block_comment_reasons_not_flagged() {
+    let opening_line = r#"
+diff --git a/app.ts b/app.ts
+--- a/app.ts
++++ b/app.ts
+@@ -1,4 +1,5 @@
++try {
++    invoke();
++} catch (err) { // intentional
++}
+"#;
+    assert!(swallow_findings(opening_line).is_empty());
+
+    let inline_block = r#"
+diff --git a/app.ts b/app.ts
+--- a/app.ts
++++ b/app.ts
+@@ -1,4 +1,4 @@
++try {
++    invoke();
++} catch (err) { /* intentional */ }
+"#;
+    assert!(swallow_findings(inline_block).is_empty());
+
+    let multiline_block = r#"
+diff --git a/app.ts b/app.ts
+--- a/app.ts
++++ b/app.ts
+@@ -1,4 +1,8 @@
++try {
++    invoke();
++} catch (err) {
++/*
++ * intentional: best-effort cleanup
++ */
++}
+"#;
+    assert!(swallow_findings(multiline_block).is_empty());
+}
+
+#[test]
+fn test_comment_outside_catch_block_does_not_exempt_empty_handler() {
+    let before_catch = r#"
+diff --git a/app.ts b/app.ts
+--- a/app.ts
++++ b/app.ts
+@@ -1,4 +1,5 @@
++try {
++    invoke();
++/* intentional */ } catch (err) {
++}
+"#;
+    assert_eq!(swallow_findings(before_catch), vec![3]);
+
+    let unrelated_block = r#"
+diff --git a/app.ts b/app.ts
+--- a/app.ts
++++ b/app.ts
+@@ -1,4 +1,4 @@
++try {
++    invoke();
++} catch (err) { /* todo */ }
+"#;
+    assert_eq!(swallow_findings(unrelated_block), vec![3]);
+}

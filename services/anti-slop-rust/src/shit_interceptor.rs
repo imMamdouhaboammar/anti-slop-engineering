@@ -64,6 +64,15 @@ pub struct ShitInterceptor {
     re_companion_hash: Regex,
     re_swallow_error: Regex,
     re_hypothetical_wrapper: Regex,
+    re_py_except: Regex,
+    re_catch_open: Regex,
+    re_ignore_reason: Regex,
+}
+
+struct HunkLine {
+    line_no: usize,
+    kind: u8,
+    text: String,
 }
 
 impl Default for ShitInterceptor {
@@ -90,6 +99,12 @@ impl ShitInterceptor {
                 r#"(?i)class\s+(?:Base|Abstract|Generic)\w+(?:Adapter|Provider|Factory|Service)\b"#,
             )
             .unwrap(),
+            re_py_except: Regex::new(r#"^(\s*)except\b[^:]*:\s*$"#).unwrap(),
+            re_catch_open: Regex::new(r#"\}\s*catch\b(?:\s*\([^)]*\))?\s*\{"#).unwrap(),
+            re_ignore_reason: Regex::new(
+                r#"(?i)\b(?:expected|intentional|deliberate|by design|safe to ignore|fallback|no-?op)\b"#,
+            )
+            .unwrap(),
         }
     }
 
@@ -105,9 +120,13 @@ impl ShitInterceptor {
         let mut line_no = 0;
         let mut in_hunk = false;
         let mut metadata = MetadataChange::default();
+        let mut hunk: Vec<HunkLine> = Vec::new();
+        let mut hunk_file = String::new();
 
         for line in diff_text.lines() {
             if is_git_file_header(line) {
+                self.flush_hunk(&mut findings, &hunk_file, &hunk);
+                hunk = Vec::new();
                 metadata.record(&mut findings, &paths, allowed_files, read_only_intent);
                 paths.update(line);
                 line_no = 0;
@@ -121,6 +140,9 @@ impl ShitInterceptor {
                 metadata.transfer |= is_transfer(line);
             }
             if let Some(l) = extract_hunk_line(line) {
+                self.flush_hunk(&mut findings, &hunk_file, &hunk);
+                hunk = Vec::new();
+                hunk_file = paths.target().to_string();
                 line_no = l;
                 in_hunk = true;
                 continue;
@@ -149,14 +171,148 @@ impl ShitInterceptor {
                 findings.append(&mut line_findings);
             }
 
+            if line.starts_with('+') || line.starts_with(' ') || line.starts_with('-') {
+                hunk.push(HunkLine {
+                    line_no,
+                    kind: line.as_bytes()[0],
+                    text: line[1..].to_string(),
+                });
+            }
+
             if line.starts_with('+') || line.starts_with(' ') {
                 line_no += 1;
             }
         }
 
+        self.flush_hunk(&mut findings, &hunk_file, &hunk);
         metadata.record(&mut findings, &paths, allowed_files, read_only_intent);
 
         findings
+    }
+
+    fn flush_hunk(&self, findings: &mut Vec<Finding>, file: &str, hunk: &[HunkLine]) {
+        // A mid-file hunk cannot establish whether it begins inside a literal.
+        if hunk.first().is_none_or(|line| line.line_no > 1) || file.is_empty() {
+            return;
+        }
+        for finding in self.audit_hunk_multiline(file, hunk) {
+            let duplicate = findings.iter().any(|existing| {
+                existing.code == finding.code
+                    && existing.file == finding.file
+                    && existing.line == finding.line
+            });
+            if !duplicate {
+                findings.push(finding);
+            }
+        }
+    }
+
+    /// Detect empty error handlers that a formatter split across lines,
+    /// which the per-line swallow regex in audit_added_code cannot see.
+    fn audit_hunk_multiline(&self, file: &str, hunk: &[HunkLine]) -> Vec<Finding> {
+        if is_doc_file(file) || is_test_file(file) {
+            return Vec::new();
+        }
+        let (code, comments) = hunk_code_views(file, hunk);
+        if file.ends_with(".py") {
+            return self.python_hunk_swallows(file, hunk, &code, &comments);
+        }
+        let mut findings = Vec::new();
+        for (idx, hl) in hunk.iter().enumerate() {
+            if hl.kind == b'-' {
+                continue;
+            }
+            let Some(m) = self.re_catch_open.find(&code[idx]) else {
+                continue;
+            };
+            let brace_char = code[idx][..m.end() - 1].chars().count();
+            if brace_block_is_empty(
+                hunk,
+                &code,
+                &comments,
+                idx,
+                brace_char,
+                &self.re_ignore_reason,
+            ) {
+                findings.push(swallow_finding(file, hl.line_no));
+            }
+        }
+        findings
+    }
+
+    fn python_hunk_swallows(
+        &self,
+        file: &str,
+        hunk: &[HunkLine],
+        code: &[String],
+        comments: &[Vec<(usize, String)>],
+    ) -> Vec<Finding> {
+        let mut findings = Vec::new();
+        for (idx, hl) in hunk.iter().enumerate() {
+            if hl.kind == b'-' {
+                continue;
+            }
+            let Some(caps) = self.re_py_except.captures(&code[idx]) else {
+                continue;
+            };
+            if let Some(line) = self.python_suite_swallow(hunk, code, comments, idx, caps[1].len())
+            {
+                findings.push(swallow_finding(file, line));
+            }
+        }
+        findings
+    }
+
+    /// Returns the line to flag when the except suite after hunk index
+    /// `idx` contains only no-op statements. A suite counts as closed
+    /// only when a dedented line appears inside the hunk; a hunk that
+    /// ends mid-suite stays unflagged because the suite may continue
+    /// past the diff.
+    fn python_suite_swallow(
+        &self,
+        hunk: &[HunkLine],
+        code: &[String],
+        comments: &[Vec<(usize, String)>],
+        idx: usize,
+        indent: usize,
+    ) -> Option<usize> {
+        let mut noop = false;
+        let mut first_added_noop = None;
+        let mut removed_code = false;
+        let mut reason = has_ignore_reason(&comments[idx], &self.re_ignore_reason);
+        for (j, hl) in hunk.iter().enumerate().skip(idx + 1) {
+            if hl.kind == b'-' {
+                removed_code |= indent_width(&hl.text) > indent && !hl.text.trim().is_empty();
+                continue;
+            }
+            let trimmed = code[j].trim();
+            if trimmed.is_empty() {
+                if indent_width(&code[j]) > indent {
+                    reason |= has_ignore_reason(&comments[j], &self.re_ignore_reason);
+                }
+                continue;
+            }
+            if indent_width(&code[j]) <= indent {
+                if noop && !reason {
+                    return if hunk[idx].kind == b'+' {
+                        Some(hunk[idx].line_no)
+                    } else {
+                        first_added_noop.or_else(|| removed_code.then_some(hunk[idx].line_no))
+                    };
+                }
+                return None;
+            }
+            reason |= has_ignore_reason(&comments[j], &self.re_ignore_reason);
+            if trimmed == "pass" || trimmed == "..." {
+                noop = true;
+                if hl.kind == b'+' && first_added_noop.is_none() {
+                    first_added_noop = Some(hl.line_no);
+                }
+            } else {
+                return None;
+            }
+        }
+        None
     }
 
     fn audit_added_code(&self, file: &str, line_no: usize, code: &str) -> Vec<Finding> {
@@ -299,6 +455,273 @@ fn check_scope_creep(
         })
     } else {
         None
+    }
+}
+
+fn skip_quoted(chars: &[char], start: usize) -> usize {
+    let quote = chars[start];
+    let mut index = start + 1;
+    while let Some(&c) = chars.get(index) {
+        index += 1;
+        if c == quote {
+            break;
+        }
+        if c == '\\' {
+            index += 1;
+        }
+    }
+    index
+}
+
+fn indent_width(code_line: &str) -> usize {
+    code_line
+        .chars()
+        .take_while(|c| *c == ' ' || *c == '\t')
+        .count()
+}
+
+fn has_ignore_reason(comments: &[(usize, String)], re_ignore_reason: &Regex) -> bool {
+    comments
+        .iter()
+        .any(|(_, text)| re_ignore_reason.is_match(text))
+}
+
+/// Reports whether the brace block opening at `brace_char` in
+/// code[start] contains no code before its matching close brace and no
+/// documented ignore reason in its comments.
+fn brace_block_is_empty(
+    hunk: &[HunkLine],
+    code: &[String],
+    comments: &[Vec<(usize, String)>],
+    start: usize,
+    brace_char: usize,
+    re_ignore_reason: &Regex,
+) -> bool {
+    let mut depth = 0usize;
+    let mut empty = true;
+    let mut changed = hunk[start].kind == b'+';
+    for (i, hl) in hunk.iter().enumerate().skip(start) {
+        if hl.kind == b'-' {
+            changed |= !hl.text.trim().is_empty();
+            continue;
+        }
+        let min_col = if i == start { brace_char } else { 0 };
+        let mut max_col = usize::MAX;
+        let mut closed = false;
+        for (j, c) in code[i].chars().enumerate() {
+            if i == start && j < brace_char {
+                continue;
+            }
+            match c {
+                '{' => depth += 1,
+                '}' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        max_col = j;
+                        closed = true;
+                        break;
+                    }
+                }
+                _ => {
+                    if depth > 0 && !c.is_whitespace() {
+                        empty = false;
+                    }
+                }
+            }
+        }
+        if comments[i]
+            .iter()
+            .any(|(col, text)| *col >= min_col && *col < max_col && re_ignore_reason.is_match(text))
+        {
+            return false;
+        }
+        if closed {
+            return empty && changed;
+        }
+    }
+    false
+}
+
+/// Builds per-line code views for a hunk: string and comment content is
+/// blanked out, and the comment text of each line is returned alongside.
+/// Multiline literals (Python triple quotes, JS template literals, C
+/// block comments) are tracked across the hunk's context and added
+/// lines so handler-shaped text inside them is never treated as code.
+/// Deleted lines belong to the old file and contribute empty views.
+fn hunk_code_views(file: &str, hunk: &[HunkLine]) -> (Vec<String>, Vec<Vec<(usize, String)>>) {
+    let mut code = Vec::with_capacity(hunk.len());
+    let mut comments = Vec::with_capacity(hunk.len());
+    if file.ends_with(".py") {
+        code_views_python(hunk, &mut code, &mut comments);
+    } else {
+        code_views_clike(file, hunk, &mut code, &mut comments);
+    }
+    (code, comments)
+}
+
+fn code_views_python(
+    hunk: &[HunkLine],
+    code: &mut Vec<String>,
+    comments: &mut Vec<Vec<(usize, String)>>,
+) {
+    let mut triple: Option<[char; 3]> = None;
+    for hl in hunk {
+        if hl.kind == b'-' {
+            code.push(String::new());
+            comments.push(Vec::new());
+            continue;
+        }
+        let chars: Vec<char> = hl.text.chars().collect();
+        let mut out = String::new();
+        let mut line_comments = Vec::new();
+        let mut j = 0;
+        while j < chars.len() {
+            if let Some(t) = triple {
+                if chars[j..].starts_with(&t) {
+                    out.push_str("   ");
+                    j += 3;
+                    triple = None;
+                } else {
+                    out.push(' ');
+                    j += 1;
+                }
+                continue;
+            }
+            if j + 2 < chars.len()
+                && ((chars[j] == '"' && chars[j + 1] == '"' && chars[j + 2] == '"')
+                    || (chars[j] == '\'' && chars[j + 1] == '\'' && chars[j + 2] == '\''))
+            {
+                triple = Some([chars[j]; 3]);
+                out.push_str("   ");
+                j += 3;
+                continue;
+            }
+            match chars[j] {
+                '#' => {
+                    line_comments.push((out.chars().count(), chars[j..].iter().collect()));
+                    break;
+                }
+                '"' | '\'' => {
+                    j = skip_quoted(&chars, j);
+                    out.push(' ');
+                }
+                c => {
+                    out.push(c);
+                    j += 1;
+                }
+            }
+        }
+        code.push(out);
+        comments.push(line_comments);
+    }
+}
+
+fn code_views_clike(
+    file: &str,
+    hunk: &[HunkLine],
+    code: &mut Vec<String>,
+    comments: &mut Vec<Vec<(usize, String)>>,
+) {
+    let templates = [".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"]
+        .iter()
+        .any(|ext| file.ends_with(ext));
+    let mut in_block_comment = false;
+    let mut template_stack: Vec<usize> = Vec::new();
+    for hl in hunk {
+        if hl.kind == b'-' {
+            code.push(String::new());
+            comments.push(Vec::new());
+            continue;
+        }
+        let chars: Vec<char> = hl.text.chars().collect();
+        let mut out = String::new();
+        let mut line_comments = Vec::new();
+        let mut block_buf = String::new();
+        let mut block_col = 0usize;
+        let mut j = 0;
+        while j < chars.len() {
+            if in_block_comment {
+                if chars[j] == '*' && j + 1 < chars.len() && chars[j + 1] == '/' {
+                    in_block_comment = false;
+                    block_buf.push_str("*/");
+                    line_comments.push((block_col, std::mem::take(&mut block_buf)));
+                    out.push_str("  ");
+                    j += 2;
+                } else {
+                    block_buf.push(chars[j]);
+                    out.push(' ');
+                    j += 1;
+                }
+                continue;
+            }
+            if template_stack.last() == Some(&0) {
+                match chars[j] {
+                    '\\' => {
+                        out.push_str("  ");
+                        j += 2;
+                    }
+                    '`' => {
+                        template_stack.pop();
+                        out.push(' ');
+                        j += 1;
+                    }
+                    '$' if j + 1 < chars.len() && chars[j + 1] == '{' => {
+                        let top = template_stack.len() - 1;
+                        template_stack[top] = 1;
+                        out.push_str("  ");
+                        j += 2;
+                    }
+                    _ => {
+                        out.push(' ');
+                        j += 1;
+                    }
+                }
+                continue;
+            }
+            match chars[j] {
+                '/' if j + 1 < chars.len() && chars[j + 1] == '/' => {
+                    line_comments.push((out.chars().count(), chars[j..].iter().collect()));
+                    break;
+                }
+                '/' if j + 1 < chars.len() && chars[j + 1] == '*' => {
+                    in_block_comment = true;
+                    block_col = out.chars().count();
+                    block_buf.push_str("/*");
+                    out.push_str("  ");
+                    j += 2;
+                }
+                '`' if templates => {
+                    template_stack.push(0);
+                    out.push(' ');
+                    j += 1;
+                }
+                '"' | '\'' => {
+                    j = skip_quoted(&chars, j);
+                    out.push(' ');
+                }
+                c => {
+                    if let Some(top) = template_stack.len().checked_sub(1) {
+                        if c == '{' {
+                            template_stack[top] += 1;
+                        } else if c == '}' {
+                            template_stack[top] -= 1;
+                            if template_stack[top] == 0 {
+                                out.push(' ');
+                                j += 1;
+                                continue;
+                            }
+                        }
+                    }
+                    out.push(c);
+                    j += 1;
+                }
+            }
+        }
+        if in_block_comment {
+            line_comments.push((block_col, block_buf));
+        }
+        code.push(out);
+        comments.push(line_comments);
     }
 }
 
