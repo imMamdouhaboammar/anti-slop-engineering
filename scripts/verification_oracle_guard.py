@@ -692,6 +692,11 @@ def _unittest_cases(suite):
             yield item
 
 
+def _unittest_parent(case):
+    parent = getattr(case, "test_case", None)
+    return parent if isinstance(parent, unittest.TestCase) else case
+
+
 def _run_unittest_selected(filename: Path, report: Path):
     sys.argv[:] = [str(filename)]
     name = filename.stem
@@ -718,12 +723,12 @@ def _run_unittest_selected(filename: Path, report: Path):
         return 1
 
     outcome = unittest.TextTestRunner(verbosity=2).run(suite)
-    if any(hasattr(test, "test_case") for test, _ in outcome.failures):
+    if any(_unittest_parent(test) is not test for test, _ in outcome.failures):
         print("Unittest did not report passing subtest identities", file=sys.stderr)
         return 1
     failures = {test.id() for test, _ in outcome.failures}
     skipped = {
-        getattr(test, "test_case", test).id()
+        _unittest_parent(test).id()
         for test, _ in outcome.skipped + outcome.expectedFailures
     }
     completed_all = outcome.testsRun == len(selected)
