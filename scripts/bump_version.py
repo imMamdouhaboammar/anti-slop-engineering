@@ -109,7 +109,7 @@ MANIFEST_TARGETS = [
     },
     {
         "file": "scripts/ast_slop_guard.py",
-        "pattern": sre_compile.compile(r"(__version__\s*=\s*)'[^']+'"),
+        "pattern": re.compile(r"(__version__\s*=\s*)'[^']+'"),
         "replacement": r"\g<1>'{version}'",
     },
     {
