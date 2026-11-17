@@ -1,6 +1,8 @@
 pub mod attention_auditor;
 pub mod comment_auditor;
 pub mod demock_auditor;
+mod git_triage;
+pub use git_triage::triage_git;
 pub mod ladder_auditor;
 pub mod model;
 pub mod path_utils;

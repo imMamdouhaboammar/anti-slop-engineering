@@ -32,7 +32,7 @@ PATTERNS = [
     ('TRIVIAL_COMMENT_NARRATION', 'review', r'(?i)^\s*(?://|#)\s*(?:(?:increment|decrement)\s+\w+|(?:return|returns)\s+(?:the\s+)?(?:result|response|value|data|error|promise|true|false)|(?:initialize|init)\s+(?:state|variable|array|object|list|dict)|(?:check|verify)\s+if\s+(?:\w+\s+is\s+)?(?:null|undefined|empty|none)|handle\s+(?:click|change|submit|event|button)|(?:constructor|destructor)\b|import\s+(?:modules?|packages?|react|dependencies)|call\s+(?:the\s+)?\w+\s+function)'),
     ('SRE_SCALE_FLAT_RETRY', 'review', r'(?i)(?:while\s+True\s*:|while\s*\(\s*true\s*\)|for\s+(?:attempt|retry|i)\s+in\s+range\s*\(\s*\d+\s*\):).*(?:sleep\s*\(\s*[1-9]\d*\s*\))'),
     ('SRE_SCALE_SLEEP_BAND_AID', 'review', r'(?i)\b(?:time\.sleep\s*\(\s*(?:0?\.[1-9]|[1-9])\d*\s*\)|thread\.sleep\s*\(\s*\d+\s*\)|setTimeout\s*\([^,]+,\s*(?:100|200|500|1000|2000|5000)\s*\))'),
-    ('SRE_SCALE_UNBOUNDED_CONCURRENCY', 'review', r'(?i)(?:Promise\.all\s*\(\s*(?:\w+|\w+\.[a-zA-Z0-9_]+)\.map\s*\(|asyncio\.gather\s*\(\s*\*\s*\[)'),
+    ('SRE_SCALE_UNBOUNDED_CONCURRENCY', 'review', r'(?i)(?:Promise\.all\s*\(\s*(?:\w+|\w+\.[a-zA-Z0-9_]+)\.map\s*\(|asyncio\.gather\s*\(\s*\*\s*(?:\[|\w))'),
     ('SRE_YAGNI_SPECULATIVE_CODE', 'review', r'(?i)(?:#|//|/\*)\s*(?:TODO\s*\(\s*(?:future|later|v2|next)\s*\)|placeholder for (?:future|upcoming|v2)|will be (?:supported|implemented|used) (?:later|in v2)|reserved for future use)'),
     ('SRE_YAGNI_DEAD_FLAG', 'blocker', r'(?i)(?:if\s+False\s*:|if\s*\(\s*false\s*\)|if\s*\(\s*0\s*\))\s*(?:#|//.*)?$'),
     ('DECORATIVE_COMMENT_BANNER', 'review', r'(?i)^\s*(?://|#|/\*)\s*(?:[=\-~*#]{5,}|[=\-~*#]{3,}\s*[A-Z0-9\s]{3,}\s*[=\-~*#]{3,})'),

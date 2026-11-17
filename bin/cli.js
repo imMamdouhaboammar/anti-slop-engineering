@@ -50,6 +50,9 @@ const motionRuntimeGuardScript = resolve(rootDir, "scripts", "motion_runtime_gua
 const assetProvenanceGuardScript = resolve(rootDir, "scripts", "asset_provenance_guard.py");
 const styleseedGuardScript = resolve(rootDir, "scripts", "styleseed_guard.py");
 const tagoreGuardScript = resolve(rootDir, "scripts", "tagore_guard.py");
+const profilerGuardScript = resolve(rootDir, "scripts", "profiler_guard.py");
+const faultIsolationGuardScript = resolve(rootDir, "scripts", "fault_isolation_guard.py");
+const migrationGuardScript = resolve(rootDir, "scripts", "migration_guard.py");
 const verificationOracleGuardScript = resolve(rootDir, "scripts", "verification_oracle_guard.py");
 const auditRunnerScript = resolve(rootDir, "scripts", "audit_runner.py");
 const ruleRegistryScript = resolve(rootDir, "scripts", "rule_registry.py");
@@ -174,6 +177,12 @@ const executableAliases = {
   "deslop-prose": "tagore",
   "prose-guard": "tagore",
   "humanize": "tagore",
+  "profiler": "profiler",
+  "profiler-guard": "profiler",
+  "fault-isolation": "fault-isolation",
+  "fault-isolation-guard": "fault-isolation",
+  "migration": "migration",
+  "migration-guard": "migration",
   "oracle": "oracle",
   "oracle-guard": "oracle",
   "verification-oracle": "oracle",
@@ -247,6 +256,9 @@ Commands:
   asset-provenance, provenance Run Asset Sourcing & License Provenance Ledger Guard (cryptographic SHA-256 & open-license ledger)
   styleseed              Run StyleSeed Cognitive Grammar & Token Canon Guard (primitives, OKLCH, spatial inversion)
   tagore, discourse      Run Tagore Engineering Discourse & Substance Guard (29 tells, 8-dim rubric, voice calibration)
+  profiler audit <file>  Check Mechanical Sympathy & Empirical Profiler record for baseline/post-change measurements
+  fault-isolation audit <file> Check Scientific Fault Isolation record for 3-hypothesis differential diagnosis
+  migration audit <file> Check Zero-Downtime Migration record for Expand-Migrate-Contract and lock-free DDL
   oracle audit <file>    Check Verification Oracle record for fakes, chaos, and property oracles
   counterfactual, proof  Run isolated red-state counterfactual proof for newly added tests
   diff, diff-guard       Run single Diff Guard (narrow git diff triage against --base, default: HEAD)
@@ -499,6 +511,12 @@ if (cmd === "build") {
   runPythonScript(styleseedGuardScript, args.slice(1), "styleseed_guard");
 } else if (cmd === "tagore" || cmd === "tagore-guard" || cmd === "discourse" || cmd === "deslop-prose" || cmd === "humanize" || cmd === "prose") {
   runPythonScript(tagoreGuardScript, args.slice(1), "tagore_guard");
+} else if (cmd === "profiler" || cmd === "profiler-guard") {
+  runPythonScript(profilerGuardScript, args.slice(1), "profiler_guard");
+} else if (cmd === "fault-isolation" || cmd === "fault-isolation-guard") {
+  runPythonScript(faultIsolationGuardScript, args.slice(1), "fault_isolation_guard");
+} else if (cmd === "migration" || cmd === "migration-guard") {
+  runPythonScript(migrationGuardScript, args.slice(1), "migration_guard");
 } else if (cmd === "oracle" || cmd === "verification-oracle" || cmd === "oracle-guard") {
   runPythonScript(verificationOracleGuardScript, args.slice(1), "verification_oracle_guard");
 } else if (cmd === "counterfactual" || cmd === "proof") {

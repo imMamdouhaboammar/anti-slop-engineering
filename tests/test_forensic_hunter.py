@@ -10,7 +10,7 @@ import os
 import re
 import tempfile
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from unittest.mock import patch
 
 from scripts import forensic_hunter
@@ -204,6 +204,32 @@ class ForensicHunterTests(unittest.TestCase):
             data_crit = json.loads(out_trap.getvalue())
             self.assertEqual(data_crit["verdict"], "COMPROMISED (BLOCK)")
             self.assertEqual(data_crit["counts"]["CRITICAL"], 1)
+
+    def test_cli_missing_file_is_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            missing_file = os.path.join(tmpdir, "does_not_exist.py")
+
+            out = io.StringIO()
+            with redirect_stdout(out):
+                code = forensic_hunter.main(["--files", missing_file, "--strict", "--json"])
+            self.assertEqual(code, 1)
+            data = json.loads(out.getvalue())
+            self.assertIn("error", data)
+            self.assertIn(missing_file, data["error"])
+
+    def test_cli_missing_file_mixed_with_existing_is_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            clean_file = os.path.join(tmpdir, "clean.py")
+            with open(clean_file, "w", encoding="utf-8") as f:
+                f.write("def safe_fn(items=None):\n    pass\n")
+            missing_file = os.path.join(tmpdir, "does_not_exist.py")
+
+            out = io.StringIO()
+            err = io.StringIO()
+            with redirect_stdout(out), redirect_stderr(err):
+                code = forensic_hunter.main(["--files", clean_file, missing_file, "--strict"])
+            self.assertEqual(code, 1)
+            self.assertIn(missing_file, out.getvalue() + err.getvalue())
 
     def test_cli_parse_git_diff_failure(self) -> None:
         with patch("subprocess.run") as mock_run:

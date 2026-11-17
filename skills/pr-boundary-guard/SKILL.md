@@ -41,7 +41,7 @@ bunx anti-slop-engineering pr-guard \
   --base origin/main \
   --pr-title "feat(core): implement robust boundary validation" \
   --pr-body-file .github/pr-description.md \
-  --template-file .github/pull_request_template.md \
+  --template-file .github/PULL_REQUEST_TEMPLATE.md \
   --require-conventional \
   --json
 ```

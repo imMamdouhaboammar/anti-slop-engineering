@@ -108,6 +108,36 @@ test("perf audit command routes to the mechanical sympathy and perf guard", () =
   assert.equal(output.machine_check_only, true);
 });
 
+test("profiler audit command routes to the mechanical sympathy profiler guard", () => {
+  const example = resolve("skills/mechanical-sympathy-profiler/examples/mechanical-sympathy-profiler-record.json");
+  const result = invoke("anti-slop-engineering", ["profiler", "audit", example, "--json"]);
+  assert.equal(result.status, 0, result.stderr);
+  const output = JSON.parse(result.stdout);
+  assert.equal(output.record_status, "complete");
+  assert.equal(output.verdict_action, "proceed");
+  assert.equal(output.machine_check_only, true);
+});
+
+test("fault-isolation audit command routes to the scientific fault isolation guard", () => {
+  const example = resolve("skills/scientific-fault-isolation/examples/scientific-fault-isolation-record.json");
+  const result = invoke("anti-slop-engineering", ["fault-isolation", "audit", example, "--json"]);
+  assert.equal(result.status, 0, result.stderr);
+  const output = JSON.parse(result.stdout);
+  assert.equal(output.record_status, "complete");
+  assert.equal(output.verdict_action, "proceed");
+  assert.equal(output.machine_check_only, true);
+});
+
+test("migration audit command routes to the zero-downtime migration guard", () => {
+  const example = resolve("skills/zero-downtime-migration-gate/examples/zero-downtime-migration-record.json");
+  const result = invoke("anti-slop-engineering", ["migration", "audit", example, "--json"]);
+  assert.equal(result.status, 0, result.stderr);
+  const output = JSON.parse(result.stdout);
+  assert.equal(output.record_status, "complete");
+  assert.equal(output.verdict_action, "proceed");
+  assert.equal(output.machine_check_only, true);
+});
+
 test("rollout audit command routes to the safe evolution and rollout guard", () => {
   const example = resolve("skills/safe-evolution-and-rollout-choreographer/examples/safe-evolution-record.json");
   const result = invoke("anti-slop-engineering", ["rollout", "audit", example, "--json"]);
