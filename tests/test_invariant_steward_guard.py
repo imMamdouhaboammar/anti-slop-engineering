@@ -181,6 +181,36 @@ diff --git a/src/api/checkout.ts b/src/api/checkout.ts
         self.assertFalse(res["drift_detected"])
         self.assertIn("inv-paranoid-idempotency", res["waived_invariants"])
 
+    def test_cli_drift_invalid_base_fails_closed(self):
+        cmd = [sys.executable, str(SCRIPT), "drift", "--base", "NOPE_INVALID_REF",
+               "--ledger", str(EXAMPLE_LEDGER), "--json"]
+        proc = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, check=False)
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("NOPE_INVALID_REF", proc.stdout + proc.stderr)
+
+    def test_cli_drift_base_matching_filename_succeeds(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo = Path(tmpdir)
+            for cmd in (
+                ["git", "init", "-q", "-b", "main"],
+                ["git", "config", "user.name", "Test Committer"],
+                ["git", "config", "user.email", "test@example.com"],
+            ):
+                subprocess.run(cmd, cwd=repo, check=True, capture_output=True)
+            (repo / "main").write_text("binary placeholder\n", encoding="utf-8")
+            (repo / "app.py").write_text("x = 1\n", encoding="utf-8")
+            subprocess.run(["git", "add", "."], cwd=repo, check=True, capture_output=True)
+            subprocess.run(["git", "commit", "-qm", "initial"], cwd=repo, check=True, capture_output=True)
+            (repo / "app.py").write_text("x = 2\n", encoding="utf-8")
+
+            proc = subprocess.run(
+                [sys.executable, str(SCRIPT), "drift", "--base", "main", "--ledger", str(EXAMPLE_LEDGER), "--json"],
+                cwd=repo, capture_output=True, text=True, check=False,
+            )
+            self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+            data = json.loads(proc.stdout)
+            self.assertFalse(data["drift_detected"])
+
     def test_cli_invocation_text_and_json(self):
         cmd = [sys.executable, str(SCRIPT), "audit", str(EXAMPLE_LEDGER), "--json"]
         proc = subprocess.run(cmd, capture_output=True, text=True, check=True)

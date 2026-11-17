@@ -18,6 +18,11 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
+if not __package__:
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from scripts.git_changeset import validate_base_ref
+
 VALID_CATEGORIES = {
     "concurrency_and_scale",
     "security_and_auth",
@@ -410,16 +415,20 @@ def check_file_scope(file_path: str, scope: Dict[str, Any]) -> bool:
 
 
 def get_git_diff(base: str = "HEAD") -> Tuple[str, List[str]]:
-    cmd = ["git", "diff", base]
+    base_id = validate_base_ref(".", base)
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
-        diff_text = proc.stdout
+        proc = subprocess.run(["git", "diff", base_id, "--"], capture_output=True, text=True, check=False)
         # Also get list of modified files
-        name_proc = subprocess.run(["git", "diff", "--name-only", base], capture_output=True, text=True, check=False)
-        files = [line.strip() for line in name_proc.stdout.splitlines() if line.strip()]
-        return diff_text, files
-    except Exception:
-        return "", []
+        name_proc = subprocess.run(["git", "diff", "--name-only", base_id, "--"], capture_output=True, text=True, check=False)
+    except OSError as exc:
+        raise RuntimeError(f"Git diff failed for base ref {base!r}: {exc}") from exc
+    for result in (proc, name_proc):
+        if result.returncode != 0:
+            detail = result.stderr.strip() or f"Git exited {result.returncode}"
+            raise RuntimeError(f"Git diff failed for base ref {base!r}: {detail}")
+    diff_text = proc.stdout
+    files = [line.strip() for line in name_proc.stdout.splitlines() if line.strip()]
+    return diff_text, files
 
 
 def parse_diff_by_file(diff_text: str) -> Dict[str, List[Tuple[str, str]]]:
@@ -646,7 +655,14 @@ def main() -> int:
             diff_text = args.diff.read_text(encoding="utf-8")
             changed_files = [line.split(" b/")[-1].strip() for line in diff_text.splitlines() if line.startswith("diff --git ")]
         else:
-            diff_text, changed_files = get_git_diff(args.base)
+            try:
+                diff_text, changed_files = get_git_diff(args.base)
+            except RuntimeError as e:
+                if args.json:
+                    print(json.dumps({"error": str(e)}))
+                else:
+                    print(f"Error: {e}", file=sys.stderr)
+                return 1
 
         drift_res = detect_drift(ledger_data, diff_text, changed_files, reassessment_data)
         if args.json:

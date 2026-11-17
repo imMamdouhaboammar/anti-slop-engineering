@@ -108,6 +108,11 @@ MANIFEST_TARGETS = [
         "replacement": r"\g<1>'{version}'",
     },
     {
+        "file": "scripts/ast_slop_guard.py",
+        "pattern": re.compile(r"(__version__\s*=\s*)'[^']+'"),
+        "replacement": r"\g<1>'{version}'",
+    },
+    {
         "file": ".codex-plugin/plugin.json",
         "pattern": re.compile(r'("version"\s*:\s*)"[^"]+"'),
         "replacement": r'\g<1>"{version}"',

@@ -1,7 +1,13 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 Mamdouh Aboammar <mamdouhfces1997@gmail.com> and contributors
 
+import json
+import subprocess
+import sys
+import tempfile
 import unittest
+from pathlib import Path
+
 from scripts.comment_budget_guard import (
     audit_diff_comments,
     is_exempt_file,
@@ -69,6 +75,40 @@ class TestCommentBudgetGuard(unittest.TestCase):
         record = audit_diff_comments(diff, density_threshold=0.35, min_comment_floor=20)
         self.assertEqual(record["code"], "NO_COMMENT_FINDINGS")
         self.assertEqual(len(record["findings"]), 0)
+
+    def test_cli_invalid_base_fails_closed(self):
+        root = Path(__file__).resolve().parents[1]
+        proc = subprocess.run(
+            [sys.executable, str(root / "scripts" / "comment_budget_guard.py"),
+             "--base", "NOPE_INVALID_REF", "--json"],
+            cwd=root, capture_output=True, text=True, check=False,
+        )
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("NOPE_INVALID_REF", proc.stdout + proc.stderr)
+
+    def test_cli_base_matching_filename_succeeds(self):
+        root = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo = Path(tmpdir)
+            for cmd in (
+                ["git", "init", "-q", "-b", "main"],
+                ["git", "config", "user.name", "Test Committer"],
+                ["git", "config", "user.email", "test@example.com"],
+            ):
+                subprocess.run(cmd, cwd=repo, check=True, capture_output=True)
+            (repo / "main").write_text("binary placeholder\n", encoding="utf-8")
+            (repo / "app.py").write_text("x = 1\n", encoding="utf-8")
+            subprocess.run(["git", "add", "."], cwd=repo, check=True, capture_output=True)
+            subprocess.run(["git", "commit", "-qm", "initial"], cwd=repo, check=True, capture_output=True)
+            (repo / "app.py").write_text("x = 2\n", encoding="utf-8")
+
+            proc = subprocess.run(
+                [sys.executable, str(root / "scripts" / "comment_budget_guard.py"), "--base", "main", "--json"],
+                cwd=repo, capture_output=True, text=True, check=False,
+            )
+            self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+            record = json.loads(proc.stdout)
+            self.assertEqual(record["code"], "NO_COMMENT_FINDINGS")
 
 
 if __name__ == "__main__":
