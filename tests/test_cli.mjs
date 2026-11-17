@@ -205,8 +205,8 @@ test("bump command routes to the automated version bumper in dry-run mode", () =
   assert.equal(result.status, 0, result.stderr);
   const output = JSON.parse(result.stdout);
   assert.equal(output.dry_run, true);
-  assert.equal(output.updated_files.length, 15);
-  for (const file of ["CITATION.cff", "submission/listing.json", "submission/reviewer-packet.json"]) {
+  assert.equal(output.updated_files.length, 16);
+  for (const file of ["CITATION.cff", "submission/listing.json", "submission/reviewer-packet.json", "scripts/ast_slop_guard.py"]) {
     assert.ok(output.updated_files.includes(file), "Missing release target: " + file);
   }
 });

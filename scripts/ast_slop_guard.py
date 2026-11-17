@@ -17,7 +17,7 @@ if not __package__:
 
 from scripts.git_changeset import git
 
-__version__ = '1.0.0'
+__version__ = '1.8.0'
 
 JS_TS_EXTS = {'.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'}
 TEST_PATH_RE = re.compile(r'(?i)(?:^|/)(?:tests?|__tests__|specs?)(?:/|$)|(?:^|/)(?:test_[^/]+\.[a-z0-9]+|[^/]+[._](?:test|spec)\.[a-z0-9]+)$')
