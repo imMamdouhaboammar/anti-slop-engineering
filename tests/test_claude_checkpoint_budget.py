@@ -157,6 +157,16 @@ class ClaudeCheckpointBudgetTests(unittest.TestCase):
         self.assertEqual(result.get("hookSpecificOutput", {}).get("permissionDecision"), "deny")
         self.assertTrue(override.is_file())
 
+    def test_nonregular_checkpoint_state_keeps_pre_write_responsive(self):
+        state = self.project / ".anti-slop" / "checkpoint-state.json"
+        os.mkfifo(state)
+        self.assertEqual(self.invoke("PreToolUse"), {})
+
+    def test_nonregular_checkpoint_log_keeps_post_write_responsive(self):
+        audit = self.project / ".anti-slop" / "checkpoint-audit.jsonl"
+        os.mkfifo(audit)
+        self.assertIn("Python syntax error", self.post_message())
+
     def test_watch_mode_keeps_checkpoint_advisory(self):
         self.arm("$anti-slop change watch files=snippet.py -- Edit example")
         for _ in range(3):

@@ -140,15 +140,21 @@ def _canonical_checkpoint_target(project, target):
         return None
 
 
+def _read_checkpoint_record(path):
+    flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK
+    with os.fdopen(os.open(path, flags), "rb") as stream:
+        if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+            raise OSError("Checkpoint records must be regular files")
+        return read_hook_object(stream)
+
+
 def _load_checkpoint_state(state_dir):
-    path = state_dir / CHECKPOINT_STATE_FILE
-    if state_dir.is_symlink() or path.is_symlink():
-        raise ValueError("Checkpoint state must be local")
+    if state_dir.is_symlink():
+        raise OSError("Checkpoint state must be local")
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        return _read_checkpoint_record(state_dir / CHECKPOINT_STATE_FILE)
     except (FileNotFoundError, ValueError):
         return {}
-    return data if isinstance(data, dict) else {}
 
 
 def _save_checkpoint_state(state_dir, state):
@@ -170,7 +176,7 @@ def _audit_checkpoint(state_dir, event, session_id, target, **fields):
         raise ValueError("Checkpoint audit log must be local")
     entry = {"event": event, "session_id": session_id, "target": target, "at": time.time()}
     entry.update(fields)
-    flags = os.O_WRONLY | os.O_CREAT | os.O_APPEND | getattr(os, "O_NOFOLLOW", 0)
+    flags = os.O_WRONLY | os.O_CREAT | os.O_APPEND | os.O_NOFOLLOW | os.O_NONBLOCK
     fd = os.open(path, flags, 0o600)
     with os.fdopen(fd, "a", encoding="utf-8") as stream:
         if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
@@ -241,7 +247,7 @@ def _checkpoint_denial(project, session_id, target):
             override = None
             if override_path.is_file() and not override_path.is_symlink():
                 try:
-                    override = json.loads(override_path.read_text(encoding="utf-8"))
+                    override = _read_checkpoint_record(override_path)
                 except ValueError:
                     override = None
             override_target = (
