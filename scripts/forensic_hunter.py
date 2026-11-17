@@ -31,7 +31,6 @@ import json
 import os
 import pathlib
 import re
-import sre_compile
 import subprocess
 import sys
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
@@ -94,7 +93,7 @@ RULES: List[TrapRule] = [
     _docker_rule(
         code="DCK-01",
         severity="CRITICAL",
-        pattern=sre_compile.compile(r"(?i)^\s*FROM\s+[^\s:@]+(?::latest|\s*$)"),
+        pattern=re.compile(r"(?i)^\s*FROM\s+[^\s:@]+(?::latest|\s*$)"),
         title="Unpinned or ':latest' Docker base image",
         impact="Non-reproducible builds and silent upstream breaking changes or supply-chain compromise.",
         remedy="Pin an explicit semantic version tag and immutable @sha256 digest.",
@@ -102,7 +101,7 @@ RULES: List[TrapRule] = [
     _docker_rule(
         code="DCK-02",
         severity="HIGH",
-        pattern=sre_compile.compile(r"(?i)^\s*(?:ENTRYPOINT|CMD)\s+(?!\[).+"),
+        pattern=re.compile(r"(?i)^\s*(?:ENTRYPOINT|CMD)\s+(?!\[).+"),
         title="Shell-form ENTRYPOINT/CMD (PID 1 SIGTERM blackhole)",
         impact="Spawns /bin/sh as PID 1, swallowing SIGTERM signals and causing ungraceful SIGKILL drops during K8s rollouts.",
         remedy='Use JSON exec-form: ENTRYPOINT ["binary", "--arg"] or wrap with tini.',
@@ -110,7 +109,7 @@ RULES: List[TrapRule] = [
     _docker_rule(
         code="DCK-03",
         severity="CRITICAL",
-        pattern=sre_compile.compile(
+        pattern=re.compile(
             r"(?i)^\s*(?:ARG|ENV)\s+[A-Z0-9_]*(?:SECRET|PASSWORD|TOKEN|PRIVATE_KEY|API_KEY)[A-Z0-9_]*\s*="
         ),
         title="Secret baked into Docker ARG/ENV layer",
@@ -120,7 +119,7 @@ RULES: List[TrapRule] = [
     _docker_rule(
         code="DCK-04",
         severity="HIGH",
-        pattern=sre_compile.compile(r"(?i)curl\s+[^|\n]*\|\s*(?:ba)?sh"),
+        pattern=re.compile(r"(?i)curl\s+[^|\n]*\|\s*(?:ba)?sh"),
         title="Unverified curl-pipe-shell execution",
         impact="Partial network reads or MITM/upstream tampering execute arbitrary shell commands during build.",
         remedy="Download the artifact, verify `sha256sum --check`, and execute explicitly.",
@@ -131,7 +130,7 @@ RULES: List[TrapRule] = [
         code="K8S-01",
         stack="k8s",
         severity="CRITICAL",
-        pattern=sre_compile.compile(r"^\s*(?:privileged|hostNetwork|hostPID|hostIPC)\s*:\s*true\b"),
+        pattern=re.compile(r"^\s*(?:privileged|hostNetwork|hostPID|hostIPC)\s*:\s*true\b"),
         title="Privileged or host-namespace breakout enabled in Pod spec",
         impact="Container compromise immediately escalates to full underlying Kubernetes node takeover.",
         remedy="Set privileged/hostNetwork/hostPID to false and drop ALL capabilities.",
@@ -141,7 +140,7 @@ RULES: List[TrapRule] = [
         code="K8S-02",
         stack="k8s",
         severity="HIGH",
-        pattern=sre_compile.compile(r"^\s*image\s*:\s*[^\s:@]+:latest\b"),
+        pattern=re.compile(r"^\s*image\s*:\s*[^\s:@]+:latest\b"),
         title="Mutable ':latest' container image tag in manifest",
         impact="Rollbacks become impossible and nodes pull inconsistent image versions across the cluster.",
         remedy="Pin an immutable release tag or @sha256 digest.",
@@ -151,7 +150,7 @@ RULES: List[TrapRule] = [
         code="K8S-03",
         stack="k8s",
         severity="HIGH",
-        pattern=sre_compile.compile(r"^\s*allowPrivilegeEscalation\s*:\s*true\b"),
+        pattern=re.compile(r"^\s*allowPrivilegeEscalation\s*:\s*true\b"),
         title="Privilege escalation explicitly permitted in securityContext",
         impact="Allows setuid binaries inside the container to elevate privileges.",
         remedy="Set `allowPrivilegeEscalation: false` and `runAsNonRoot: true`.",
@@ -162,7 +161,7 @@ RULES: List[TrapRule] = [
         code="PY-01",
         stack="python",
         severity="CRITICAL",
-        pattern=sre_compile.compile(r"^\s*def\s+\w+\s*\([^)]*=\s*(?:\[\]|\{\}|set\(\))"),
+        pattern=re.compile(r"^\s*def\s+\w+\s*\([^)]*=\s*(?:\[\]|\{\}|set\(\))"),
         title="Mutable default argument in Python function",
         impact="Default list/dict/set is instantiated once at import time and shared across all future calls, leaking state across requests.",
         remedy="Use `None` as the default (`param: Optional[list] = None`) and initialize inside the function.",
@@ -172,7 +171,7 @@ RULES: List[TrapRule] = [
         code="PY-02",
         stack="python",
         severity="CRITICAL",
-        pattern=sre_compile.compile(r"^\s*except\b[^:\n]*:\s*(?:pass|\.\.\.)\s*(?:#.*)?$"),
+        pattern=re.compile(r"^\s*except\b[^:\n]*:\s*(?:pass|\.\.\.)\s*(?:#.*)?$"),
         title="Silent exception swallow in try-except block",
         impact="Swallows fatal crashes, database corruption, or KeyboardInterrupt without logging or recovery.",
         remedy="Catch specific exception types, log structured context, or re-raise.",
@@ -182,7 +181,7 @@ RULES: List[TrapRule] = [
         code="PY-03",
         stack="python",
         severity="HIGH",
-        pattern=sre_compile.compile(r"^\s*asyncio\.create_task\s*\("),
+        pattern=re.compile(r"^\s*asyncio\.create_task\s*\("),
         title="Unreferenced `asyncio.create_task()` fire-and-forget",
         impact="Python's event loop holds only weak references to tasks; the GC can silently destroy the task mid-execution.",
         remedy="Assign the task to a variable and store it in a live set with `task.add_done_callback(tasks.discard)`.",
@@ -192,7 +191,7 @@ RULES: List[TrapRule] = [
         code="PY-04",
         stack="python",
         severity="CRITICAL",
-        pattern=sre_compile.compile(r"\bsubprocess\.(?:Popen|run|call|check_output)\s*\([^)]*shell\s*=\s*True"),
+        pattern=re.compile(r"\bsubprocess\.(?:Popen|run|call|check_output)\s*\([^)]*shell\s*=\s*True"),
         title="Subprocess execution with `shell=True`",
         impact="Enables command injection when any interpolated argument originates from external input.",
         remedy="Pass arguments as a sequence (`['cmd', arg1]`) with `shell=False` and `check=True`.",
@@ -202,7 +201,7 @@ RULES: List[TrapRule] = [
         code="PY-05",
         stack="python",
         severity="HIGH",
-        pattern=sre_compile.compile(r"\brequests\.(?:get|post|put|delete|patch|head|request)\s*\((?![^)]*timeout\s*=)[^)]*\)"),
+        pattern=re.compile(r"\brequests\.(?:get|post|put|delete|patch|head|request)\s*\((?![^)]*timeout\s*=)[^)]*\)"),
         title="Synchronous HTTP request without explicit `timeout=`",
         impact="Socket hangs indefinitely when upstream stalls, exhausting worker threads/processes.",
         remedy="Always pass an explicit `timeout=(connect_sec, read_sec)` tuple.",
@@ -212,7 +211,7 @@ RULES: List[TrapRule] = [
         code="PY-06",
         stack="python",
         severity="CRITICAL",
-        pattern=sre_compile.compile(r"\b(?:pickle\.loads?|yaml\.load\s*\([^)]*(?!Loader\s*=\s*yaml\.SafeLoader))\b"),
+        pattern=re.compile(r"\b(?:pickle\.loads?|yaml\.load\s*\([^)]*(?!Loader\s*=\s*yaml\.SafeLoader))\b"),
         title="Unsafe deserialization (`pickle` or `yaml.load`)",
         impact="Arbitrary Remote Code Execution (RCE) when parsing untrusted payloads.",
         remedy="Use `yaml.safe_load()` or strict schema-validated JSON/MsgPack.",
@@ -223,7 +222,7 @@ RULES: List[TrapRule] = [
         code="TS-01",
         stack="ts",
         severity="HIGH",
-        pattern=sre_compile.compile(r"(?:\bas\s+any\b|:\s*any\b|@ts-ignore|@ts-nocheck)"),
+        pattern=re.compile(r"(?:\bas\s+any\b|:\s*any\b|@ts-ignore|@ts-nocheck)"),
         title="Type-safety suppression (`any` or `@ts-ignore`)",
         impact="Disables static type verification, allowing undefined property access and contract drift into runtime.",
         remedy="Use `unknown` with runtime schema parsing (Zod/Valibot) or narrow via type guards.",
@@ -233,7 +232,7 @@ RULES: List[TrapRule] = [
         code="TS-02",
         stack="ts",
         severity="CRITICAL",
-        pattern=sre_compile.compile(r"\.forEach\s*\(\s*async\b"),
+        pattern=re.compile(r"\.forEach\s*\(\s*async\b"),
         title="Async callback inside `.forEach()`",
         impact="`Array.prototype.forEach` does not await promises; rejections go unhandled and execution continues prematurely.",
         remedy="Use `for (const item of items)` for sequential work or bounded `Promise.all`.",
@@ -243,7 +242,7 @@ RULES: List[TrapRule] = [
         code="TS-03",
         stack="ts",
         severity="HIGH",
-        pattern=sre_compile.compile(r"\bPromise\.all\s*\(\s*\w+\.map\s*\("),
+        pattern=re.compile(r"\bPromise\.all\s*\(\s*\w+\.map\s*\("),
         title="Unbounded concurrency via Promise.all mapping",
         impact="Spawns N simultaneous I/O requests proportional to input size, exhausting DB pools, file descriptors, or rate limits.",
         remedy="Enforce a bounded concurrency limiter / semaphore pool (e.g., max 10-20 concurrent workers).",
@@ -253,7 +252,7 @@ RULES: List[TrapRule] = [
         code="TS-04",
         stack="ts",
         severity="CRITICAL",
-        pattern=sre_compile.compile(r"\bcatch\s*(?:\([^)]*\))?\s*\{\s*(?://.*)?\}"),
+        pattern=re.compile(r"\bcatch\s*(?:\([^)]*\))?\s*\{\s*(?://.*)?\}"),
         title="Empty `catch {}` block swallowing exceptions",
         impact="Silently discards runtime errors and corrupted state.",
         remedy="Log structured error details with causal context or rethrow a typed domain error.",
@@ -264,7 +263,7 @@ RULES: List[TrapRule] = [
         code="BUN-01",
         stack="bun",
         severity="CRITICAL",
-        pattern=sre_compile.compile(r"\bBun\.spawn(?:Sync)?\s*\(\s*\[\s*['\"](?:sh|bash)['\"]\s*,\s*['\"]-c['\"]\s*,\s*`"),
+        pattern=re.compile(r"\bBun\.spawn(?:Sync)?\s*\(\s*\[\s*['\"](?:sh|bash)['\"]\s*,\s*['\"]-c['\"]\s*,\s*`"),
         title="Shell command interpolation inside `Bun.spawn(['sh', '-c', ...])`",
         impact="Unsanitized template interpolation inside `sh -c` enables arbitrary command injection.",
         remedy="Pass arguments directly as array elements to `Bun.spawn([cmd, arg1])` or use `Bun.$` tagged templates.",
@@ -274,7 +273,7 @@ RULES: List[TrapRule] = [
         code="BUN-02",
         stack="bun",
         severity="MEDIUM",
-        pattern=sre_compile.compile(r"\bBun\.serve\s*\(\s*\{(?![^}]*idleTimeout)[^}]*\}"),
+        pattern=re.compile(r"\bBun\.serve\s*\(\s*\{(?![^}]*idleTimeout)[^}]*\}"),
         title="`Bun.serve` initialized without explicit `idleTimeout` or `maxRequestBodySize`",
         impact="Default connection settings can leave server exposed to Slowloris or oversized payload memory exhaustion.",
         remedy="Explicitly configure `idleTimeout` and `maxRequestBodySize` in `Bun.serve({...})`.",
@@ -285,7 +284,7 @@ RULES: List[TrapRule] = [
         code="RCT-01",
         stack="react",
         severity="HIGH",
-        pattern=sre_compile.compile(r"\bkey\s*=\s*\{\s*(?:index|idx|i)\s*\}"),
+        pattern=re.compile(r"\bkey\s*=\s*\{\s*(?:index|idx|i)\s*\}"),
         title="Array index used as React `key={index}`",
         impact="List reordering, insertion, or deletion corrupts component state and binds DOM inputs to the wrong items.",
         remedy="Use a stable, unique domain identifier (`key={item.id}`).",
@@ -295,7 +294,7 @@ RULES: List[TrapRule] = [
         code="RCT-02",
         stack="react",
         severity="CRITICAL",
-        pattern=sre_compile.compile(r"\bdangerouslySetInnerHTML\s*=\s*\{\s*\{\s*__html\s*:\s*(?!DOMPurify\.sanitize)"),
+        pattern=re.compile(r"\bdangerouslySetInnerHTML\s*=\s*\{\s*\{\s*__html\s*:\s*(?!DOMPurify\.sanitize)"),
         title="Unsanitized `dangerouslySetInnerHTML` XSS sink",
         impact="Direct DOM injection of unverified strings enables Cross-Site Scripting (XSS) session hijacking.",
         remedy="Sanitize HTML with `DOMPurify.sanitize(content)` or render safe React nodes.",
@@ -305,7 +304,7 @@ RULES: List[TrapRule] = [
         code="RCT-03",
         stack="react",
         severity="HIGH",
-        pattern=sre_compile.compile(
+        pattern=re.compile(
             r"(?i)>(?:[^<]*\b(?:TODO|FIXME|Mock data|In production|Developer note|Agent note)\b[^<]*)</(?:p|span|div|small|label)>"
         ),
         title="Internal developer/agent note leaked into user-facing JSX/HTML",
@@ -318,7 +317,7 @@ RULES: List[TrapRule] = [
         code="RS-01",
         stack="rust",
         severity="HIGH",
-        pattern=sre_compile.compile(r"\.(?:unwrap|expect)\s*\("),
+        pattern=re.compile(r"\.(?:unwrap|expect)\s*\("),
         title="Panic bomb (`.unwrap()` / `.expect()`) in Rust code",
         impact="Crashes the worker thread or entire process when an unexpected `None` or `Err` occurs in production.",
         remedy="Propagate errors via `?`, `.context(...)`, or handle explicitly with `match` / `if let`.",
@@ -328,7 +327,7 @@ RULES: List[TrapRule] = [
         code="RS-02",
         stack="rust",
         severity="CRITICAL",
-        pattern=sre_compile.compile(r"\bunsafe\s*\{"),
+        pattern=re.compile(r"\bunsafe\s*\{"),
         title="`unsafe` block requires explicit invariant audit",
         impact="Bypasses Rust borrow checker and memory safety guarantees; risks UB, data races, or segfaults.",
         remedy="Avoid `unsafe` if a safe abstraction exists, or precede with a rigorous `// SAFETY:` proof comment.",
@@ -338,7 +337,7 @@ RULES: List[TrapRule] = [
         code="RS-03",
         stack="rust",
         severity="HIGH",
-        pattern=sre_compile.compile(r"\b(?:std::thread::sleep|std::fs::\w+)\s*\("),
+        pattern=re.compile(r"\b(?:std::thread::sleep|std::fs::\w+)\s*\("),
         title="Blocking stdlib call (`std::thread::sleep` / `std::fs`) potentially starving async executor",
         impact="Blocks Tokio/async worker threads, stalling all concurrent tasks scheduled on that core.",
         remedy="Use `tokio::time::sleep`, `tokio::fs`, or `tokio::task::spawn_blocking`.",
@@ -348,7 +347,7 @@ RULES: List[TrapRule] = [
         code="RS-04",
         stack="rust",
         severity="HIGH",
-        pattern=sre_compile.compile(r"\bunbounded_channel\s*\("),
+        pattern=re.compile(r"\bunbounded_channel\s*\("),
         title="Unbounded channel (`unbounded_channel`) without backpressure",
         impact="Fast producers overwhelm slow consumers, growing queue memory until the process is OOMKilled.",
         remedy="Use bounded `mpsc::channel(capacity)` to enforce backpressure.",
@@ -359,7 +358,7 @@ RULES: List[TrapRule] = [
         code="GO-01",
         stack="go",
         severity="CRITICAL",
-        pattern=sre_compile.compile(r"^\s*_[^=\n]*=\s*[\w.]+\s*\("),
+        pattern=re.compile(r"^\s*_[^=\n]*=\s*[\w.]+\s*\("),
         title="Explicitly ignored error return (`_ = fn()`)",
         impact="Silently drops I/O, serialization, or transaction failures, causing undetected state corruption.",
         remedy="Capture `err`, check `if err != nil`, and wrap with `fmt.Errorf(\"...: %w\", err)`.",
@@ -369,7 +368,7 @@ RULES: List[TrapRule] = [
         code="GO-02",
         stack="go",
         severity="HIGH",
-        pattern=sre_compile.compile(r"\bhttp\.(?:Get|Post|PostForm|Head)\s*\("),
+        pattern=re.compile(r"\bhttp\.(?:Get|Post|PostForm|Head)\s*\("),
         title="Package-level `http.Get`/`http.Post` using `http.DefaultClient` (infinite timeout)",
         impact="`http.DefaultClient` has no timeout; a stalled upstream leaks goroutines and sockets forever.",
         remedy="Use an explicit `&http.Client{Timeout: 10 * time.Second}` with `http.NewRequestWithContext`.",
@@ -379,7 +378,7 @@ RULES: List[TrapRule] = [
         code="GO-03",
         stack="go",
         severity="HIGH",
-        pattern=sre_compile.compile(r"^\s*go\s+func\s*\("),
+        pattern=re.compile(r"^\s*go\s+func\s*\("),
         title="Anonymous goroutine spawned (`go func()`) — verify lifecycle & cancellation",
         impact="Unbounded or uncancelled goroutines leak memory and cause data races on shutdown.",
         remedy="Bind goroutines to `errgroup.WithContext(ctx)` or ensure deterministic `ctx.Done()` exit.",
@@ -390,7 +389,7 @@ RULES: List[TrapRule] = [
         code="SH-01",
         stack="shell",
         severity="HIGH",
-        pattern=sre_compile.compile(r'\brm\s+-rf\s+\$\{' + r'?\w+\}?/'),
+        pattern=re.compile(r'\brm\s+-rf\s+\$\{' + r'?\w+\}?/'),
         title="Unwarded deletion command without parameter expansion guard",
         impact="If the variable is unset, unwarded deletion expands to root or wipes critical directories.",
         remedy='Use `set -u` and parameter guard: `rm -rf "${VAR:?Error: VAR is unset}/"`.',
@@ -401,7 +400,7 @@ RULES: List[TrapRule] = [
         code="ARC-02",
         stack="arch",
         severity="HIGH",
-        pattern=sre_compile.compile(r"(?i)\bSELECT\s+\*\s+FROM\s+\w+(?![^\n;]*\bLIMIT\b)"),
+        pattern=re.compile(r"(?i)\bSELECT\s+\*\s+FROM\s+\w+(?![^\n;]*\bLIMIT\b)"),
         title="Unbounded `SELECT * FROM` without `LIMIT` clause",
         impact="Full table scan loads unbounded rows into application memory, triggering OOM under production growth.",
         remedy="Specify explicit column names and enforce cursor-based pagination with `LIMIT <= 100`.",
@@ -411,7 +410,7 @@ RULES: List[TrapRule] = [
         code="ARC-03",
         stack="arch",
         severity="HIGH",
-        pattern=sre_compile.compile(
+        pattern=re.compile(
             r"(?i)(?:process\.env\.[A-Z0-9_]+|os\.getenv\([^)]+\))\s*(?:\|\||\?\?|,)\s*['\"](?:secret|password|admin|default|changeme|123456|dev)"
         ),
         title="Insecure fallback default for secret or environment configuration",
@@ -504,43 +503,43 @@ def check_k8s_missing_limits(filepath: str, lines: Sequence[str]) -> List[Findin
 
 SQL_TARGET_EXTENSIONS: Tuple[str, ...] = (".py", ".ts", ".js", ".mjs", ".cjs", ".go", ".rs")
 
-SQL_EXECUTION_SINK_PATTERN = sre_compile.compile(
+SQL_EXECUTION_SINK_PATTERN = re.compile(
     r"(?i)\b(?:db|pool|client|conn|connection|tx|session|cursor|cur|engine|sqlite)\s*\.\s*(?:query|Query|QueryRow|execute|Execute|exec|Exec|raw|run|all|get|exec_driver|raw_query)\s*\(|\bprisma\s*\.\s*\$(?:queryRawUnsafe|executeRawUnsafe)\s*\(|\b(?:knex|sql)\s*\.\s*raw\s*\(|\bsqlx\s*::\s*(?:query|query_as)\s*\(|\b(?:sequelize|dataSource|manager)\s*\.\s*query\s*\("
 )
 
-SQL_SINK_ARG_PATTERN = sre_compile.compile(
+SQL_SINK_ARG_PATTERN = re.compile(
     r"(?i)\b(?:db|pool|client|conn|connection|tx|session|cursor|cur|engine|sqlite|prisma|knex|sql|sqlx|sequelize|dataSource|manager)\s*(?:\.|\:\:)\s*(?:query|Query|QueryRow|execute|Execute|exec|Exec|raw|run|all|get|\$queryRawUnsafe|\$executeRawUnsafe)\s*\(\s*&?([a-zA-Z0-9_]+)"
 )
 
-NON_SQL_LOGGER_PATTERN = sre_compile.compile(
+NON_SQL_LOGGER_PATTERN = re.compile(
     r"(?i)\b(?:console\.(?:log|error|warn|info|debug|trace)|(?:logger|logging|log)\.(?:debug|info|warn|warning|error|critical|fatal|exception)|(?:fmt\.(?:Print|Println|Printf|Fprintf|Fprintln|Fprint)|log\.(?:Print|Println|Printf|Fatal|Fatalf))|print|println!|eprintln!|panic!|throw\s+new\s+\w*Error|raise\s+\w*(?:Error|Exception))\s*\("
 )
 
-UI_COPY_PATTERN = sre_compile.compile(
+UI_COPY_PATTERN = re.compile(
     r"(?i)<(?:button|span|h[1-6]|div|p|label|a|title|text)[^>]*>|toast\.(?:success|error|info|warn)\("
 )
 
-ASSIGNMENT_PATTERN = sre_compile.compile(
+ASSIGNMENT_PATTERN = re.compile(
     r"(?:(?:const|let|var)\s+)?([a-zA-Z0-9_]+)\s*(?::=|=|\+=)"
 )
 
-SQL_SELECT_PATTERN = sre_compile.compile(
+SQL_SELECT_PATTERN = re.compile(
     r"(?i)\bSELECT\s+(?:DISTINCT\s+)?(?:[\w*,\s.`\"'\(\)]+|\$\{[^}]+\}|\{[^}]+\})\s+\bFROM\s+(?:(?!the\b|a\b|an\b|this\b|that\b|these\b|those\b|my\b|your\b|our\b)[a-zA-Z0-9_.\"']+|\$\{[^}]+\}|\{[^}]+\})(?:\s+(?:AS\s+)?[a-zA-Z0-9_]+)?(?:\s+\b(?:WHERE|JOIN|LEFT|RIGHT|INNER|OUTER|CROSS|ORDER\s+BY|GROUP\s+BY|LIMIT|HAVING|ON)\b|;|$|[\"'`\)])"
 )
 
-SQL_UPDATE_PATTERN = sre_compile.compile(
+SQL_UPDATE_PATTERN = re.compile(
     r"(?i)\bUPDATE\s+(?:(?!the\b|a\b|an\b|this\b|that\b|these\b|those\b|my\b|your\b|our\b)[a-zA-Z0-9_.\"']+|\$\{[^}]+\}|\{[^}]+\})\s+\bSET\s+(?:[a-zA-Z0-9_.\"']+|\$\{[^}]+\}|\{[^}]+\})\s*="
 )
 
-SQL_INSERT_PATTERN = sre_compile.compile(
+SQL_INSERT_PATTERN = re.compile(
     r"(?i)\bINSERT\s+(?:(?:OR\s+(?:REPLACE|IGNORE)\s+)?INTO)\s+(?:(?!the\b|a\b|an\b|this\b|that\b|these\b|those\b|my\b|your\b|our\b)[a-zA-Z0-9_.\"']+|\$\{[^}]+\}|\{[^}]+\})(?:\s*\([^)]*\))?\s*(?:VALUES|SELECT)\b"
 )
 
-SQL_DELETE_PATTERN = sre_compile.compile(
+SQL_DELETE_PATTERN = re.compile(
     r"(?i)\bDELETE\s+FROM\s+(?:(?!the\b|a\b|an\b|this\b|that\b|these\b|those\b|my\b|your\b|our\b)[a-zA-Z0-9_.\"']+|\$\{[^}]+\}|\{[^}]+\})(?:\s+\bWHERE\b|;|$|[\"'`\)])"
 )
 
-DYNAMIC_INTERPOLATION_PATTERN = sre_compile.compile(
+DYNAMIC_INTERPOLATION_PATTERN = re.compile(
     r"\$\{[^}]+\}|(?<!\{)\{[a-zA-Z0-9_]+[^}]*\}|\+\s*[a-zA-Z0-9_]+|[a-zA-Z0-9_]+\s*\+\s*[\"'`]|%s|%\([a-zA-Z0-9_]+\)s|\.format\s*\(|fmt\.Sprintf\s*\(|format!\s*\("
 )
 
