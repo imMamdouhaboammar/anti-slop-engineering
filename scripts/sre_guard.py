@@ -13,6 +13,7 @@ Enforces Google SRE principles in code and Git diffs:
 Zero external dependencies: Python 3.9+ standard library only.
 """
 import argparse
+import ast
 import collections
 import hashlib
 import json
@@ -30,6 +31,11 @@ from scripts.retry_heuristics import INLINE_FLAT_RETRY, flat_retry_lines
 from scripts.source_trivia import source_trivia
 
 __version__ = '1.9.0'
+
+STATIC_HEALTH_CHECK_ACTION = (
+    'SCALE violation: Static health check detected without dependency probe. '
+    'Distinguish liveness from readiness, and verify critical dependencies before returning ready status.'
+)
 
 # File types subject to SRE code analysis
 CODE_EXTENSIONS = {
@@ -63,7 +69,9 @@ SRE_PATTERNS = [
         'YAGNI',
         'YAGNI_DEAD_SPECULATIVE_FLAG',
         'blocker',
-        re.compile(r'(?i)(?:if\s+False\s*:|if\s*\(\s*false\s*\)|if\s*\(\s*0\s*\))\s*(?:#|//.*)?$'),
+        re.compile(
+            r'(?i)(?:if\s+False\s*:|if\s*\(\s*false\s*\)|if\s*\(\s*0\s*\))\s*(?:#|//.*)?$',
+        ),
         'YAGNI violation: Hardcoded dead conditional branch detected. Remove dead speculative branches; version control is the archive.'
     ),
     # YAGNI: Speculative parameter patterns
@@ -71,7 +79,9 @@ SRE_PATTERNS = [
         'YAGNI',
         'YAGNI_SPECULATIVE_PARAMETER',
         'review',
-        re.compile(r'\b(?:' + r'fut' + r'ure_kwargs|un' + r'used_arg|' + r'_un' + r'used_param|res' + r'erved_flag)\b'),
+        re.compile(
+            r'\b(?:' + r'fut' + r'ure_kwargs|un' + r'used_arg|' + r'_un' + r'used_param|res' + r'erved_flag)\b',
+        ),
         'YAGNI violation: Speculative or reserved parameter detected. Keep interface surfaces minimal and concrete.'
     ),
     # SCALE: Sleep as a race-condition synchronization band-aid
@@ -79,7 +89,9 @@ SRE_PATTERNS = [
         'SCALE',
         'SCALE_SLEEP_BAND_AID',
         'review',
-        re.compile(r'(?i)\b(?:time\.sleep\s*\(\s*(?:0?\.[1-9]|[1-9])\d*\s*\)|thread\.sleep\s*\(\s*\d+\s*\)|setTimeout\s*\([^,]+,\s*(?:100|200|500|1000|2000|5000)\s*\))'),
+        re.compile(
+            r'(?i)\b(?:time\.sleep\s*\(\s*(?:0?\.[1-9]|[1-9])\d*\s*\)|thread\.sleep\s*\(\s*\d+\s*\)|setTimeout\s*\([^,]+,\s*(?:100|200|500|1000|2000|5000)\s*\))',
+        ),
         'SCALE violation: Hardcoded sleep synchronization band-aid detected. Replace arbitrary sleeps with deterministic condition variables, latches, or polling with bounded timeout.'
     ),
     # SCALE: Unbounded or flat retry without exponential backoff & jitter
@@ -87,7 +99,9 @@ SRE_PATTERNS = [
         'SCALE',
         'SCALE_UNBOUNDED_OR_FLAT_RETRY',
         'blocker',
-        re.compile(INLINE_FLAT_RETRY),
+        re.compile(
+            INLINE_FLAT_RETRY,
+        ),
         'SCALE violation: Flat retry without exponential backoff and jitter detected. Under service degradation, flat retries trigger thundering herds and retry storms. Implement exponential backoff with full jitter.'
     ),
     # SCALE: Unbounded concurrency / missing backpressure
@@ -95,7 +109,9 @@ SRE_PATTERNS = [
         'SCALE',
         'SCALE_UNBOUNDED_CONCURRENCY',
         'review',
-        re.compile(r'(?i)(?:Promise\.all\s*\(\s*(?:\w+|\w+\.[a-zA-Z0-9_]+)\.map\s*\(|asyncio\.gather\s*\(\s*\*\s*(?:\[|\w))'),
+        re.compile(
+            r'(?i)(?:Promise\.all\s*\(\s*(?:\w+|\w+\.[a-zA-Z0-9_]+)\.map\s*\(|asyncio\.gather\s*\(\s*\*\s*(?:\[|\w))',
+        ),
         'SCALE violation: Unbounded concurrency mapping detected without pool, concurrency limiter, or chunking. Constrain parallel operations with a semaphore or worker queue to prevent resource starvation.'
     ),
     # SCALE: Swallowed exceptions causing operational toil
@@ -103,7 +119,9 @@ SRE_PATTERNS = [
         'SCALE',
         'SCALE_TOIL_ERROR_SWALLOW',
         'blocker',
-        re.compile(r'(?i)(?:except\s+(?:Exception|BaseException)?\s*:\s*pass\b|catch\s*\([^)]*\)\s*\{\s*\}|\.catch\s*\(\s*\(\s*\)\s*=>\s*\{\s*\}\s*\))'),
+        re.compile(
+            r'(?i)(?:except\s+(?:Exception|BaseException)?\s*:\s*pass\b|catch\s*\([^)]*\)\s*\{\s*\}|\.catch\s*\(\s*\(\s*\)\s*=>\s*\{\s*\}\s*\))',
+        ),
         'SCALE violation: Swallowed exception detected. Silent failures create untracked fleet-wide failures and manual operational toil. Log structured telemetry with error codes and correlation IDs, or propagate.'
     ),
     # SCALE: Misleading health check returning unconditional OK
@@ -111,8 +129,10 @@ SRE_PATTERNS = [
         'SCALE',
         'SCALE_MISLEADING_HEALTH_CHECK',
         'review',
-        re.compile(r'(?i)(?:def\s+(?:healthz?|liveness|readiness)\s*\([^)]*\)\s*:\s*return\s+(?:\{["\']status["\']:\s*["\']ok["\']\}|["\']ok["\']|200\b)|\b(?:app|router)\.get\s*\(\s*["\']/(?:healthz?|live|ready)["\']\s*,\s*(?:lambda|async\s+lambda)?\s*(?:=>)?\s*200\b)'),
-        'SCALE violation: Static health check detected without dependency probe. Distinguish liveness from readiness, and verify critical dependencies before returning ready status.'
+        re.compile(
+            r'(?i)\b(?:app|router)\.get\s*\(\s*["\']/(?:healthz?|live|ready)["\']\s*,\s*(?:lambda|async\s+lambda)?\s*(?:=>)?\s*200\b',
+        ),
+        STATIC_HEALTH_CHECK_ACTION
     ),
 ]
 
@@ -288,6 +308,35 @@ def in_changed_hunks(line, hunks):
     return any(hunk["new_start"] <= line < hunk["new_start"] + hunk["new_count"] for hunk in hunks)
 
 
+def static_python_health_checks(content):
+    try:
+        tree = ast.parse(content)
+    except (SyntaxError, ValueError, RecursionError):
+        return
+
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        if node.name.casefold() not in {"health", "healthz", "liveness", "readiness"}:
+            continue
+        body = node.body[1:] if ast.get_docstring(node, clean=False) is not None else node.body
+        if len(body) == 1 and isinstance(body[0], ast.Return) and is_literal_health_success(body[0].value):
+            yield node.lineno, body[0]
+
+
+def is_literal_health_success(value):
+    if isinstance(value, ast.Dict) and len(value.keys) == 1:
+        key = value.keys[0]
+        if not (isinstance(key, ast.Constant) and isinstance(key.value, str) and key.value.casefold() == "status"):
+            return False
+        status = value.values[0]
+        return isinstance(status, ast.Constant) and isinstance(status.value, str) and status.value.casefold() == "ok"
+    if not isinstance(value, ast.Constant):
+        return False
+    literal = value.value
+    return (type(literal) is int and literal == 200) or (isinstance(literal, str) and literal.casefold() == "ok")
+
+
 def scan_file_sre(file_path, content, max_nesting=4, max_function_lines=80, is_test_file=False, *, changed_hunks=()):
     """Scan a single file for SRE violations."""
     if is_test_file:
@@ -325,13 +374,19 @@ def scan_file_sre(file_path, content, max_nesting=4, max_function_lines=80, is_t
                     'SCALE violation: Swallowed exception detected. Silent failures create untracked fleet-wide failures and manual operational toil. Log structured telemetry with error codes and correlation IDs, or propagate.'
                 )
 
-            is_static_probe = bool(re.search(r'(?i)^\s*(?:async\s+)?def\s+(?:healthz?|liveness|readiness)\s*\(', line) and re.search(r'(?i)return\s+(?:\{["\']status["\']:\s*["\']ok["\']\}|["\']ok["\']|200\b)', next_line_text))
-            if is_static_probe:
-                add_finding(
-                    findings, seen, 'SCALE', 'SCALE_MISLEADING_HEALTH_CHECK', 'review',
-                    file_path, line_idx, f"{line.strip()} -> {next_line_text}",
-                    'SCALE violation: Static health check detected without dependency probe. Distinguish liveness from readiness, and verify critical dependencies before returning ready status.'
-                )
+    if python_trivia is not None:
+        for line_idx, returned in static_python_health_checks(content):
+            if not in_changed_hunks(line_idx, changed_hunks):
+                for hunk in changed_hunks:
+                    start = hunk["new_start"]
+                    if start <= returned.end_lineno and returned.lineno < start + hunk["new_count"]:
+                        line_idx = max(returned.lineno, start)
+                        break
+            add_finding(
+                findings, seen, 'SCALE', 'SCALE_MISLEADING_HEALTH_CHECK', 'review',
+                file_path, line_idx, lines[returned.lineno - 1].strip()[:180],
+                STATIC_HEALTH_CHECK_ACTION,
+            )
 
     for header, sleep in flat_retry_lines(lines):
         line = sleep if in_changed_hunks(sleep, changed_hunks) and not in_changed_hunks(header, changed_hunks) else header

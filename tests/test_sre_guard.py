@@ -406,6 +406,27 @@ class SreGuardTests(unittest.TestCase):
         finding_ids = [f['id'] for f in report['findings']]
         self.assertIn('SCALE_MISLEADING_HEALTH_CHECK', finding_ids)
 
+    def test_health_check_flags_only_unconditional_success(self):
+        cases = (
+            ("inline condition", "def readiness(): return 200 if datastore.is_ready() else 503\n", []),
+            ("conditional return", "def readiness():\n    return 200 if datastore.is_ready() else 503\n", []),
+            ("dependency call", "def readiness():\n    datastore.ping()\n    return 200\n", []),
+            ("template text", 'fixture = """\ndef readiness():\n    return 200\n"""\n', []),
+            ("constant", "def readiness(): return 200  # intentionally static fixture\n", [1]),
+            ("async docstring", 'async def readiness():\n    """Report service status."""\n    return {"status": "ok"}\n', [1]),
+        )
+        probe = self.repo / 'src' / 'probe.py'
+        for name, code, expected in cases:
+            with self.subTest(name=name):
+                probe.write_text(code, encoding='utf-8')
+                git(self.repo, 'add', 'src/probe.py')
+                run, report = self.run_sre('--base', 'HEAD', '--json')
+                self.assertEqual(run.returncode, 0, run.stderr)
+                self.assertEqual(
+                    [item['line'] for item in report['findings'] if item['id'] == 'SCALE_MISLEADING_HEALTH_CHECK'],
+                    expected,
+                )
+
     def test_git_diff_marks_findings_for_quoted_and_spaced_paths(self):
         git(self.repo, 'config', 'diff.noprefix', 'true')
         sources = ['src/café.py', 'src/wait for job.py', 'src/job\tname.py']

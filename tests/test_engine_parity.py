@@ -391,8 +391,8 @@ class EngineParityContractTests(unittest.TestCase):
                 self.assertFalse(false_alarm, f"{rule.evidence_key} flags its negative fixture")
                 outcomes = {"tp": int(hit), "fn": int(not hit), "fp": int(false_alarm), "tn": int(not false_alarm)}
                 if rule.catalog_id == "SRE-12":
-                    inline_flagged = rule.engine_code in outputs["health_inline_probe", rule.engine]
-                    outcomes["fp" if inline_flagged else "tn"] += 1
+                    self.assertNotIn(rule.engine_code, outputs["health_inline_probe", rule.engine])
+                    outcomes["tn"] += 1
                 observations[rule.evidence_key] = outcomes
 
         receipt = os.environ.get("CATALOG_OBSERVATIONS_OUT")
