@@ -69,6 +69,36 @@ func TestCheckToilAndScale_MultilineCatchTS(t *testing.T) {
 	}
 }
 
+func TestCheckToilAndScale_LineInitialCatchTS(t *testing.T) {
+	cases := []struct {
+		name    string
+		content string
+		want    int
+	}{
+		{"brace on catch line", "try {\n  work();\n}\ncatch (e) {\n}\n", 4},
+		{"binding-free", "try {\n  work();\n}\ncatch {\n}\n", 4},
+		{"brace on next line", "try\n{\n  work();\n}\ncatch (e)\n{\n}\n", 5},
+		{"try on one line", "try { work(); }\ncatch (e) {\n}\n", 2},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := swallowLines("app.ts", tc.content); len(got) != 1 || got[0] != tc.want {
+				t.Fatalf("expected one swallow finding at line %d, got %v", tc.want, got)
+			}
+		})
+	}
+}
+
+func TestCheckToilAndScale_LineInitialCatchControls(t *testing.T) {
+	if got := swallowLines("app.ts", "try {\n  work();\n}\ncatch (e) {\n  console.error(e);\n}\n"); len(got) != 0 {
+		t.Fatalf("expected no findings for nonempty line-initial catch, got %v", got)
+	}
+	method := "class Handler {\n  run() {\n    work();\n  }\n  catch(e) {\n  }\n}\n"
+	if got := swallowLines("app.ts", method); len(got) != 0 {
+		t.Fatalf("expected no findings for a method named catch, got %v", got)
+	}
+}
+
 func TestCheckToilAndScale_MultilinePythonExcept(t *testing.T) {
 	content := "try:\n    work()\nexcept Exception:\n    pass\n"
 	if got := swallowLines("worker.py", content); len(got) != 1 || got[0] != 3 {

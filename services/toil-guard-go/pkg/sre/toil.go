@@ -159,9 +159,14 @@ func CheckToilAndScale(filePath string, content string) []model.Finding {
 }
 
 var (
-	rePythonExcept = regexp.MustCompile(`^(\s*)except\b[^:]*:\s*$`)
-	reCatchOpen    = regexp.MustCompile(`\}\s*catch\b(?:\s*\([^)]*\))?\s*\{`)
-	reGoErrOpen    = regexp.MustCompile(`if\s+err\s*!=\s*nil\s*\{`)
+	rePythonExcept        = regexp.MustCompile(`^(\s*)except\b[^:]*:\s*$`)
+	reCatchOpen           = regexp.MustCompile(`\}\s*catch\b(?:\s*\([^)]*\))?\s*\{`)
+	reGoErrOpen           = regexp.MustCompile(`if\s+err\s*!=\s*nil\s*\{`)
+	reCatchLineStartBrace = regexp.MustCompile(`^\s*catch\b(?:\s*\([^)]*\))?\s*\{`)
+	reCatchLineStartBare  = regexp.MustCompile(`^\s*catch\b(?:\s*\([^)]*\))?\s*$`)
+	reTryBlockOpen        = regexp.MustCompile(`\btry\b[^{}]*\{\s*$`)
+	reTryOpen             = regexp.MustCompile(`\btry\b[^{}]*\{`)
+	reTryLine             = regexp.MustCompile(`^\s*try\b`)
 )
 
 type commentSpan struct {
@@ -385,8 +390,80 @@ func blockSwallowedErrorLines(filePath string, lines []string) map[int]bool {
 				findings[i+1] = true
 			}
 		}
+		if lineInitialCatchSwallow(code, comments, i) {
+			findings[i+1] = true
+		}
 	}
 	return findings
+}
+
+// lineInitialCatchSwallow reports whether the catch clause starting line i
+// opens an empty block and attaches to a preceding try block, as in
+// formatter output that places catch at the start of its own line.
+func lineInitialCatchSwallow(code []string, comments [][]commentSpan, i int) bool {
+	cv := code[i]
+	if loc := reCatchLineStartBrace.FindStringIndex(cv); loc != nil {
+		if !catchFollowsTryBlock(code, i) {
+			return false
+		}
+		braceRune := utf8.RuneCountInString(cv[:loc[1]-1])
+		return braceBlockIsEmpty(code, comments, i, braceRune)
+	}
+	if !reCatchLineStartBare.MatchString(cv) || !catchFollowsTryBlock(code, i) {
+		return false
+	}
+	for q := i + 1; q < len(code); q++ {
+		if strings.TrimSpace(code[q]) == "" {
+			continue
+		}
+		if strings.TrimSpace(code[q]) != "{" {
+			return false
+		}
+		braceRune := utf8.RuneCountInString(code[q][:strings.Index(code[q], "{")])
+		return braceBlockIsEmpty(code, comments, q, braceRune)
+	}
+	return false
+}
+
+// catchFollowsTryBlock reports whether the catch clause at line i attaches
+// to a try block: the previous code line either completes a one-line try
+// statement or is the lone closing brace of a block opened by a try opener.
+func catchFollowsTryBlock(code []string, i int) bool {
+	p := prevCodeLine(code, i)
+	if p < 0 {
+		return false
+	}
+	if strings.TrimSpace(code[p]) != "}" {
+		prev := strings.TrimSpace(code[p])
+		return reTryOpen.MatchString(code[p]) && strings.HasSuffix(prev, "}") &&
+			strings.Count(code[p], "{") == strings.Count(code[p], "}")
+	}
+	depth := 0
+	for j := p; j >= 0; j-- {
+		depth += strings.Count(code[j], "}") - strings.Count(code[j], "{")
+		if depth != 0 {
+			continue
+		}
+		if reTryBlockOpen.MatchString(code[j]) {
+			return true
+		}
+		if strings.TrimSpace(code[j]) == "{" {
+			if t := prevCodeLine(code, j); t >= 0 {
+				return reTryLine.MatchString(code[t])
+			}
+		}
+		return false
+	}
+	return false
+}
+
+func prevCodeLine(code []string, i int) int {
+	for j := i - 1; j >= 0; j-- {
+		if strings.TrimSpace(code[j]) != "" {
+			return j
+		}
+	}
+	return -1
 }
 
 func commentsHaveIgnoreReason(spans []commentSpan) bool {
