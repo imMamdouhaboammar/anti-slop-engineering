@@ -80,6 +80,7 @@ pipx install git+https://github.com/imMamdouhaboammar/anti-slop-engineering.git
 | `bunx anti-slop-engineering diff --base HEAD` | **Single Diff Guard**: Inspects git diff only for scope creep, unverified additions, ungrounded comments, and banned tokens. Exits 0 if no blocker patterns are identified. | Quick pre-commit diff triage. |
 | `bunx anti-slop-engineering check --base HEAD` | **Backwards-Compatible Diff Check**: Retains narrow Diff Guard triage scope (alias for `diff`). Does not run SRE Guard, linters, or test suites. | Preserved for existing script compatibility. |
 | `bunx anti-slop-engineering audit --base HEAD` | **Unified Multi-Guard Audit**: Runs all applicable active guards (Diff, SRE, AST, Contrast, Comment Budget, PR Boundary, Invariant Steward, etc.) and compiles a structured dossier in `anti-slop/audit-NNN.md`. Exits with code 1 if any blocker is found. | Comprehensive verification before PR creation or completion. |
+| `bunx anti-slop-engineering audit --base HEAD --restricted-env` | Restricts the audit guards to inherited executable, home, locale, temp, Windows startup, and CI branch variables. Ordinary audits inherit the caller environment. | Audit without inheriting unrelated environment variables. |
 | `bunx anti-slop-engineering check-all` | **Full Repository Quality Suite**: Runs `make check-all` (linting, Python unit tests, Bun security tests, Rust cargo test & clippy, and Go SRE tests). | Full CI-level verification across all polyglot targets. |
 
 > **Note on Makefile vs CLI:** In `Makefile`, `make check` runs developer checks (`lint + test-verbose + guard + sre`), while CLI `anti-slop-engineering check` is the narrow git diff triage. For repository-wide verification, use `make check-all` or `bunx anti-slop-engineering check-all`.
@@ -124,6 +125,20 @@ bunx anti-slop-engineering --base HEAD --json
 # Exit code 2 on any blocker (CI gate):
 bunx anti-slop-engineering --base HEAD --fail-on-blocker
 ```
+
+### Optional diff lifecycle hooks
+
+```bash
+bunx anti-slop-engineering diff --base HEAD --hooks-dir /absolute/path/to/trusted-hooks
+```
+
+Supply a caller-owned, canonical directory outside the scanned checkout. Its optional `pre_scan.py` and
+`post_scan.py` each receive a JSON event on stdin. Both receive `event_type`,
+`repo`, `base`, and `payload`. The pre-scan payload contains `review_lines` and
+the post-scan payload contains the report `summary`. A hook runs from its trusted
+directory with user permissions. The scan waits up to 5 seconds for each hook
+process and returns exit code 1 on timeout or a nonzero exit. Plain diff and
+unified audit invocations run without hooks.
 
 ### SRE Guard — Google SRE principles enforced statically
 
@@ -515,6 +530,7 @@ The real-time execution guard interceptor enforces boundaries before agent actio
 | **File Boundary Lock** | Rejects edits outside declared contract paths (`PATH_OUTSIDE_CONTRACT`) |
 | **Read-Only Mode Gate** | Blocks mutating tools (`write_file`, `edit_file`, mutating shell commands) in `review`/`answer`/`monitor` modes |
 | **Dependency Gate** | Flags unapproved package installations; issues single-use runner tickets when `deps=ask` |
+| **Environment Inspection** | Requests approval for direct environment inspection and unsupported `env` wrapper options in guard mode. Literal `env NAME=value command` follows the wrapped command’s policy. |
 | **Subagent Concurrency** | Halts subagent invocations when `active_subagents >= agents` budget |
 | **Pairwise Case Runner** | 16 declarative Good/Bad test cases verifying SHIT boundary invariants |
 

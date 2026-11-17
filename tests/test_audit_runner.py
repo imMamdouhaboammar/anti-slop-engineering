@@ -3,6 +3,7 @@
 # Copyright (c) 2026 Mamdouh Aboammar <mamdouhfces1997@gmail.com> and contributors
 
 import json
+import os
 import re
 import shlex
 import subprocess
@@ -104,6 +105,49 @@ class AuditRunnerTests(unittest.TestCase):
         res = subprocess.run([sys.executable, script, "mode"], capture_output=True, text=True)
         self.assertEqual(res.returncode, 0)
         self.assertIn("Current anti-slop-engineering mode:", res.stdout)
+
+    def test_audit_accepts_restricted_environment_with_real_guards(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for args in (
+                ["init", "-q"], ["-c", "user.name=Audit Fixture", "-c", "user.email=audit@example.invalid",
+                               "commit", "--allow-empty", "-qm", "fixture"],
+                ["checkout", "-q", "--detach"],
+            ):
+                subprocess.run(["git", *args], cwd=root, capture_output=True, check=True)
+            env = dict(os.environ, GITHUB_HEAD_REF="main", GITHUB_REF_NAME="feature/fallback")
+            result = subprocess.run(
+                [sys.executable, SCRIPTS_DIR / "audit_runner.py", "audit", "--base", "HEAD", "--json",
+                 "--restricted-env"], cwd=root, env=env, capture_output=True, text=True, check=False,
+            )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        report = json.loads(result.stdout)
+        self.assertEqual(report["status"], "PASS")
+        self.assertEqual(report["guards"]["diff_guard"]["status"], "PASS")
+        self.assertTrue(any(
+            finding["guard"] == "pr_boundary_guard" and finding["rule"] == "BLOCKED_SOURCE_BRANCH"
+            for finding in report["findings"]
+        ), report["findings"])
+
+    def test_guard_child_inherits_normal_environment_and_restricts_opt_in(self):
+        command = [
+            sys.executable, "-c",
+            "import json, os; print(json.dumps([os.getenv('PATH'), os.getenv('ASE_TEST_CHILD_MARKER')]))",
+        ]
+        with patch.dict(os.environ, {"ASE_TEST_CHILD_MARKER": "fixture-value"}):
+            ordinary = audit_runner.run_command(command)
+            restricted = audit_runner.run_command(command, restricted_env=True)
+        for result in (ordinary, restricted):
+            self.assertEqual(result["exit_code"], 0, result)
+        self.assertEqual(json.loads(ordinary["stdout"]), [os.environ.get("PATH"), "fixture-value"])
+        self.assertEqual(json.loads(restricted["stdout"]), [os.environ.get("PATH"), None])
+
+    def test_restricted_environment_uses_platform_variable_name_semantics(self):
+        command = [sys.executable, "-c", "import os; print(os.getenv('github_head_ref', 'missing'))"]
+        with patch.dict(os.environ, {"github_head_ref": "feature/lowercase"}, clear=False):
+            result = audit_runner.run_command(command, restricted_env=True)
+        self.assertEqual(result["exit_code"], 0, result)
+        self.assertEqual(result["stdout"].strip(), "feature/lowercase" if os.name == "nt" else "missing")
 
     def test_docstring_does_not_advertise_fix_command(self):
         doc = audit_runner.__doc__ or ""
