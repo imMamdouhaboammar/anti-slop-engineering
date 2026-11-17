@@ -204,6 +204,131 @@ class ForensicHunterTests(unittest.TestCase):
             self.assertEqual(data_crit["verdict"], "COMPROMISED (BLOCK)")
             self.assertEqual(data_crit["counts"]["CRITICAL"], 1)
 
+    def test_cli_path_scan_recurses_into_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            src_dir = os.path.join(tmpdir, "src")
+            nested_dir = os.path.join(src_dir, "nested")
+            os.makedirs(nested_dir)
+            trap_file = os.path.join(nested_dir, "trap.py")
+            with open(trap_file, "w", encoding="utf-8") as f:
+                f.write("def bad_fn(items=[]):\n    pass\n")
+
+            ignored_dir = os.path.join(src_dir, "node_modules")
+            os.makedirs(ignored_dir)
+            with open(os.path.join(ignored_dir, "ignored.py"), "w", encoding="utf-8") as f:
+                f.write("def ignored_fn(items=[]):\n    pass\n")
+
+            out = io.StringIO()
+            with redirect_stdout(out):
+                code = forensic_hunter.main(["--path", src_dir, "--fail-on-critical", "--json"])
+            self.assertEqual(code, 2)
+            data = json.loads(out.getvalue())
+            self.assertEqual(data["counts"]["CRITICAL"], 1)
+            self.assertEqual(len(data["findings"]), 1)
+            self.assertEqual(data["findings"][0]["code"], "PY-01")
+            self.assertEqual(data["findings"][0]["file"], trap_file)
+
+    def test_cli_path_scan_single_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            trap_file = os.path.join(tmpdir, "trap.py")
+            with open(trap_file, "w", encoding="utf-8") as f:
+                f.write("def bad_fn(items=[]):\n    pass\n")
+
+            out = io.StringIO()
+            with redirect_stdout(out):
+                code = forensic_hunter.main(["--path", trap_file, "--fail-on-critical", "--json"])
+            self.assertEqual(code, 2)
+            data = json.loads(out.getvalue())
+            self.assertEqual(data["counts"]["CRITICAL"], 1)
+            self.assertEqual(data["findings"][0]["file"], trap_file)
+
+    def test_cli_path_and_files_combined_union(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            src_dir = os.path.join(tmpdir, "src")
+            os.makedirs(src_dir)
+            dir_trap = os.path.join(src_dir, "in_dir.py")
+            with open(dir_trap, "w", encoding="utf-8") as f:
+                f.write("def in_dir(items=[]):\n    pass\n")
+
+            extra_trap = os.path.join(tmpdir, "extra.py")
+            with open(extra_trap, "w", encoding="utf-8") as f:
+                f.write("def extra(items=[]):\n    pass\n")
+
+            out = io.StringIO()
+            with redirect_stdout(out):
+                code = forensic_hunter.main(
+                    ["--files", extra_trap, dir_trap, "--path", src_dir, "--fail-on-critical", "--json"]
+                )
+            self.assertEqual(code, 2)
+            data = json.loads(out.getvalue())
+            self.assertEqual(data["counts"]["CRITICAL"], 2)
+            self.assertEqual({f["file"] for f in data["findings"]}, {dir_trap, extra_trap})
+
+    def test_cli_nonexistent_and_empty_targets_fail_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            missing_dir = os.path.join(tmpdir, "does_not_exist")
+            broken_link = os.path.join(tmpdir, "broken.py")
+            os.symlink(os.path.join(tmpdir, "missing_target.py"), broken_link)
+
+            cases = [
+                (["--path", missing_dir], missing_dir),
+                (["--path", ""], "--path requires a non-empty"),
+                (["--path", "   "], "--path requires a non-empty"),
+                (["--path", broken_link], broken_link),
+                (["--files", missing_dir], missing_dir),
+                (["--files"], "--files requires at least one"),
+                (["--files", ""], "Target path must not be empty"),
+            ]
+            for argv, expected_error in cases:
+                with self.subTest(argv=argv):
+                    out = io.StringIO()
+                    err = io.StringIO()
+                    with redirect_stdout(out), redirect_stderr(err):
+                        code = forensic_hunter.main([*argv, "--json"])
+                    self.assertEqual(code, 1)
+                    self.assertEqual(err.getvalue(), "")
+                    report = json.loads(out.getvalue())
+                    self.assertEqual(set(report), {"error"})
+                    self.assertIn(expected_error, report["error"])
+
+            with self.assertRaises(ValueError):
+                forensic_hunter.collect_files([""])
+
+    def test_cli_path_scan_skips_symlinks_and_loops(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            outside_dir = os.path.join(tmpdir, "outside")
+            src_dir = os.path.join(tmpdir, "src")
+            nested_dir = os.path.join(src_dir, "nested")
+            os.makedirs(outside_dir)
+            os.makedirs(nested_dir)
+
+            outside_file = os.path.join(outside_dir, "secret.py")
+            with open(outside_file, "w", encoding="utf-8") as f:
+                f.write("def leaked_secret(items=[]):\n    pass\n")
+
+            outside_nested_file = os.path.join(outside_dir, "nested_secret.py")
+            with open(outside_nested_file, "w", encoding="utf-8") as f:
+                f.write("def leaked_dir_secret(items=[]):\n    pass\n")
+
+            in_tree_file = os.path.join(nested_dir, "clean.py")
+            with open(in_tree_file, "w", encoding="utf-8") as f:
+                f.write("def clean_fn(items=None):\n    pass\n")
+
+            os.symlink(outside_file, os.path.join(src_dir, "ext.py"))
+            os.symlink(outside_dir, os.path.join(src_dir, "ext_dir"), target_is_directory=True)
+            os.symlink(src_dir, os.path.join(nested_dir, "loop"), target_is_directory=True)
+            os.symlink(os.path.join(tmpdir, "missing.py"), os.path.join(src_dir, "broken.py"))
+
+            out = io.StringIO()
+            err = io.StringIO()
+            with redirect_stdout(out), redirect_stderr(err):
+                code = forensic_hunter.main(["--path", src_dir, "--fail-on-critical", "--json"])
+            self.assertEqual(code, 0)
+            self.assertEqual(err.getvalue(), "")
+            data = json.loads(out.getvalue())
+            self.assertEqual(data["verdict"], "FORTIFIED (PASS)")
+            self.assertEqual(data["total_findings"], 0)
+
     def test_cli_missing_file_is_error(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             missing_file = os.path.join(tmpdir, "does_not_exist.py")
@@ -215,6 +340,7 @@ class ForensicHunterTests(unittest.TestCase):
             data = json.loads(out.getvalue())
             self.assertIn("error", data)
             self.assertIn(missing_file, data["error"])
+
 
     def test_cli_missing_file_mixed_with_existing_is_error(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -229,6 +355,7 @@ class ForensicHunterTests(unittest.TestCase):
                 code = forensic_hunter.main(["--files", clean_file, missing_file, "--strict"])
             self.assertEqual(code, 1)
             self.assertIn(missing_file, out.getvalue() + err.getvalue())
+
 
     def test_cli_parse_git_diff_failure(self) -> None:
         with patch("subprocess.run") as mock_run:
