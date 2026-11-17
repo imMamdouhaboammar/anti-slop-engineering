@@ -204,6 +204,32 @@ class ForensicHunterTests(unittest.TestCase):
             self.assertEqual(data_crit["verdict"], "COMPROMISED (BLOCK)")
             self.assertEqual(data_crit["counts"]["CRITICAL"], 1)
 
+    def test_cli_missing_file_is_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            missing_file = os.path.join(tmpdir, "does_not_exist.py")
+
+            out = io.StringIO()
+            with redirect_stdout(out):
+                code = forensic_hunter.main(["--files", missing_file, "--strict", "--json"])
+            self.assertEqual(code, 1)
+            data = json.loads(out.getvalue())
+            self.assertIn("error", data)
+            self.assertIn(missing_file, data["error"])
+
+    def test_cli_missing_file_mixed_with_existing_is_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            clean_file = os.path.join(tmpdir, "clean.py")
+            with open(clean_file, "w", encoding="utf-8") as f:
+                f.write("def safe_fn(items=None):\n    pass\n")
+            missing_file = os.path.join(tmpdir, "does_not_exist.py")
+
+            out = io.StringIO()
+            err = io.StringIO()
+            with redirect_stdout(out), redirect_stderr(err):
+                code = forensic_hunter.main(["--files", clean_file, missing_file, "--strict"])
+            self.assertEqual(code, 1)
+            self.assertIn(missing_file, out.getvalue() + err.getvalue())
+
     def test_cli_path_scan_recurses_into_directory(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             src_dir = os.path.join(tmpdir, "src")
@@ -286,8 +312,8 @@ class ForensicHunterTests(unittest.TestCase):
                     with redirect_stdout(out), redirect_stderr(err):
                         code = forensic_hunter.main(argv)
                     self.assertEqual(code, 1)
-                    self.assertEqual(out.getvalue(), "")
-                    self.assertIn("[FORENSIC-HUNTER ERROR]", err.getvalue())
+                    self.assertEqual(err.getvalue(), "")
+                    self.assertTrue(json.loads(out.getvalue())["error"])
 
             with self.assertRaises(ValueError):
                 forensic_hunter.collect_files([""])

@@ -158,6 +158,30 @@ class DiffGuardTests(unittest.TestCase):
         self.assertIn('SRE_YAGNI_DEAD_FLAG', finding_ids)
         self.assertIn('SRE_SCALE_SLEEP_BAND_AID', finding_ids)
 
+    def test_flags_unbounded_gather_star_tasks(self):
+        (self.repo / 'src' / 'calc.py').write_text(
+            "import asyncio\n"
+            "\n"
+            "async def run_all(tasks):\n"
+            "    return await asyncio.gather(*tasks)\n"
+        )
+        git(self.repo, 'add', 'src/calc.py')
+        result, report = self.check()
+        self.assertEqual(result.returncode, 0)
+        self.assertIn('SRE_SCALE_UNBOUNDED_CONCURRENCY', [x['id'] for x in report['findings']])
+
+    def test_does_not_flag_gather_with_fixed_arguments(self):
+        (self.repo / 'src' / 'calc.py').write_text(
+            "import asyncio\n"
+            "\n"
+            "async def run_pair(first, second):\n"
+            "    return await asyncio.gather(first(), second())\n"
+        )
+        git(self.repo, 'add', 'src/calc.py')
+        result, report = self.check()
+        self.assertEqual(result.returncode, 0)
+        self.assertNotIn('SRE_SCALE_UNBOUNDED_CONCURRENCY', [x['id'] for x in report['findings']])
+
     def test_flags_decorative_comment_banner(self):
         (self.repo / 'src' / 'auth.py').write_text(
             "# =======================\n"

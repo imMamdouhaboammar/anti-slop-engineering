@@ -10,8 +10,12 @@ import argparse
 import json
 import pathlib
 import re
-import subprocess
 import sys
+
+if not __package__:
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+
+from scripts.git_changeset import git
 
 __version__ = '1.0.0'
 
@@ -265,20 +269,25 @@ def _flush_diff_lines(current_file, source_lines, changed_lines, findings):
 
 
 def scan_diff(repo, base):
-    """Scan added lines with their immediate source context."""
+    """Scan tracked additions from the merge base through the working tree."""
     findings = []
-    cmd = ['git', '-C', str(repo), 'diff', '-U2', '--inter-hunk-context=0',
-           '--no-color', '--no-ext-diff', '--no-textconv', '--src-prefix=a/', '--dst-prefix=b/']
-    target = 'HEAD' if base == 'HEAD' else f'{base}...HEAD'
-    res = subprocess.run([*cmd, target, '--'], capture_output=True, text=True)
-    if res.returncode and base != 'HEAD':
-        res = subprocess.run([*cmd, base, '--'], capture_output=True, text=True)
+    try:
+        target = 'HEAD'
+        if base != target:
+            revision = git(repo, 'rev-parse', '--verify', '--end-of-options', f'{base}^{{commit}}')
+            target = git(repo, 'merge-base', revision.decode('ascii').strip(), 'HEAD').decode('ascii').strip()
+        patch = git(
+            repo, 'diff', '-U2', '--inter-hunk-context=0', '--no-color',
+            '--no-ext-diff', '--no-textconv', '--src-prefix=a/', '--dst-prefix=b/', target, '--',
+        )
+    except RuntimeError as error:
+        raise RuntimeError(f'Cannot scan Git changes against {base!r}: {error}') from error
 
     current_file = None
     current_line_num = None
     source_lines = {}
     changed_lines = set()
-    for line in res.stdout.splitlines():
+    for line in patch.decode('utf-8', 'replace').splitlines():
         if line.startswith('diff --git '):
             _flush_diff_lines(current_file, source_lines, changed_lines, findings)
             current_file = current_line_num = None
@@ -330,10 +339,18 @@ def main():
     parser.add_argument('--version', action='version', version=f'%(prog)s {__version__}')
     args = parser.parse_args()
 
-    if args.base:
-        findings = scan_diff(args.repo, args.base)
-        report = build_report(findings, 'diff', args.base)
-    elif args.path:
+    if args.base is not None or not args.path:
+        base = args.base if args.base is not None else 'HEAD'
+        try:
+            findings = scan_diff(args.repo, base)
+        except RuntimeError as error:
+            if args.json:
+                print(json.dumps({'error': str(error)}))
+            else:
+                print(f'ERROR: {error}', file=sys.stderr)
+            sys.exit(1)
+        report = build_report(findings, 'diff', base)
+    else:
         target = pathlib.Path(args.path)
         if target.is_dir():
             findings = scan_directory(target)
@@ -341,10 +358,6 @@ def main():
         else:
             findings = scan_file(target)
             report = build_report(findings, 'file', target)
-    else:
-        # Default to diff against HEAD
-        findings = scan_diff(args.repo, 'HEAD')
-        report = build_report(findings, 'diff', 'HEAD')
 
     if args.json:
         print(json.dumps(report, indent=2))
