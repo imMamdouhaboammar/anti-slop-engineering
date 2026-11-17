@@ -9,6 +9,7 @@ Unit Tests for Tagore Engineering Discourse & Substance Guard (scripts/tagore_gu
 import json
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -96,6 +97,47 @@ class TagoreGuardTests(unittest.TestCase):
         self.assertGreater(profile["mean_sentence_length"], 5.0)
         self.assertGreater(profile["empirical_token_ratio"], 0.05)
         self.assertIn("type_token_ratio", profile)
+
+    def test_cli_invalid_base_fails_closed(self):
+        for bad_base in ("NOPE_INVALID_REF", ""):
+            res = subprocess.run(
+                [sys.executable, str(SCRIPTS_DIR / "tagore_guard.py"), "--base", bad_base, "--json"],
+                cwd=str(SCRIPTS_DIR.parent),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            self.assertNotEqual(res.returncode, 0)
+            self.assertIn("Unresolvable base ref", res.stdout + res.stderr)
+
+    def test_cli_base_matching_filename_succeeds(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo = Path(tmpdir)
+            for cmd in (
+                ["git", "init", "-q", "-b", "main"],
+                ["git", "config", "user.name", "Test Committer"],
+                ["git", "config", "user.email", "test@example.com"],
+            ):
+                subprocess.run(cmd, cwd=repo, check=True, capture_output=True)
+            (repo / "main").write_text("binary placeholder\n", encoding="utf-8")
+            (repo / "notes.md").write_text("Initial notes.\n", encoding="utf-8")
+            subprocess.run(["git", "add", "."], cwd=repo, check=True, capture_output=True)
+            subprocess.run(["git", "commit", "-qm", "initial"], cwd=repo, check=True, capture_output=True)
+            (repo / "notes.md").write_text(
+                "Initial notes.\n\nWe measured 12ms p99 latency across 10k req/s in tests/perf.py.\n",
+                encoding="utf-8",
+            )
+            res = subprocess.run(
+                [sys.executable, str(SCRIPTS_DIR / "tagore_guard.py"), "--base", "main", "--json"],
+                cwd=repo,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+            data = json.loads(res.stdout)
+            self.assertIn("metrics", data)
 
     def test_cli_selftest(self):
         res = subprocess.run(

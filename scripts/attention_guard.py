@@ -15,10 +15,16 @@ Enforces human-agent attention economy invariants:
 import argparse
 import json
 import os
+import pathlib
 import re
 import subprocess
 import sys
 from typing import Any, Dict, List, Optional, Tuple
+
+if not __package__:
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+
+from scripts.git_changeset import validate_base_ref
 
 _WORD = re.compile(r"\b[\w'-]+\b")
 _ANCHOR_LINE = re.compile(
@@ -427,12 +433,15 @@ def audit_text(
 
 def audit_git_diff_markdown(base: str = "HEAD", repo_root: Optional[str] = None) -> Dict[str, Any]:
     """Audit newly added markdown files or lines in a git diff."""
-    cmd = ["git", "diff", base]
+    base_id = validate_base_ref(repo_root or ".", base)
     try:
-        proc = subprocess.run(cmd, cwd=repo_root, capture_output=True, text=True, check=False)
-        diff_text = proc.stdout
-    except Exception:
-        diff_text = ""
+        proc = subprocess.run(["git", "diff", base_id, "--"], cwd=repo_root, capture_output=True, text=True, check=False)
+    except OSError as exc:
+        raise RuntimeError(f"Git diff failed for base ref {base!r}: {exc}") from exc
+    if proc.returncode != 0:
+        detail = proc.stderr.strip() or f"Git exited {proc.returncode}"
+        raise RuntimeError(f"Git diff failed for base ref {base!r}: {detail}")
+    diff_text = proc.stdout
 
     # Extract added lines from markdown or doc diffs
     added_blocks: List[str] = []
@@ -477,7 +486,14 @@ def main():
             content = f.read()
         record = audit_text(content, target_name=os.path.basename(args.file), check_deliverable=args.check_deliverable)
     else:
-        record = audit_git_diff_markdown(base=args.base)
+        try:
+            record = audit_git_diff_markdown(base=args.base)
+        except RuntimeError as exc:
+            if args.json:
+                print(json.dumps({"error": str(exc)}))
+            else:
+                print(f"ERROR: {exc}", file=sys.stderr)
+            sys.exit(1)
 
     if args.json:
         print(json.dumps(record, indent=2))
