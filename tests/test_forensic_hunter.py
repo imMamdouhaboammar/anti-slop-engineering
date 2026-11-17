@@ -7,6 +7,7 @@ from __future__ import annotations
 import io
 import json
 import os
+import re
 import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
@@ -21,7 +22,7 @@ class ForensicHunterTests(unittest.TestCase):
             code="DCK-01",
             stack="docker",
             severity="CRITICAL",
-            pattern=forensic_hunter.sre_compile.compile(r"FROM"),
+            pattern=re.compile(r"FROM"),
             title="Docker rule",
             impact="impact",
             remedy="remedy",

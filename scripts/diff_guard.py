@@ -9,7 +9,6 @@ import argparse
 import json
 import pathlib
 import re
-import sre_compile
 import sys
 
 if not __package__:
@@ -40,14 +39,14 @@ PATTERNS = [
     ('GENERIC_AI_GRADIENT_CLICHE', 'review', r'(?i)(?:bg-gradient-to-r\s+from-(?:blue|indigo|purple|violet)-500\s+(?:via-(?:purple|pink|cyan|indigo)-500\s+)?to-(?:purple|pink|cyan|violet)-500|radial-gradient\([^)]*(?:#7c3aed|#8b5cf6|#a855f7|purple|violet)[^)]*\))'),
     ('AI_MARKETING_HYPE_COPY', 'review', r'(?i)<(?:p|span|h[1-6]|div|button)[^>]*>[^<]*(?:\b(?:unleash the (?:full )?power of ai|revolutionize your (?:workflow|business|experience)|next-gen(?:eration)? ai(?:-powered)? platform|supercharge your (?:productivity|development)|all-in-one ai solution)\b)[^<]*</'),
 ]
-COMPILED = [(rule_key, rule_lvl, sre_compile.compile(rule_str)) for rule_key, rule_lvl, rule_str in PATTERNS]
-TEST_PATH = sre_compile.compile(r'(?i)(?:^|/)(?:tests?|__tests__|specs?)(?:/|$)|(?:^|/)(?:test_[^/]+\.py|[^/]+[._](?:test|spec)\.[a-z0-9]+)$')
-GENERATED_PATH = sre_compile.compile(r'(?i)(?:^|/)(?:node_modules|vendor|dist|build|\.next|coverage|generated)(?:/|$)|(?:\.min\.js|\.lock)$')
-DOC_PATH = sre_compile.compile(r'(?i)(?:\.(?:md|markdown|rst|txt|adoc)$|(?:^|/)(?:docs?|documentation|\.github/ISSUE_TEMPLATE)/)')
-UI_PATH = sre_compile.compile(r'(?i)\.(?:tsx|jsx|html|vue|svelte|astro)$')
-SPECULATIVE_DOC_PATH = sre_compile.compile(r'(?i)(?:^|/)docs/.*(?:submission|dossier|reviewer_packet).*\.md$')
-HALLUCINATED_DOC_URL = sre_compile.compile(r'(?i)(?:https?://(?:platform|developers)\.openai\.com/plugins|\[[^\]]*\]\([^)]*(?:platform|developers)\.openai\.com/plugins[^)]*\))')
-META_PREAMBLE_AND_AFFORDANCE_NARRATION = sre_compile.compile(
+COMPILED = [(rule_key, rule_lvl, re.compile(rule_str)) for rule_key, rule_lvl, rule_str in PATTERNS]
+TEST_PATH = re.compile(r'(?i)(?:^|/)(?:tests?|__tests__|specs?)(?:/|$)|(?:^|/)(?:test_[^/]+\.py|[^/]+[._](?:test|spec)\.[a-z0-9]+)$')
+GENERATED_PATH = re.compile(r'(?i)(?:^|/)(?:node_modules|vendor|dist|build|\.next|coverage|generated)(?:/|$)|(?:\.min\.js|\.lock)$')
+DOC_PATH = re.compile(r'(?i)(?:\.(?:md|markdown|rst|txt|adoc)$|(?:^|/)(?:docs?|documentation|\.github/ISSUE_TEMPLATE)/)')
+UI_PATH = re.compile(r'(?i)\.(?:tsx|jsx|html|vue|svelte|astro)$')
+SPECULATIVE_DOC_PATH = re.compile(r'(?i)(?:^|/)docs/.*(?:submission|dossier|reviewer_packet).*\.md$')
+HALLUCINATED_DOC_URL = re.compile(r'(?i)(?:https?://(?:platform|developers)\.openai\.com/plugins|\[[^\]]*\]\([^)]*(?:platform|developers)\.openai\.com/plugins[^)]*\))')
+META_PREAMBLE_AND_AFFORDANCE_NARRATION = re.compile(
     r'(?i)(?:'
     r'\b(?:without leaving (?:this|the) page|دون مغادرة الصفحة|شاهد (?:التجربة|الفيديو|هنا)|'
     r'click (?:here\s+)?to (?:play|watch|view|expand|collapse|copy|download|see)|'
