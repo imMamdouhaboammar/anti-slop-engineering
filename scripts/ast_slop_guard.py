@@ -268,21 +268,8 @@ def _flush_diff_lines(current_file, source_lines, changed_lines, findings):
         findings.extend(audit_source_lines(source_lines, current_file, changed_lines))
 
 
-def scan_diff(repo, base):
-    """Scan working changes for HEAD, or committed changes for a named base."""
+def _audit_diff_patch(patch):
     findings = []
-    try:
-        target = 'HEAD'
-        if base != target:
-            revision = git(repo, 'rev-parse', '--verify', '--end-of-options', f'{base}^{{commit}}')
-            target = f"{revision.decode('ascii').strip()}...HEAD"
-        patch = git(
-            repo, 'diff', '-U2', '--inter-hunk-context=0', '--no-color',
-            '--no-ext-diff', '--no-textconv', '--src-prefix=a/', '--dst-prefix=b/', target, '--',
-        )
-    except RuntimeError as error:
-        raise RuntimeError(f'Cannot scan Git changes against {base!r}: {error}') from error
-
     current_file = None
     current_line_num = None
     source_lines = {}
@@ -306,6 +293,27 @@ def scan_diff(repo, base):
 
     _flush_diff_lines(current_file, source_lines, changed_lines, findings)
     return findings
+
+
+def scan_diff(repo, base):
+    """Scan each applicable Git snapshot without masking earlier findings."""
+    targets = [('--cached', 'HEAD'), ()]
+    findings = {}
+    try:
+        if base != 'HEAD':
+            revision = git(repo, 'rev-parse', '--verify', '--end-of-options', f'{base}^{{commit}}')
+            targets.insert(0, (f"{revision.decode('ascii').strip()}...HEAD",))
+        for target in targets:
+            patch = git(
+                repo, 'diff', '-U2', '--inter-hunk-context=0', '--no-color',
+                '--no-ext-diff', '--no-textconv', '--src-prefix=a/', '--dst-prefix=b/', *target, '--',
+            )
+            for finding in _audit_diff_patch(patch):
+                key = (finding['file'], finding['line'], finding['id'], finding['evidence'])
+                findings.setdefault(key, finding)
+    except RuntimeError as error:
+        raise RuntimeError(f'Cannot scan Git changes against {base!r}: {error}') from error
+    return list(findings.values())
 
 
 def build_report(findings, mode, target):
