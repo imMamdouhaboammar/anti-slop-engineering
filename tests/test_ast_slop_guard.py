@@ -25,6 +25,178 @@ class AstSlopGuardTests(unittest.TestCase):
         cmd = [sys.executable, str(SCRIPT), *args]
         return subprocess.run(cmd, text=True, capture_output=True)
 
+    def test_escaped_line_break_keeps_string_context_without_masking_code(self):
+        path = self.repo / 'continued.ts'
+        path.write_text(
+            'const message = "start ' + chr(92) + '\n'
+            'val as unknown as T";\n'
+            'const real = val as unknown as T;\n'
+        )
+        result = self.run_guard(str(path), '--json')
+        findings = json.loads(result.stdout)['findings']
+        self.assertEqual([f['line'] for f in findings if f['id'] == 'CHAINED_TYPE_ASSERTION'], [3])
+
+    def test_chained_assertion_inside_double_quoted_string_not_flagged(self):
+        file_path = self.repo / 'msg_double.ts'
+        file_path.write_text('const msg = "never use as unknown as here";\n')
+        res = self.run_guard(str(file_path), '--json')
+        report = json.loads(res.stdout)
+        finding_ids = [f['id'] for f in report['findings']]
+        self.assertNotIn('CHAINED_TYPE_ASSERTION', finding_ids)
+        self.assertEqual(report['verdict'], 'PASS')
+
+    def test_chained_assertion_inside_single_quoted_string_not_flagged(self):
+        file_path = self.repo / 'msg_single.ts'
+        file_path.write_text("const msg = 'never use as unknown as here';\n")
+        res = self.run_guard(str(file_path), '--json')
+        report = json.loads(res.stdout)
+        finding_ids = [f['id'] for f in report['findings']]
+        self.assertNotIn('CHAINED_TYPE_ASSERTION', finding_ids)
+        self.assertEqual(report['verdict'], 'PASS')
+
+    def test_chained_assertion_inside_template_literal_not_flagged(self):
+        file_path = self.repo / 'msg_template.ts'
+        file_path.write_text('const msg = `never use as unknown as here`;\n')
+        res = self.run_guard(str(file_path), '--json')
+        report = json.loads(res.stdout)
+        finding_ids = [f['id'] for f in report['findings']]
+        self.assertNotIn('CHAINED_TYPE_ASSERTION', finding_ids)
+        self.assertEqual(report['verdict'], 'PASS')
+
+    def test_chained_assertion_with_escaped_quote_inside_string_not_flagged(self):
+        file_path = self.repo / 'msg_escaped.ts'
+        file_path.write_text('const msg = "a \\" as unknown as b";\n')
+        res = self.run_guard(str(file_path), '--json')
+        report = json.loads(res.stdout)
+        finding_ids = [f['id'] for f in report['findings']]
+        self.assertNotIn('CHAINED_TYPE_ASSERTION', finding_ids)
+
+    def test_chained_assertion_in_code_still_flagged(self):
+        file_path = self.repo / 'real_cast.ts'
+        file_path.write_text('const x = v as unknown as T;\n')
+        res = self.run_guard(str(file_path), '--json')
+        report = json.loads(res.stdout)
+        self.assertEqual(report['verdict'], 'FAIL')
+        finding_ids = [f['id'] for f in report['findings']]
+        self.assertIn('CHAINED_TYPE_ASSERTION', finding_ids)
+
+    def test_chained_assertion_after_string_literal_still_flagged(self):
+        file_path = self.repo / 'after_string.ts'
+        file_path.write_text('const msg = "hello"; const x = v as unknown as T;\n')
+        res = self.run_guard(str(file_path), '--json')
+        report = json.loads(res.stdout)
+        finding_ids = [f['id'] for f in report['findings']]
+        self.assertIn('CHAINED_TYPE_ASSERTION', finding_ids)
+
+    def test_regex_after_control_condition_preserves_following_code(self):
+        code = (
+            "if (ready(check())) /[`]/.test(value);\n"
+            "const invalid = raw as unknown as User;\n"
+        )
+        file_path = self.repo / 'conditional_regex.ts'
+        file_path.write_text(code)
+        result = self.run_guard(str(file_path), '--json')
+        hits = [
+            item['line'] for item in json.loads(result.stdout)['findings']
+            if item['id'] == 'CHAINED_TYPE_ASSERTION'
+        ]
+        self.assertEqual(hits, [2])
+
+    def test_regex_after_arrow_does_not_desync_masking(self):
+        file_path = self.repo / 'arrow_regex.ts'
+        file_path.write_text(
+            'const hasBacktick = (s: string) => /`/.test(s);\n'
+            'const hasQuote = (s: string) => /"/.test(s); const y = v as unknown as T;\n'
+            'const hasCast = (s: string) => /v as unknown as T/.test(s);\n'
+            'const x = w as unknown as U;\n'
+        )
+        res = self.run_guard(str(file_path), '--json')
+        report = json.loads(res.stdout)
+        chained_lines = [f['line'] for f in report['findings'] if f['id'] == 'CHAINED_TYPE_ASSERTION']
+        self.assertEqual(chained_lines, [2, 4])
+
+    def test_regex_after_default_does_not_desync_masking(self):
+        file_path = self.repo / 'default_regex.ts'
+        file_path.write_text('export default /"/.source;\nconst x = v as unknown as T;\n')
+        res = self.run_guard(str(file_path), '--json')
+        report = json.loads(res.stdout)
+        chained_lines = [f['line'] for f in report['findings'] if f['id'] == 'CHAINED_TYPE_ASSERTION']
+        self.assertEqual(chained_lines, [2])
+
+    def test_chained_assertion_inside_template_interpolation_still_flagged(self):
+        file_path = self.repo / 'interp.ts'
+        file_path.write_text('const s = `text ${v as unknown as T} end`;\n')
+        res = self.run_guard(str(file_path), '--json')
+        report = json.loads(res.stdout)
+        finding_ids = [f['id'] for f in report['findings']]
+        self.assertIn('CHAINED_TYPE_ASSERTION', finding_ids)
+
+    def test_chained_assertion_inside_multiline_template_not_flagged(self):
+        file_path = self.repo / 'multiline_template.ts'
+        file_path.write_text(
+            'const s = `start\n'
+            'as unknown as\n'
+            'end`;\n'
+            'const x = v as unknown as T;\n'
+        )
+        res = self.run_guard(str(file_path), '--json')
+        report = json.loads(res.stdout)
+        chained_lines = [f['line'] for f in report['findings'] if f['id'] == 'CHAINED_TYPE_ASSERTION']
+        self.assertEqual(chained_lines, [4])
+
+    def test_typeof_inside_string_not_flagged_but_real_typeof_flagged(self):
+        file_path = self.repo / 'typeof_mask.ts'
+        file_path.write_text(
+            'const msg = \'typeof a === "object"\'; if (typeof b === "object") { run(); }\n'
+        )
+        res = self.run_guard(str(file_path), '--json')
+        report = json.loads(res.stdout)
+        typeof_hits = [f for f in report['findings'] if f['id'] == 'RUNTIME_TYPEOF_AD_HOC']
+        self.assertEqual(len(typeof_hits), 1)
+
+    def test_chained_assertion_inside_comment_not_flagged(self):
+        file_path = self.repo / 'comment_mask.ts'
+        file_path.write_text('const y = 1; // avoid "v as unknown as T"\n')
+        res = self.run_guard(str(file_path), '--json')
+        report = json.loads(res.stdout)
+        finding_ids = [f['id'] for f in report['findings']]
+        self.assertNotIn('CHAINED_TYPE_ASSERTION', finding_ids)
+        self.assertEqual(report['verdict'], 'PASS')
+
+    def test_regex_with_backtick_does_not_desync_masking(self):
+        file_path = self.repo / 'regex_backtick.ts'
+        file_path.write_text('const re = /`/;\nconst x = v as unknown as T;\n')
+        res = self.run_guard(str(file_path), '--json')
+        report = json.loads(res.stdout)
+        chained_lines = [f['line'] for f in report['findings'] if f['id'] == 'CHAINED_TYPE_ASSERTION']
+        self.assertEqual(chained_lines, [2])
+
+    def test_committed_index_and_worktree_use_their_own_full_literal_context(self):
+        def git(*args):
+            return subprocess.run(
+                ['git', *args], cwd=self.repo, text=True, capture_output=True, check=True
+            ).stdout.strip()
+
+        git('init', '-q')
+        git('config', 'user.name', 'AST guard fixture')
+        git('config', 'user.email', 'ast-guard@example.invalid')
+        paths = [self.repo / name for name in ('committed.ts', 'staged.ts', 'worktree.ts')]
+        content = 'const message = ' + chr(96) + '\n' + 'sample text\n' * 5 + 'sample only\n' + chr(96) + ';\n'
+        for path in paths:
+            path.write_text(content)
+        git('add', '.')
+        git('commit', '-qm', 'long template baseline')
+        baseline = git('rev-parse', 'HEAD')
+        for index, path in enumerate(paths):
+            path.write_text(content.replace('sample only', 'val as unknown as T'))
+            if index < 2:
+                git('add', path.name)
+            if index == 0:
+                git('commit', '-qm', 'mention a cast inside a template')
+        result = self.run_guard('--repo', str(self.repo), '--base', baseline, '--json')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)['findings'], [])
+
     def test_detects_chained_type_assertion(self):
         file_path = self.repo / 'bad_cast.ts'
         file_path.write_text('const user = rawData as unknown as User;\n')
