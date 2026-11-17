@@ -123,6 +123,11 @@ services/toil-guard-go/bin/
 /.anti-slop/ponytail-debt.jsonl
 /.anti-slop/commit-sheet.json
 /.anti-slop/settings.json
+/.anti-slop/state.json
+/.anti-slop/state_*.tmp
+/.anti-slop/events.jsonl
+/.anti-slop/tickets/
+/.anti-slop/.lock/
 /.anti-slop/state-note.json
 /.anti-slop/voice-profile.json
 /.anti-slop/checkpoint-state.json
