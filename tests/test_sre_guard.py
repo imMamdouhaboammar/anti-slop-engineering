@@ -141,6 +141,57 @@ class SreGuardTests(unittest.TestCase):
         finding_ids = [f['id'] for f in report['findings']]
         self.assertIn('SCALE_UNBOUNDED_OR_FLAT_RETRY', finding_ids)
 
+    def test_flags_scale_flat_retry_multiline_body(self):
+        (self.repo / 'src' / 'retry.py').write_text(
+            "import time\n"
+            "\n"
+            "def fetch(load):\n"
+            "    for attempt in range(5):\n"
+            "        if load():\n"
+            "            return True\n"
+            "        time.sleep(2)\n"
+            "    return False\n"
+        )
+        git(self.repo, 'add', 'src/retry.py')
+        res, report = self.run_sre('--base', 'HEAD', '--json', '--strict')
+        self.assertEqual(res.returncode, 2)
+        finding_ids = [f['id'] for f in report['findings']]
+        self.assertIn('SCALE_UNBOUNDED_OR_FLAT_RETRY', finding_ids)
+
+    def test_flags_scale_flat_retry_counted_while(self):
+        (self.repo / 'src' / 'retry.py').write_text(
+            "import time\n"
+            "\n"
+            "def fetch(load):\n"
+            "    attempt = 0\n"
+            "    while attempt < 5:\n"
+            "        if load():\n"
+            "            return True\n"
+            "        time.sleep(2)\n"
+            "        attempt += 1\n"
+            "    return False\n"
+        )
+        git(self.repo, 'add', 'src/retry.py')
+        res, report = self.run_sre('--base', 'HEAD', '--json')
+        finding_ids = [f['id'] for f in report['findings']]
+        self.assertIn('SCALE_UNBOUNDED_OR_FLAT_RETRY', finding_ids)
+
+    def test_does_not_flag_multiline_backoff_with_jitter(self):
+        (self.repo / 'src' / 'retry.py').write_text(
+            "import time\n"
+            "\n"
+            "def fetch(load, jitter):\n"
+            "    for attempt in range(5):\n"
+            "        if load():\n"
+            "            return True\n"
+            "        time.sleep(jitter(2 ** attempt))\n"
+            "    return False\n"
+        )
+        git(self.repo, 'add', 'src/retry.py')
+        res, report = self.run_sre('--base', 'HEAD', '--json')
+        finding_ids = [f['id'] for f in report['findings']]
+        self.assertNotIn('SCALE_UNBOUNDED_OR_FLAT_RETRY', finding_ids)
+
     def test_flags_scale_sleep_band_aid(self):
         (self.repo / 'src' / 'sync.py').write_text(
             "def wait_for_event():\n"

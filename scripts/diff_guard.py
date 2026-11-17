@@ -31,7 +31,7 @@ PATTERNS = [
     ('DEV_NOTE_IN_UI', 'blocker', r'(?i)<(?:p|span|div|small|Alert|Badge|Text|Label|h[1-6])[^>]*>[^<]*(?:\b(?:note|todo|fixme|agent note|dev note|developer note)\s*:|\bmock data displayed\b|\bplaceholder until\b)[^<]*</'),
     ('PATRONIZING_UI_COPY', 'review', r'(?i)<(?:p|span|small|div|Label|HelperText)[^>]*>[^<]*(?:\b(?:please enter your|click (?:here|this button) to|this (?:modal|form|button) allows you to)\b)[^<]*</'),
     ('TRIVIAL_COMMENT_NARRATION', 'review', r'(?i)^\s*(?://|#)\s*(?:(?:increment|decrement)\s+\w+|(?:return|returns)\s+(?:the\s+)?(?:result|response|value|data|error|promise|true|false)|(?:initialize|init)\s+(?:state|variable|array|object|list|dict)|(?:check|verify)\s+if\s+(?:\w+\s+is\s+)?(?:null|undefined|empty|none)|handle\s+(?:click|change|submit|event|button)|(?:constructor|destructor)\b|import\s+(?:modules?|packages?|react|dependencies)|call\s+(?:the\s+)?\w+\s+function)'),
-    ('SRE_SCALE_FLAT_RETRY', 'review', r'(?i)(?:while\s+True\s*:|while\s*\(\s*true\s*\)|for\s+(?:attempt|retry|i)\s+in\s+range\s*\(\s*\d+\s*\):).*(?:sleep\s*\(\s*[1-9]\d*\s*\))'),
+    ('SRE_SCALE_FLAT_RETRY', 'review', r'(?i)(?:while\s+True\s*:|while\s*\(\s*true\s*\)|while\s+\w+\s*<\s*\d+\s*:|for\s+(?:attempt|retry|i)\s+in\s+range\s*\(\s*\d+\s*\):).*(?:sleep\s*\(\s*[1-9]\d*\s*\))'),
     ('SRE_SCALE_SLEEP_BAND_AID', 'review', r'(?i)\b(?:time\.sleep\s*\(\s*(?:0?\.[1-9]|[1-9])\d*\s*\)|thread\.sleep\s*\(\s*\d+\s*\)|setTimeout\s*\([^,]+,\s*(?:100|200|500|1000|2000|5000)\s*\))'),
     ('SRE_SCALE_UNBOUNDED_CONCURRENCY', 'review', r'(?i)(?:Promise\.all\s*\(\s*(?:\w+|\w+\.[a-zA-Z0-9_]+)\.map\s*\(|asyncio\.gather\s*\(\s*\*\s*\[)'),
     ('SRE_YAGNI_SPECULATIVE_CODE', 'review', r'(?i)(?:#|//|/\*)\s*(?:TODO\s*\(\s*(?:future|later|v2|next)\s*\)|placeholder for (?:future|upcoming|v2)|will be (?:supported|implemented|used) (?:later|in v2)|reserved for future use)'),
@@ -41,6 +41,8 @@ PATTERNS = [
     ('AI_MARKETING_HYPE_COPY', 'review', r'(?i)<(?:p|span|h[1-6]|div|button)[^>]*>[^<]*(?:\b(?:unleash the (?:full )?power of ai|revolutionize your (?:workflow|business|experience)|next-gen(?:eration)? ai(?:-powered)? platform|supercharge your (?:productivity|development)|all-in-one ai solution)\b)[^<]*</'),
 ]
 COMPILED = [(rule_key, rule_lvl, sre_compile.compile(rule_str)) for rule_key, rule_lvl, rule_str in PATTERNS]
+FLAT_RETRY_HEADER = sre_compile.compile(r'(?i)(?:while\s+True\s*:|while\s*\(\s*true\s*\)|while\s+\w+\s*<\s*\d+\s*:|for\s+(?:attempt|retry|i)\s+in\s+range\s*\(\s*\d+\s*\))')
+FLAT_RETRY_FIXED_SLEEP = sre_compile.compile(r'(?i)sleep\s*\(\s*[1-9]\d*\s*\)')
 TEST_PATH = sre_compile.compile(r'(?i)(?:^|/)(?:tests?|__tests__|specs?)(?:/|$)|(?:^|/)(?:test_[^/]+\.py|[^/]+[._](?:test|spec)\.[a-z0-9]+)$')
 GENERATED_PATH = sre_compile.compile(r'(?i)(?:^|/)(?:node_modules|vendor|dist|build|\.next|coverage|generated)(?:/|$)|(?:\.min\.js|\.lock)$')
 DOC_PATH = sre_compile.compile(r'(?i)(?:\.(?:md|markdown|rst|txt|adoc)$|(?:^|/)(?:docs?|documentation|\.github/ISSUE_TEMPLATE)/)')
@@ -141,6 +143,49 @@ def audit_patch_lines(added_lines):
                                  'evidence': code_line.strip()[:180],
                                  'action': 'Inspect context and justify or fix; regex match is not proof of a defect.'})
 
+    findings.extend(_flat_retry_multiline_findings(added_lines, seen))
+    return findings
+
+
+def _flat_retry_multiline_findings(added_lines, seen):
+    """Flag retry-loop headers whose indented body holds a fixed sleep.
+
+    The single-line SRE_SCALE_FLAT_RETRY pattern cannot see the canonical
+    multi-line form, where the fixed sleep sits on its own body line.
+    """
+    by_path = {}
+    for raw_path, new_line, raw_line in added_lines:
+        try:
+            path = raw_path.decode("utf-8")
+        except UnicodeDecodeError:
+            continue
+        if GENERATED_PATH.search(path) or TEST_PATH.search(path) or re.search(r'(?i)(?:^|/)references/', path):
+            continue
+        code_line = raw_line.decode("utf-8", "replace").removesuffix("\r")
+        by_path.setdefault(path, []).append((new_line, code_line))
+
+    findings = []
+    for path, entries in by_path.items():
+        entries.sort()
+        for idx, (line_no, code_line) in enumerate(entries):
+            if not FLAT_RETRY_HEADER.search(code_line):
+                continue
+            if ('SRE_SCALE_FLAT_RETRY', path, line_no) in seen:
+                continue
+            header_indent = len(code_line) - len(code_line.lstrip())
+            for next_no, follow in entries[idx + 1:]:
+                if next_no - line_no > 10:
+                    break
+                if not follow.strip() or follow.lstrip().startswith(('#', '//')):
+                    continue
+                if len(follow) - len(follow.lstrip()) <= header_indent:
+                    break
+                if FLAT_RETRY_FIXED_SLEEP.search(follow):
+                    seen.add(('SRE_SCALE_FLAT_RETRY', path, line_no))
+                    findings.append({'id': 'SRE_SCALE_FLAT_RETRY', 'severity': 'review', 'file': path, 'line': line_no,
+                                     'evidence': f"{code_line.strip()} -> {follow.strip()}"[:180],
+                                     'action': 'Flat retry without exponential backoff and jitter detected across the loop body. Implement exponential backoff with full jitter.'})
+                    break
     return findings
 
 

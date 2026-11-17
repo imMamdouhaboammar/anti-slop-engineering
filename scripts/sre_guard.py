@@ -85,7 +85,7 @@ SRE_PATTERNS = [
         'SCALE',
         'SCALE_UNBOUNDED_OR_FLAT_RETRY',
         'blocker',
-        sre_compile.compile(r'(?i)(?:while\s+True\s*:|while\s*\(\s*true\s*\)|for\s+(?:attempt|retry|i)\s+in\s+range\s*\(\s*\d+\s*\):).*(?:sleep\s*\(\s*[1-9]\d*\s*\))'),
+        sre_compile.compile(r'(?i)(?:while\s+True\s*:|while\s*\(\s*true\s*\)|while\s+\w+\s*<\s*\d+\s*:|for\s+(?:attempt|retry|i)\s+in\s+range\s*\(\s*\d+\s*\):).*(?:sleep\s*\(\s*[1-9]\d*\s*\))'),
         'SCALE violation: Flat retry without exponential backoff and jitter detected. Under service degradation, flat retries trigger thundering herds and retry storms. Implement exponential backoff with full jitter.'
     ),
     # SCALE: Unbounded concurrency / missing backpressure
@@ -267,6 +267,11 @@ def get_next_code_line(lines, current_idx):
     return None, None
 
 
+FLAT_RETRY_HEADER = sre_compile.compile(r'(?i)(?:while\s+True\s*:|while\s*\(\s*true\s*\)|while\s+\w+\s*<\s*\d+\s*:|for\s+(?:attempt|retry|i)\s+in\s+range\s*\(\s*\d+\s*\))')
+FLAT_RETRY_FIXED_SLEEP = sre_compile.compile(r'(?i)sleep\s*\(\s*[1-9]\d*\s*\)')
+FLAT_RETRY_ACTION = 'SCALE violation: Flat retry without exponential backoff and jitter detected. Under service degradation, flat retries trigger thundering herds and retry storms. Implement exponential backoff with full jitter.'
+
+
 def add_finding(findings, seen, category, key, severity, file_path, line_idx, evidence, action):
     """Record a deduplicated finding."""
     if (key, line_idx) not in seen:
@@ -299,6 +304,21 @@ def scan_file_sre(file_path, content, max_nesting=4, max_function_lines=80, is_t
         for category, key, severity, pattern, action in SRE_PATTERNS:
             if pattern.search(line):
                 add_finding(findings, seen, category, key, severity, file_path, line_idx, line.strip()[:180], action)
+
+        if FLAT_RETRY_HEADER.search(line):
+            header_indent = len(line) - len(line.lstrip())
+            for follow in lines[line_idx:line_idx + 10]:
+                if not follow.strip() or follow.lstrip().startswith(('#', '//')):
+                    continue
+                if len(follow) - len(follow.lstrip()) <= header_indent:
+                    break
+                if FLAT_RETRY_FIXED_SLEEP.search(follow):
+                    add_finding(
+                        findings, seen, 'SCALE', 'SCALE_UNBOUNDED_OR_FLAT_RETRY', 'blocker',
+                        file_path, line_idx, f"{line.strip()} -> {follow.strip()}"[:180],
+                        FLAT_RETRY_ACTION
+                    )
+                    break
 
         next_line_idx, next_line_text = get_next_code_line(lines, line_idx)
         if next_line_text:

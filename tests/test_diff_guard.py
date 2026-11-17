@@ -158,6 +158,38 @@ class DiffGuardTests(unittest.TestCase):
         self.assertIn('SRE_YAGNI_DEAD_FLAG', finding_ids)
         self.assertIn('SRE_SCALE_SLEEP_BAND_AID', finding_ids)
 
+    def test_flags_flat_retry_multiline_body(self):
+        (self.repo / 'src' / 'calc.py').write_text(
+            "import time\n"
+            "\n"
+            "def fetch(load):\n"
+            "    for attempt in range(5):\n"
+            "        if load():\n"
+            "            return True\n"
+            "        time.sleep(2)\n"
+            "    return False\n"
+        )
+        git(self.repo, 'add', 'src/calc.py')
+        result, report = self.check()
+        self.assertEqual(result.returncode, 0)
+        self.assertIn('SRE_SCALE_FLAT_RETRY', [x['id'] for x in report['findings']])
+
+    def test_does_not_flag_multiline_backoff_with_jitter(self):
+        (self.repo / 'src' / 'calc.py').write_text(
+            "import time\n"
+            "\n"
+            "def fetch(load, jitter):\n"
+            "    for attempt in range(5):\n"
+            "        if load():\n"
+            "            return True\n"
+            "        time.sleep(jitter(2 ** attempt))\n"
+            "    return False\n"
+        )
+        git(self.repo, 'add', 'src/calc.py')
+        result, report = self.check()
+        self.assertEqual(result.returncode, 0)
+        self.assertNotIn('SRE_SCALE_FLAT_RETRY', [x['id'] for x in report['findings']])
+
     def test_flags_decorative_comment_banner(self):
         (self.repo / 'src' / 'auth.py').write_text(
             "# =======================\n"
