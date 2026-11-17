@@ -159,9 +159,13 @@ func CheckToilAndScale(filePath string, content string) []model.Finding {
 }
 
 var (
-	rePythonExcept = regexp.MustCompile(`^(\s*)except\b[^:]*:\s*$`)
-	reCatchOpen    = regexp.MustCompile(`\}\s*catch\b(?:\s*\([^)]*\))?\s*\{`)
-	reGoErrOpen    = regexp.MustCompile(`if\s+err\s*!=\s*nil\s*\{`)
+	rePythonExcept        = regexp.MustCompile(`^(\s*)except\b[^:]*:\s*$`)
+	reCatchOpen           = regexp.MustCompile(`\}\s*catch\b(?:\s*\([^)]*\))?\s*\{`)
+	reGoErrOpen           = regexp.MustCompile(`if\s+err\s*!=\s*nil\s*\{`)
+	reCatchLineStartBrace = regexp.MustCompile(`^\s*catch\b(?:\s*\([^)]*\))?\s*\{`)
+	reCatchLineStartBare  = regexp.MustCompile(`^\s*catch\b(?:\s*\([^)]*\))?\s*$`)
+	reTryClause           = regexp.MustCompile(`(?:^|[^\w.$])try\s*$`)
+	reJSRegexKeyword      = regexp.MustCompile(`(?:^|[^\w.$])(?:return|throw|case|yield|await|typeof|void|delete|in|of|instanceof|else|do)\s*$`)
 )
 
 type commentSpan struct {
@@ -225,10 +229,14 @@ func codeViewsPython(lines, code []string, comments [][]commentSpan) {
 	}
 }
 
-func codeViewsCLike(filePath string, lines, code []string, comments [][]commentSpan) {
-	templates := strings.HasSuffix(filePath, ".js") || strings.HasSuffix(filePath, ".jsx") ||
+func isJSSource(filePath string) bool {
+	return strings.HasSuffix(filePath, ".js") || strings.HasSuffix(filePath, ".jsx") ||
 		strings.HasSuffix(filePath, ".ts") || strings.HasSuffix(filePath, ".tsx") ||
 		strings.HasSuffix(filePath, ".mjs") || strings.HasSuffix(filePath, ".cjs")
+}
+
+func codeViewsCLike(filePath string, lines, code []string, comments [][]commentSpan) {
+	templates := isJSSource(filePath)
 	goSource := strings.HasSuffix(filePath, ".go")
 	inBlockComment, inRawString := false, false
 	var templateStack []int
@@ -296,6 +304,13 @@ func codeViewsCLike(filePath string, lines, code []string, comments [][]commentS
 				j += 2
 				continue
 			}
+			if templates && c == '/' && jsRegexCanStart(b.String()) {
+				if end := jsRegexEnd(runes, j); end > j {
+					b.WriteString("//")
+					j = end
+					continue
+				}
+			}
 			if templates && c == '`' {
 				templateStack = append(templateStack, 0)
 				b.WriteByte(' ')
@@ -328,6 +343,37 @@ func codeViewsCLike(filePath string, lines, code []string, comments [][]commentS
 		}
 		code[i] = b.String()
 	}
+}
+
+func jsRegexCanStart(prefix string) bool {
+	prefix = strings.TrimRightFunc(prefix, unicode.IsSpace)
+	if prefix == "" || strings.HasSuffix(prefix, "=>") {
+		return true
+	}
+	if strings.HasSuffix(prefix, "++") || strings.HasSuffix(prefix, "--") {
+		return false
+	}
+	return strings.ContainsRune("=({[,:;?&|^~+-*%<>!", rune(prefix[len(prefix)-1])) ||
+		reJSRegexKeyword.MatchString(prefix)
+}
+
+func jsRegexEnd(runes []rune, start int) int {
+	inClass := false
+	for i := start + 1; i < len(runes); i++ {
+		switch runes[i] {
+		case '\\':
+			i++
+		case '[':
+			inClass = true
+		case ']':
+			inClass = false
+		case '/':
+			if !inClass {
+				return i + 1
+			}
+		}
+	}
+	return start
 }
 
 func skipQuoted(runes []rune, start int) int {
@@ -365,6 +411,7 @@ func indentWidth(codeLine string) int {
 // are exempt, mirroring goSwallowedErrorLines.
 func blockSwallowedErrorLines(filePath string, lines []string) map[int]bool {
 	code, comments := codeViews(filePath, lines)
+	jsSource := isJSSource(filePath)
 	findings := make(map[int]bool)
 	if strings.HasSuffix(filePath, ".py") {
 		pythonBlockSwallows(code, comments, findings)
@@ -385,8 +432,86 @@ func blockSwallowedErrorLines(filePath string, lines []string) map[int]bool {
 				findings[i+1] = true
 			}
 		}
+		if jsSource && lineInitialCatchSwallow(code, comments, i) {
+			findings[i+1] = true
+		}
 	}
 	return findings
+}
+
+// lineInitialCatchSwallow reports whether the catch clause starting line i
+// opens an empty block and attaches to a preceding try block, as in
+// formatter output that places catch at the start of its own line.
+func lineInitialCatchSwallow(code []string, comments [][]commentSpan, i int) bool {
+	cv := code[i]
+	if loc := reCatchLineStartBrace.FindStringIndex(cv); loc != nil {
+		if !catchFollowsTryBlock(code, i) {
+			return false
+		}
+		braceRune := utf8.RuneCountInString(cv[:loc[1]-1])
+		return braceBlockIsEmpty(code, comments, i, braceRune)
+	}
+	if !reCatchLineStartBare.MatchString(cv) || !catchFollowsTryBlock(code, i) {
+		return false
+	}
+	for q := i + 1; q < len(code); q++ {
+		if strings.TrimSpace(code[q]) == "" {
+			continue
+		}
+		if !strings.HasPrefix(strings.TrimSpace(code[q]), "{") {
+			return false
+		}
+		braceRune := utf8.RuneCountInString(code[q][:strings.Index(code[q], "{")])
+		return braceBlockIsEmpty(code, comments, q, braceRune)
+	}
+	return false
+}
+
+// catchFollowsTryBlock reports whether the catch clause at line i attaches
+// to a try block: the previous code line ends with the closing brace of a
+// block whose opening brace is preceded by a try clause.
+func catchFollowsTryBlock(code []string, i int) bool {
+	p := prevCodeLine(code, i)
+	if p < 0 || !strings.HasSuffix(strings.TrimSpace(code[p]), "}") {
+		return false
+	}
+	openLine, openCol, ok := matchingOpenBrace(code, p)
+	if !ok {
+		return false
+	}
+	prefix := string([]rune(code[openLine])[:openCol])
+	if strings.TrimSpace(prefix) != "" {
+		return reTryClause.MatchString(prefix)
+	}
+	t := prevCodeLine(code, openLine)
+	return t >= 0 && reTryClause.MatchString(code[t])
+}
+
+func matchingOpenBrace(code []string, closeLine int) (int, int, bool) {
+	depth := 0
+	for j := closeLine; j >= 0; j-- {
+		runes := []rune(code[j])
+		for k := len(runes) - 1; k >= 0; k-- {
+			if runes[k] == '}' {
+				depth++
+			} else if runes[k] == '{' {
+				depth--
+				if depth == 0 {
+					return j, k, true
+				}
+			}
+		}
+	}
+	return 0, 0, false
+}
+
+func prevCodeLine(code []string, i int) int {
+	for j := i - 1; j >= 0; j-- {
+		if strings.TrimSpace(code[j]) != "" {
+			return j
+		}
+	}
+	return -1
 }
 
 func commentsHaveIgnoreReason(spans []commentSpan) bool {

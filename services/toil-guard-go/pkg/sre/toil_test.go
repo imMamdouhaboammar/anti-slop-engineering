@@ -69,6 +69,70 @@ func TestCheckToilAndScale_MultilineCatchTS(t *testing.T) {
 	}
 }
 
+func TestCheckToilAndScale_LineInitialCatchTS(t *testing.T) {
+	cases := []struct {
+		name    string
+		content string
+		want    int
+	}{
+		{"brace on catch line", "try {\n  work();\n}\ncatch (e) {\n}\n", 4},
+		{"binding-free", "try {\n  work();\n}\ncatch {\n}\n", 4},
+		{"brace on next line", "try\n{\n  work();\n}\ncatch (e)\n{\n}\n", 5},
+		{"brace on next line same-line empty", "try {\n  work();\n}\ncatch (e)\n{}\n", 4},
+		{"brace on next line todo comment", "try {\n  work();\n}\ncatch (e)\n{ /* todo */ }\n", 4},
+		{"division and object literals", "try {\n  result = base / factors({}) / divisor;\n}\ncatch (e) {\n}\n", 4},
+		{"regex brace", "try {\n  const pattern = /[{]/;\n  work();\n}\ncatch (e) {\n}\n", 5},
+		{"try on one line", "try { work(); }\ncatch (e) {\n}\n", 2},
+		{"code on try open brace", "try { work();\n}\ncatch (e) {\n}\n", 3},
+		{"allman code on try open brace", "try\n{ work();\n}\ncatch (e) {\n}\n", 4},
+		{"code on try close brace", "try {\n  work(); }\ncatch (e) {\n}\n", 3},
+		{"allman code on try open and close braces", "try\n{ work(); }\ncatch (e) {\n}\n", 3},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := swallowLines("app.ts", tc.content); len(got) != 1 || got[0] != tc.want {
+				t.Fatalf("expected one swallow finding at line %d, got %v", tc.want, got)
+			}
+		})
+	}
+}
+
+func TestCheckToilAndScale_LineInitialCatchControls(t *testing.T) {
+	if got := swallowLines("app.ts", "try {\n  work();\n}\ncatch (e) {\n  console.error(e);\n}\n"); len(got) != 0 {
+		t.Fatalf("expected no findings for nonempty line-initial catch, got %v", got)
+	}
+	if got := swallowLines("app.ts", "try {\n  work();\n}\ncatch (e)\n{ console.error(e); }\n"); len(got) != 0 {
+		t.Fatalf("expected no findings for nonempty brace-on-next-line catch, got %v", got)
+	}
+	if got := swallowLines("app.ts", "try {\n  work();\n}\ncatch (e)\n{ /* intentional */ }\n"); len(got) != 0 {
+		t.Fatalf("expected no findings for documented brace-on-next-line catch, got %v", got)
+	}
+	method := "class Handler {\n  run() {\n    work();\n  }\n  catch(e) {\n  }\n}\n"
+	if got := swallowLines("app.ts", method); len(got) != 0 {
+		t.Fatalf("expected no findings for a method named catch, got %v", got)
+	}
+	regexRecovery := "try {\n  work();\n}\ncatch (err) {\n  /[{]/.test(err);\n}\n"
+	if got := swallowLines("app.ts", regexRecovery); len(got) != 0 {
+		t.Fatalf("expected no finding for regex recovery, got %v", got)
+	}
+	tryMethod := "class Handler {\n  try(e) {\n    work();\n  }\n  catch(e) {\n  }\n}\n"
+	if got := swallowLines("app.ts", tryMethod); len(got) != 0 {
+		t.Fatalf("expected no finding for a catch method after a try method, got %v", got)
+	}
+	methodClose := "class Handler {\n  run() {\n    work(); }\n  catch(e) {\n  }\n}\n"
+	if got := swallowLines("app.ts", methodClose); len(got) != 0 {
+		t.Fatalf("expected no findings for a method named catch after code on close brace, got %v", got)
+	}
+	outerBlock := "if (cond) {\n  try { work(); }\n}\ncatch (e) {\n}\n"
+	if got := swallowLines("app.ts", outerBlock); len(got) != 0 {
+		t.Fatalf("expected no findings when closing brace belongs to outer if, got %v", got)
+	}
+	afterFinally := "try { work(); } finally {\n  cleanup();\n}\ncatch (e) {\n}\n"
+	if got := swallowLines("app.ts", afterFinally); len(got) != 0 {
+		t.Fatalf("expected no findings when closing brace belongs to finally, got %v", got)
+	}
+}
+
 func TestCheckToilAndScale_MultilinePythonExcept(t *testing.T) {
 	content := "try:\n    work()\nexcept Exception:\n    pass\n"
 	if got := swallowLines("worker.py", content); len(got) != 1 || got[0] != 3 {
