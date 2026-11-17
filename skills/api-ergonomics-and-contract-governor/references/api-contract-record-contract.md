@@ -2,7 +2,7 @@
 
 > Machine-verifiable contract for validating API ergonomics, Pit of Success defaults, Discriminated Unions, Branded Types, Progressive Disclosure, and RFC 9457 Problem Details.
 
-Every public SDK, CLI tool, or critical internal module boundary must produce or validate a JSON assessment matching this contract. Audited via `npx anti-slop-engineering contract audit <file.json> --json`.
+Every public SDK, CLI tool, or critical internal module boundary must produce or validate a JSON assessment matching this contract. Run `bunx anti-slop-engineering contract preflight <file.json> --json` to check the record envelope and required sections. Run `bunx anti-slop-engineering contract audit <file.json> --json` for the complete audit.
 
 ---
 

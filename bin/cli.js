@@ -232,6 +232,7 @@ Commands:
   sim audit <file>       Check Deterministic Simulation & Property record for MSR & AWS testing rigor
   privacy audit <file>   Check Privacy & Data Lineage record for Apple Privacy & Meta Infra compliance
   contract audit <file>  Check API Contract & Ergonomics record for TypeScript & Stripe DX compliance
+  contract preflight <file>  Check the API contract record envelope and required sections
   apple-craft audit <file> Check Apple Craft & Interaction Physics record for 120Hz, CLS=0 and state matrix
   observability audit <file> Check Observability & SLO record for Google Monarch & Dapper compliance
   hunter, forensic       Run Zero-Trust Forensic Bug Hunter static scanner across 9 stacks

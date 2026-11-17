@@ -2,6 +2,7 @@
 """Check API Ergonomics and Contract Governance records and source code for Microsoft TypeScript & Stripe DX rigor."""
 
 import argparse
+from functools import partial
 import json
 import re
 import sys
@@ -238,18 +239,32 @@ def scan_source_hazards(source_text):
     return findings
 
 
-def audit(record, source_text=None):
-    findings = []
-    require = lambda ok, code, message, severity="block": _record_finding(findings, ok, code, message, severity)
+PROCEED_BLOCKS = (
+    ("pit_of_success_defaults", "INVALID_PIT_OF_SUCCESS", check_pit_of_success_defaults),
+    ("illegal_states_unrepresentable", "INVALID_ILLEGAL_STATES", check_illegal_states_unrepresentable),
+    ("progressive_disclosure", "INVALID_PROGRESSIVE_DISCLOSURE", check_progressive_disclosure),
+    ("rfc9457_problem_details", "INVALID_RFC9457_PROBLEM_DETAILS", check_rfc9457_problem_details),
+)
 
+
+def _evaluate_record(record, *, preflight_only, source_text=None):
+    findings = []
+
+    require = partial(_record_finding, findings)
+
+    require(record.get("schema_version") == "1.0", "INVALID_SCHEMA_VERSION",
+            "schema_version must be '1.0'")
+    require(filled(record.get("contract_id"), 5), "INVALID_CONTRACT_ID",
+            "contract_id must be a string of at least 5 characters")
     check_target_interface(record, require)
     action = check_verdict(record, require)
 
     if action == "proceed":
-        check_pit_of_success_defaults(record, require)
-        check_illegal_states_unrepresentable(record, require)
-        check_progressive_disclosure(record, require)
-        check_rfc9457_problem_details(record, require)
+        for field, code, check in PROCEED_BLOCKS:
+            if preflight_only:
+                require(isinstance(record.get(field), dict), code, f"{field} must be a dictionary")
+            else:
+                check(record, require)
 
     if source_text is not None:
         findings.extend(scan_source_hazards(source_text))
@@ -262,21 +277,34 @@ def audit(record, source_text=None):
     }
 
 
+def audit(record, source_text=None):
+    return _evaluate_record(record, preflight_only=False, source_text=source_text)
+
+
+def preflight(record):
+    result = _evaluate_record(record, preflight_only=True)
+    result["preflight_passed"] = not result["findings"]
+    return result
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=["audit"])
+    parser.add_argument("command", choices=["audit", "preflight"])
     parser.add_argument("record", type=Path)
     parser.add_argument("--source", type=Path, default=None,
                         help="Optional source file to scan for boolean traps, stringly IDs, bare errors, or hanging fetch")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args()
 
+    if args.command == "preflight" and args.source is not None:
+        parser.error("--source is only supported by audit")
+
     try:
         record = json.loads(args.record.read_text(encoding="utf-8"))
         if not isinstance(record, dict):
             raise ValueError("Record root must be a JSON object")
         source_text = args.source.read_text(encoding="utf-8") if args.source else None
-        result = audit(record, source_text=source_text)
+        result = preflight(record) if args.command == "preflight" else audit(record, source_text=source_text)
     except (OSError, UnicodeError, ValueError) as error:
         print("Invalid API Contract Governance record: %s" % error, file=sys.stderr)
         return 1
