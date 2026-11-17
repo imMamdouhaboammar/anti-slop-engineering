@@ -23,6 +23,7 @@ if not __package__:
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 from scripts.git_changeset import collect_changes, repository_root
+from scripts.source_trivia import source_trivia
 
 TEST_FILE_EXTENSIONS = {".py", ".ts", ".js", ".tsx", ".jsx", ".go", ".rs"}
 
@@ -65,24 +66,34 @@ FRAME_INJECTION_PATTERNS = [
 def scan_test_file_content(path: str, content: str) -> List[Dict[str, Any]]:
     findings = []
     lines = content.splitlines()
+    in_trivia = source_trivia(path, content)
+    line_offsets: List[int] = []
+    _pos = 0
+    for _raw_line in content.splitlines(keepends=True):
+        line_offsets.append(_pos)
+        _pos += len(_raw_line)
 
     # 1. Tautological assertions
     for line_idx, line in enumerate(lines, start=1):
         for pattern, desc in TAUTOLOGY_PATTERNS:
-            if pattern.search(line):
-                findings.append({
-                    "id": f"MANDELA-TAUT-{len(findings)+1:03d}",
-                    "file": path,
-                    "line": line_idx,
-                    "pattern": "TAUTOLOGICAL_ASSERTION",
-                    "severity": "BLOCKING",
-                    "evidence": line.strip(),
-                    "independence_fix": f"Replace tautological assertion ({desc}) with validation against external ground truth or real computed result."
-                })
+            for match in pattern.finditer(line):
+                if not in_trivia(line_offsets[line_idx - 1] + match.start()):
+                    findings.append({
+                        "id": f"MANDELA-TAUT-{len(findings)+1:03d}",
+                        "file": path,
+                        "line": line_idx,
+                        "pattern": "TAUTOLOGICAL_ASSERTION",
+                        "severity": "BLOCKING",
+                        "evidence": line.strip(),
+                        "independence_fix": f"Replace tautological assertion ({desc}) with validation against external ground truth or real computed result."
+                    })
+                    break
 
     # 2. Swallowed failures
     for pattern, desc in SWALLOWED_TEST_PATTERNS:
         for match in pattern.finditer(content):
+            if in_trivia(match.start()):
+                continue
             start_pos = match.start()
             line_idx = content.count("\n", 0, start_pos) + 1
             findings.append({
@@ -98,6 +109,8 @@ def scan_test_file_content(path: str, content: str) -> List[Dict[str, Any]]:
     # 3. Circular Mock confirmation
     for pattern, desc in CIRCULAR_MOCK_PATTERNS:
         for match in pattern.finditer(content):
+            if in_trivia(match.start()):
+                continue
             start_pos = match.start()
             line_idx = content.count("\n", 0, start_pos) + 1
             findings.append({
@@ -127,6 +140,8 @@ def scan_test_file_content(path: str, content: str) -> List[Dict[str, Any]]:
     # 5. Check for empty tests in Python (def test_... with only pass or docstring)
     py_test_func = re.compile(r"def\s+(test_[a-zA-Z0-9_]+)\s*\([^)]*\)\s*:(?:\s*['\"].*?['\"])?\s*\n(\s+)(pass|return)\s*$", re.MULTILINE)
     for match in py_test_func.finditer(content):
+        if in_trivia(match.start()):
+            continue
         start_pos = match.start()
         line_idx = content.count("\n", 0, start_pos) + 1
         func_name = match.group(1)

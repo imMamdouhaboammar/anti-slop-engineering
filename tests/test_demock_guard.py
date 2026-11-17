@@ -167,6 +167,52 @@ export async function authenticate(req: Request): Promise<UserSession> {
         self.assertEqual(record["verdict"], "REJECT")
         self.assertEqual(record["scanned_files"], 1)
 
+    def test_block_comment_does_not_hide_live_typescript_on_same_line(self):
+        source = (
+            "/* documentation\n"
+            "const demo = new MockService();\n"
+            "*/ const service = new MockService();\n"
+        )
+        self.assertEqual(
+            [(item["class"], item["line"]) for item in scan_file_content("src/service.ts", source)],
+            [("TEST_DOUBLE_IN_PROD", 3)],
+        )
+
+    def test_typescript_regex_and_template_keep_live_test_doubles(self):
+        source = (
+            'const rx = /"/; const worker = new MockService();\n'
+            'const example = `text ${new MockService()}`;\n'
+        )
+        self.assertEqual(
+            [(item["class"], item["line"]) for item in scan_file_content("src/worker.ts", source)],
+            [("TEST_DOUBLE_IN_PROD", 1), ("TEST_DOUBLE_IN_PROD", 2)],
+        )
+
+    def test_rust_lifetime_does_not_hide_live_placeholder(self):
+        source = "fn build<'a>(name: &'a str) { todo!() }"
+        self.assertEqual(
+            [(item["class"], item["line"]) for item in scan_file_content("src/worker.rs", source)],
+            [("UNIMPLEMENTED_PLACEHOLDER", 1)],
+        )
+
+    def test_python_format_expression_preserves_live_test_double(self):
+        source = 'message = f"{MagicMock()}"\n'
+        self.assertEqual(
+            [(item["class"], item["line"]) for item in scan_file_content("src/service.py", source)],
+            [("TEST_DOUBLE_IN_PROD", 1)],
+        )
+
+    def test_python_catalog_literals_do_not_hide_live_code(self):
+        source = (
+            'EXAMPLE = """client = MagicMock()\r\n'
+            'local_sqlite_fallback"""\r\n'
+            'line = "MagicMock("; client = MagicMock()\r\n'
+        )
+        self.assertEqual(
+            [(item["class"], item["line"]) for item in scan_file_content("src/catalog.py", source)],
+            [("TEST_DOUBLE_IN_PROD", 3)],
+        )
+
     def test_audit_paths_directory_scan(self):
         prod_file = os.path.join(self.temp_dir, "service.ts")
         with open(prod_file, "w", encoding="utf-8") as fh:
@@ -176,6 +222,41 @@ export async function authenticate(req: Request): Promise<UserSession> {
         self.assertEqual(record["verdict"], "REJECT")
         self.assertEqual(record["findings_count"], 1)
         self.assertEqual(record["findings"][0]["class"], "TEST_DOUBLE_IN_PROD")
+
+
+class DemockStringLiteralTests(unittest.TestCase):
+    """Pattern text inside string literals or comments is not live code.
+
+    The guard's own catalog (and any documentation of banned patterns)
+    contains the forbidden identifiers as data; scanning that text as
+    code makes the guard flag itself.
+    """
+
+    def test_pattern_text_inside_strings_not_flagged(self):
+        py_code = (
+            'PATTERN_NAME = "local_sqlite_fallback"\n'
+            'EXAMPLE_SNIPPET = "client = MagicMock()"\n'
+        )
+        findings = scan_file_content("src/catalog.py", py_code)
+        self.assertEqual(findings, [])
+
+    def test_pattern_text_inside_comment_not_flagged(self):
+        py_code = (
+            "# never fall back to local_sqlite_fallback in this layer\n"
+            "value = compute()\n"
+        )
+        findings = scan_file_content("src/service.py", py_code)
+        self.assertEqual(findings, [])
+
+    def test_escaped_triple_quote_and_same_line_shadowing_and_crlf(self):
+        py_code = (
+            'DOC = """prefix \\""" client = MagicMock() suffix"""\r\n'
+            'MSG = "MagicMock("; client = MagicMock()\r\n'
+        )
+        findings = scan_file_content("src/service.py", py_code)
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0]["class"], "TEST_DOUBLE_IN_PROD")
+        self.assertEqual(findings[0]["line"], 2)
 
 
 if __name__ == "__main__":

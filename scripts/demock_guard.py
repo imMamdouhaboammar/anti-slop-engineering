@@ -23,6 +23,7 @@ if not __package__:
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 from scripts.git_changeset import validate_base_ref
+from scripts.source_trivia import source_trivia
 
 # Patterns to identify test directories and files that are exempt from demock checks
 TEST_PATH_PATTERNS = [
@@ -103,24 +104,34 @@ def get_git_diff_files(base_ref: str = "HEAD") -> List[Tuple[str, str]]:
 def scan_file_content(path: str, content: str) -> List[Dict[str, Any]]:
     findings = []
     lines = content.splitlines()
+    in_trivia = source_trivia(path, content)
+    line_offsets: List[int] = []
+    _pos = 0
+    for _raw_line in content.splitlines(keepends=True):
+        line_offsets.append(_pos)
+        _pos += len(_raw_line)
 
     # 1. Test doubles
     for line_idx, line in enumerate(lines, start=1):
         for pattern, desc in TEST_DOUBLE_PATTERNS:
-            if pattern.search(line):
-                findings.append({
-                    "id": f"DEMOCK-TD-{len(findings)+1:03d}",
-                    "file": path,
-                    "line": line_idx,
-                    "class": "TEST_DOUBLE_IN_PROD",
-                    "severity": "BLOCKING",
-                    "evidence": line.strip(),
-                    "recommendation": f"Remove test double from production runtime ({desc}). Inject real dependency via constructor or container."
-                })
+            for match in pattern.finditer(line):
+                if not in_trivia(line_offsets[line_idx - 1] + match.start()):
+                    findings.append({
+                        "id": f"DEMOCK-TD-{len(findings)+1:03d}",
+                        "file": path,
+                        "line": line_idx,
+                        "class": "TEST_DOUBLE_IN_PROD",
+                        "severity": "BLOCKING",
+                        "evidence": line.strip(),
+                        "recommendation": f"Remove test double from production runtime ({desc}). Inject real dependency via constructor or container."
+                    })
+                    break
 
     # 2. Silent fallbacks (multi-line regex support)
     for pattern, desc in SILENT_FALLBACK_PATTERNS:
         for match in pattern.finditer(content):
+            if in_trivia(match.start()):
+                continue
             # Calculate line number from character offset
             start_pos = match.start()
             line_idx = content.count("\n", 0, start_pos) + 1
@@ -138,6 +149,8 @@ def scan_file_content(path: str, content: str) -> List[Dict[str, Any]]:
     # 3. Fail-open gates
     for pattern, desc in FAIL_OPEN_PATTERNS:
         for match in pattern.finditer(content):
+            if in_trivia(match.start()):
+                continue
             start_pos = match.start()
             line_idx = content.count("\n", 0, start_pos) + 1
             matched_text = match.group(0).strip().replace("\n", " ")
@@ -154,16 +167,18 @@ def scan_file_content(path: str, content: str) -> List[Dict[str, Any]]:
     # 4. Placeholders
     for line_idx, line in enumerate(lines, start=1):
         for pattern, desc in PLACEHOLDER_PATTERNS:
-            if pattern.search(line):
-                findings.append({
-                    "id": f"DEMOCK-PH-{len(findings)+1:03d}",
-                    "file": path,
-                    "line": line_idx,
-                    "class": "UNIMPLEMENTED_PLACEHOLDER",
-                    "severity": "WARNING",
-                    "evidence": line.strip(),
-                    "recommendation": f"Unimplemented placeholder on production path ({desc}). Fully implement logic or decouple from active export."
-                })
+            for match in pattern.finditer(line):
+                if not in_trivia(line_offsets[line_idx - 1] + match.start()):
+                    findings.append({
+                        "id": f"DEMOCK-PH-{len(findings)+1:03d}",
+                        "file": path,
+                        "line": line_idx,
+                        "class": "UNIMPLEMENTED_PLACEHOLDER",
+                        "severity": "WARNING",
+                        "evidence": line.strip(),
+                        "recommendation": f"Unimplemented placeholder on production path ({desc}). Fully implement logic or decouple from active export."
+                    })
+                    break
 
     return findings
 
