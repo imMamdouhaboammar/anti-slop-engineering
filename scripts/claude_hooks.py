@@ -33,6 +33,7 @@ HOOK_PATH = str(Path(__file__).resolve())
 ERROR_MESSAGE = "invalid Claude hook event or local policy"
 CHECKPOINT_BYTES = 64 * 1024
 CHECKPOINT_ATTEMPT_BUDGET = 3
+CHECKPOINT_LOCK_TIMEOUT = 0.25
 CHECKPOINT_STATE_FILE = "checkpoint-state.json"
 CHECKPOINT_AUDIT_FILE = "checkpoint-audit.jsonl"
 CHECKPOINT_OVERRIDE_FILE = "checkpoint-override.json"
@@ -177,6 +178,12 @@ def _audit_checkpoint(state_dir, event, session_id, target, **fields):
         stream.write(json.dumps(entry) + "\n")
 
 
+def _checkpoint_failures(state, key):
+    entry = state.get(key)
+    count = entry.get("failures") if isinstance(entry, dict) else None
+    return count if type(count) is int and 0 <= count <= CHECKPOINT_ATTEMPT_BUDGET else 0
+
+
 def _record_checkpoint_outcome(project, session_id, target, kind):
     """Track consecutive post-write syntax failures per session and target.
 
@@ -192,7 +199,7 @@ def _record_checkpoint_outcome(project, session_id, target, kind):
     key = f"{session_id}\n{canonical}"
     try:
         manager = SessionStateManager(state_dir)
-        with manager.exclusive_lock():
+        with manager.exclusive_lock(timeout_seconds=CHECKPOINT_LOCK_TIMEOUT):
             state = _load_checkpoint_state(state_dir)
             if kind == "ok":
                 if key in state:
@@ -200,8 +207,7 @@ def _record_checkpoint_outcome(project, session_id, target, kind):
                     _save_checkpoint_state(state_dir, state)
                     _audit_checkpoint(state_dir, "cleared", session_id, canonical)
                 return False
-            entry = state.get(key)
-            failures = (entry.get("failures", 0) if isinstance(entry, dict) else 0) + 1
+            failures = min(_checkpoint_failures(state, key) + 1, CHECKPOINT_ATTEMPT_BUDGET)
             state[key] = {"failures": failures}
             _save_checkpoint_state(state_dir, state)
             _audit_checkpoint(state_dir, "failure", session_id, canonical, failures=failures)
@@ -226,10 +232,9 @@ def _checkpoint_denial(project, session_id, target):
     key = f"{session_id}\n{canonical}"
     try:
         manager = SessionStateManager(state_dir)
-        with manager.exclusive_lock():
+        with manager.exclusive_lock(timeout_seconds=CHECKPOINT_LOCK_TIMEOUT):
             state = _load_checkpoint_state(state_dir)
-            entry = state.get(key)
-            failures = entry.get("failures", 0) if isinstance(entry, dict) else 0
+            failures = _checkpoint_failures(state, key)
             if failures < CHECKPOINT_ATTEMPT_BUDGET:
                 return None
             override_path = state_dir / CHECKPOINT_OVERRIDE_FILE
@@ -243,13 +248,17 @@ def _checkpoint_denial(project, session_id, target):
                 _canonical_checkpoint_target(project, override.get("target"))
                 if isinstance(override, dict) else None
             )
-            if isinstance(override, dict) and override.get("session_id") == session_id \
-                    and override_target == canonical:
+            reason = override.get("reason") if isinstance(override, dict) else None
+            if (
+                isinstance(reason, str) and reason.strip()
+                and override.get("session_id") == session_id
+                and override_target == canonical
+            ):
                 override_path.unlink()
                 del state[key]
                 _save_checkpoint_state(state_dir, state)
                 _audit_checkpoint(state_dir, "override_applied", session_id, canonical,
-                                  reason=str(override.get("reason", "")))
+                                  reason=reason.strip())
                 return None
             _audit_checkpoint(state_dir, "pre_write_denied", session_id, canonical,
                               failures=failures)
@@ -269,13 +278,14 @@ def evaluate_native_event(project, event, phase, session_id=None):
     if event["operation"] != "write" or policy["reason_code"] != "WITHIN_CONTRACT":
         return translate_policy(policy, phase)
     target = event["target_paths"][0]
-    if phase == "PreToolUse" and session_id:
+    track_attempts = bool(session_id) and state["contract"]["level"] == "guard"
+    if phase == "PreToolUse" and track_attempts:
         denial = _checkpoint_denial(project, session_id, target)
         if denial:
             return translate_policy({"decision": "block", "message": denial}, phase)
     elif phase == "PostToolUse":
         kind, message = _python_checkpoint_outcome(project, target)
-        exhausted = bool(session_id) and _record_checkpoint_outcome(
+        exhausted = track_attempts and _record_checkpoint_outcome(
             project, session_id, target, kind)
         if message and exhausted:
             message += (

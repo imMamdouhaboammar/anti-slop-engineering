@@ -1,7 +1,9 @@
 import json
+import os
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -128,6 +130,38 @@ class ClaudeCheckpointBudgetTests(unittest.TestCase):
         message = self.post_message()
         self.assertIn("Python syntax error at line 2", message)
         self.assertNotIn("budget exhausted", message)
+
+    def test_invalid_attempt_count_recovers(self):
+        self.post_message()
+        state = self.project / ".anti-slop" / "checkpoint-state.json"
+        state.write_text(json.dumps({"sess-1\nsnippet.py": {"failures": "invalid"}}))
+        self.assertIn("Python syntax error", self.post_message())
+        self.assertEqual(json.loads(state.read_text()), {"sess-1\nsnippet.py": {"failures": 1}})
+        self.assertNotIn("budget exhausted", self.post_message())
+        self.assertIn("budget exhausted", self.post_message())
+
+    def test_busy_state_lock_keeps_pre_write_responsive(self):
+        lock = self.project / ".anti-slop" / ".lock"
+        lock.mkdir()
+        (lock / "owner.json").write_text(json.dumps({"pid": os.getpid()}))
+        started = time.monotonic()
+        self.assertEqual(self.invoke("PreToolUse"), {})
+        self.assertLess(time.monotonic() - started, 3)
+
+    def test_override_requires_an_audit_reason(self):
+        for _ in range(3):
+            self.post_message()
+        override = self.project / ".anti-slop" / "checkpoint-override.json"
+        override.write_text(json.dumps({"session_id": "sess-1", "target": "snippet.py", "reason": "  "}))
+        result = self.invoke("PreToolUse")
+        self.assertEqual(result.get("hookSpecificOutput", {}).get("permissionDecision"), "deny")
+        self.assertTrue(override.is_file())
+
+    def test_watch_mode_keeps_checkpoint_advisory(self):
+        self.arm("$anti-slop change watch files=snippet.py -- Edit example")
+        for _ in range(3):
+            self.assertIn("Python syntax error", self.post_message())
+        self.assertEqual(self.invoke("PreToolUse"), {})
 
     def test_missing_session_id_keeps_stateless_behavior(self):
         for _ in range(4):

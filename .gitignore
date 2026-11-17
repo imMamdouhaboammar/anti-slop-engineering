@@ -125,3 +125,7 @@ services/toil-guard-go/bin/
 /.anti-slop/settings.json
 /.anti-slop/state-note.json
 /.anti-slop/voice-profile.json
+/.anti-slop/checkpoint-state.json
+/.anti-slop/checkpoint-audit.jsonl
+/.anti-slop/checkpoint-override.json
+/.anti-slop/checkpoint-state-*
