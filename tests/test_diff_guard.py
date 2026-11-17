@@ -75,7 +75,10 @@ class DiffGuardTests(unittest.TestCase):
         self.assertEqual(report['summary']['changed_files'], 0)
 
     def test_documentation_files_are_excluded_from_code_pattern_matching(self):
-        (self.repo / 'README.md').write_text('# Guide\nNever use verify=False or assert True in production.\n')
+        (self.repo / 'README.md').write_text(
+            '# Guide\nNever use verify=False or assert True in production.\n'
+            '```python\nfor attempt in range(5):\n    time.sleep(2)\n```\n'
+        )
         git(self.repo, 'add', 'README.md')
         _, report = self.check()
         self.assertEqual(report['summary']['changed_files'], 1)

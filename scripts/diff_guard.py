@@ -159,7 +159,7 @@ def _flat_retry_multiline_findings(added_lines, seen):
             path = raw_path.decode("utf-8")
         except UnicodeDecodeError:
             continue
-        if GENERATED_PATH.search(path) or TEST_PATH.search(path) or re.search(r'(?i)(?:^|/)references/', path):
+        if GENERATED_PATH.search(path) or DOC_PATH.search(path) or TEST_PATH.search(path) or re.search(r'(?i)(?:^|/)references/', path):
             continue
         code_line = raw_line.decode("utf-8", "replace").removesuffix("\r")
         by_path.setdefault(path, []).append((new_line, code_line))
