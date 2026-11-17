@@ -7,6 +7,7 @@ import os
 import stat
 import sys
 import tempfile
+import time
 import warnings
 from contextlib import ExitStack
 from pathlib import Path
@@ -30,6 +31,11 @@ MATCHER = "Read|Edit|Write"
 HOOK_PATH = str(Path(__file__).resolve())
 ERROR_MESSAGE = "invalid Claude hook event or local policy"
 CHECKPOINT_BYTES = 64 * 1024
+CHECKPOINT_ATTEMPT_BUDGET = 3
+CHECKPOINT_STATE_FILE = "checkpoint-state.json"
+CHECKPOINT_AUDIT_FILE = "checkpoint-audit.jsonl"
+CHECKPOINT_OVERRIDE_FILE = "checkpoint-override.json"
+CHECKPOINT_OVERRIDE_HINT = ".anti-slop/checkpoint-override.json"
 
 
 def normalize_event(payload, phase, project):
@@ -92,33 +98,162 @@ def read_local_source(project, source):
 
 def python_checkpoint(project, target):
     """Check one local file without running it, changing it, or exposing its contents."""
+    return _python_checkpoint_outcome(project, target)[1]
+
+
+def _python_checkpoint_outcome(project, target):
+    """Classify the checkpoint result as error, skip, ok, or not applicable."""
     source = Path(target)
     if source.suffix not in (".py", ".pyi"):
-        return None
+        return "na", None
 
     try:
         content = read_local_source(project, source)
     except (AttributeError, OSError, ValueError, RuntimeError):
-        return "Python syntax check skipped: could not read a project-local regular file."
+        return "skip", "Python syntax check skipped: could not read a project-local regular file."
     if len(content) > CHECKPOINT_BYTES:
-        return "Python syntax check skipped: source exceeds 64 KiB."
+        return "skip", "Python syntax check skipped: source exceeds 64 KiB."
 
     try:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", SyntaxWarning)
             compile(content, "<post-write checkpoint>", "exec", dont_inherit=True)
     except SyntaxError as exc:
-        return f"Python syntax error at line {exc.lineno or 1}. Correct the file, then run its focused tests."
+        return "error", f"Python syntax error at line {exc.lineno or 1}. Correct the file, then run its focused tests."
     except (ValueError, RecursionError, OverflowError):
-        return "Python syntax check skipped: the local compiler could not process this file."
-    return None
+        return "skip", "Python syntax check skipped: the local compiler could not process this file."
+    return "ok", None
 
 
-def evaluate_native_event(project, event, phase):
+def _checkpoint_state_dir(project):
+    return project / ".anti-slop"
+
+
+def _load_checkpoint_state(state_dir):
+    path = state_dir / CHECKPOINT_STATE_FILE
+    if path.is_symlink():
+        raise ValueError("Checkpoint state must be local")
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _save_checkpoint_state(state_dir, state):
+    state_dir.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        "w", dir=state_dir, prefix="checkpoint-state-", delete=False, encoding="utf-8"
+    ) as stream:
+        stream.write(json.dumps(state, indent=2))
+        tmp_path = Path(stream.name)
+    tmp_path.replace(state_dir / CHECKPOINT_STATE_FILE)
+
+
+def _audit_checkpoint(state_dir, event, session_id, target, **fields):
+    entry = {"event": event, "session_id": session_id, "target": target, "at": time.time()}
+    entry.update(fields)
+    with open(state_dir / CHECKPOINT_AUDIT_FILE, "a", encoding="utf-8") as stream:
+        stream.write(json.dumps(entry) + "\n")
+
+
+def _record_checkpoint_outcome(project, session_id, target, kind):
+    """Track consecutive post-write syntax failures per session and target.
+
+    Returns True when this failure exhausts the attempt budget. Tracking is
+    best-effort: any state problem degrades to the stateless checkpoint.
+    """
+    if kind not in ("error", "ok"):
+        return False
+    state_dir = _checkpoint_state_dir(project)
+    key = f"{session_id}\n{target}"
+    try:
+        manager = SessionStateManager(state_dir)
+        with manager.exclusive_lock():
+            state = _load_checkpoint_state(state_dir)
+            if kind == "ok":
+                if key in state:
+                    del state[key]
+                    _save_checkpoint_state(state_dir, state)
+                    _audit_checkpoint(state_dir, "cleared", session_id, target)
+                return False
+            entry = state.get(key)
+            failures = (entry.get("failures", 0) if isinstance(entry, dict) else 0) + 1
+            state[key] = {"failures": failures}
+            _save_checkpoint_state(state_dir, state)
+            _audit_checkpoint(state_dir, "failure", session_id, target, failures=failures)
+            if failures >= CHECKPOINT_ATTEMPT_BUDGET:
+                _audit_checkpoint(state_dir, "exhausted", session_id, target, failures=failures)
+                return True
+            return False
+    except (AttributeError, OSError, ValueError, RuntimeError, TypeError, KeyError):
+        return False
+
+
+def _checkpoint_denial(project, session_id, target):
+    """Return a pre-write denial message when the attempt budget is spent.
+
+    A matching operator override in the state directory is consumed once,
+    audited, and clears the budget. Any state problem degrades to no denial.
+    """
+    state_dir = _checkpoint_state_dir(project)
+    key = f"{session_id}\n{target}"
+    try:
+        manager = SessionStateManager(state_dir)
+        with manager.exclusive_lock():
+            state = _load_checkpoint_state(state_dir)
+            entry = state.get(key)
+            failures = entry.get("failures", 0) if isinstance(entry, dict) else 0
+            if failures < CHECKPOINT_ATTEMPT_BUDGET:
+                return None
+            override_path = state_dir / CHECKPOINT_OVERRIDE_FILE
+            override = None
+            if override_path.is_file() and not override_path.is_symlink():
+                try:
+                    override = json.loads(override_path.read_text(encoding="utf-8"))
+                except ValueError:
+                    override = None
+            if isinstance(override, dict) and override.get("session_id") == session_id \
+                    and override.get("target") == target:
+                override_path.unlink()
+                del state[key]
+                _save_checkpoint_state(state_dir, state)
+                _audit_checkpoint(state_dir, "override_applied", session_id, target,
+                                  reason=str(override.get("reason", "")))
+                return None
+            _audit_checkpoint(state_dir, "pre_write_denied", session_id, target,
+                              failures=failures)
+            return (
+                "Checkpoint attempt budget exhausted for this file in this session after "
+                f"{failures} failed post-write syntax checks. This write has not happened. "
+                "Correct the file outside the agent, or record an audited override in "
+                f"{CHECKPOINT_OVERRIDE_HINT}, before retrying."
+            )
+    except (AttributeError, OSError, ValueError, RuntimeError, TypeError, KeyError):
+        return None
+
+
+def evaluate_native_event(project, event, phase, session_id=None):
     state = _load_hook_policy(SessionStateManager(project / ".anti-slop"))
     policy = evaluate_hook_event(event, state, project)
-    if phase == "PostToolUse" and event["operation"] == "write" and policy["reason_code"] == "WITHIN_CONTRACT":
-        message = python_checkpoint(project, event["target_paths"][0])
+    if event["operation"] != "write" or policy["reason_code"] != "WITHIN_CONTRACT":
+        return translate_policy(policy, phase)
+    target = event["target_paths"][0]
+    if phase == "PreToolUse" and session_id:
+        denial = _checkpoint_denial(project, session_id, target)
+        if denial:
+            return translate_policy({"decision": "block", "message": denial}, phase)
+    elif phase == "PostToolUse":
+        kind, message = _python_checkpoint_outcome(project, target)
+        exhausted = bool(session_id) and _record_checkpoint_outcome(
+            project, session_id, target, kind)
+        if message and exhausted:
+            message += (
+                f" Checkpoint attempt budget exhausted ({CHECKPOINT_ATTEMPT_BUDGET} failed "
+                "checks). Further writes to this file in this session will be denied until a "
+                "corrected write is recorded or an audited override is filed at "
+                f"{CHECKPOINT_OVERRIDE_HINT}."
+            )
         if message:
             return translate_policy({"decision": "warn", "message": message}, phase)
     return translate_policy(policy, phase)
@@ -126,8 +261,12 @@ def evaluate_native_event(project, event, phase):
 
 def evaluate(project, phase):
     try:
-        event = normalize_event(read_hook_object(sys.stdin.buffer), phase, project)
-        result = {} if event is None else evaluate_native_event(project, event, phase)
+        payload = read_hook_object(sys.stdin.buffer)
+        event = normalize_event(payload, phase, project)
+        session_id = payload.get("session_id") if isinstance(payload, dict) else None
+        if not isinstance(session_id, str) or not session_id or len(session_id) > 128:
+            session_id = None
+        result = {} if event is None else evaluate_native_event(project, event, phase, session_id)
     except (OSError, ValueError, RuntimeError):
         print(ERROR_MESSAGE, file=sys.stderr)
         return 1
