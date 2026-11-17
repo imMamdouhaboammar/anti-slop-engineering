@@ -78,7 +78,13 @@ func TestCheckToilAndScale_LineInitialCatchTS(t *testing.T) {
 		{"brace on catch line", "try {\n  work();\n}\ncatch (e) {\n}\n", 4},
 		{"binding-free", "try {\n  work();\n}\ncatch {\n}\n", 4},
 		{"brace on next line", "try\n{\n  work();\n}\ncatch (e)\n{\n}\n", 5},
+		{"brace on next line same-line empty", "try {\n  work();\n}\ncatch (e)\n{}\n", 4},
+		{"brace on next line todo comment", "try {\n  work();\n}\ncatch (e)\n{ /* todo */ }\n", 4},
 		{"try on one line", "try { work(); }\ncatch (e) {\n}\n", 2},
+		{"code on try open brace", "try { work();\n}\ncatch (e) {\n}\n", 3},
+		{"allman code on try open brace", "try\n{ work();\n}\ncatch (e) {\n}\n", 4},
+		{"code on try close brace", "try {\n  work(); }\ncatch (e) {\n}\n", 3},
+		{"allman code on try open and close braces", "try\n{ work(); }\ncatch (e) {\n}\n", 3},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -93,9 +99,27 @@ func TestCheckToilAndScale_LineInitialCatchControls(t *testing.T) {
 	if got := swallowLines("app.ts", "try {\n  work();\n}\ncatch (e) {\n  console.error(e);\n}\n"); len(got) != 0 {
 		t.Fatalf("expected no findings for nonempty line-initial catch, got %v", got)
 	}
+	if got := swallowLines("app.ts", "try {\n  work();\n}\ncatch (e)\n{ console.error(e); }\n"); len(got) != 0 {
+		t.Fatalf("expected no findings for nonempty brace-on-next-line catch, got %v", got)
+	}
+	if got := swallowLines("app.ts", "try {\n  work();\n}\ncatch (e)\n{ /* intentional */ }\n"); len(got) != 0 {
+		t.Fatalf("expected no findings for documented brace-on-next-line catch, got %v", got)
+	}
 	method := "class Handler {\n  run() {\n    work();\n  }\n  catch(e) {\n  }\n}\n"
 	if got := swallowLines("app.ts", method); len(got) != 0 {
 		t.Fatalf("expected no findings for a method named catch, got %v", got)
+	}
+	methodClose := "class Handler {\n  run() {\n    work(); }\n  catch(e) {\n  }\n}\n"
+	if got := swallowLines("app.ts", methodClose); len(got) != 0 {
+		t.Fatalf("expected no findings for a method named catch after code on close brace, got %v", got)
+	}
+	outerBlock := "if (cond) {\n  try { work(); }\n}\ncatch (e) {\n}\n"
+	if got := swallowLines("app.ts", outerBlock); len(got) != 0 {
+		t.Fatalf("expected no findings when closing brace belongs to outer if, got %v", got)
+	}
+	afterFinally := "try { work(); } finally {\n  cleanup();\n}\ncatch (e) {\n}\n"
+	if got := swallowLines("app.ts", afterFinally); len(got) != 0 {
+		t.Fatalf("expected no findings when closing brace belongs to finally, got %v", got)
 	}
 }
 

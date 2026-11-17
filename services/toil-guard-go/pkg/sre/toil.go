@@ -164,9 +164,7 @@ var (
 	reGoErrOpen           = regexp.MustCompile(`if\s+err\s*!=\s*nil\s*\{`)
 	reCatchLineStartBrace = regexp.MustCompile(`^\s*catch\b(?:\s*\([^)]*\))?\s*\{`)
 	reCatchLineStartBare  = regexp.MustCompile(`^\s*catch\b(?:\s*\([^)]*\))?\s*$`)
-	reTryBlockOpen        = regexp.MustCompile(`\btry\b[^{}]*\{\s*$`)
-	reTryOpen             = regexp.MustCompile(`\btry\b[^{}]*\{`)
-	reTryLine             = regexp.MustCompile(`^\s*try\b`)
+	reTryClause           = regexp.MustCompile(`(?:^|[^\w.$])try(?:\s*\([^{}]*\S[^{}]*\))?\s*$`)
 )
 
 type commentSpan struct {
@@ -416,7 +414,7 @@ func lineInitialCatchSwallow(code []string, comments [][]commentSpan, i int) boo
 		if strings.TrimSpace(code[q]) == "" {
 			continue
 		}
-		if strings.TrimSpace(code[q]) != "{" {
+		if !strings.HasPrefix(strings.TrimSpace(code[q]), "{") {
 			return false
 		}
 		braceRune := utf8.RuneCountInString(code[q][:strings.Index(code[q], "{")])
@@ -426,35 +424,41 @@ func lineInitialCatchSwallow(code []string, comments [][]commentSpan, i int) boo
 }
 
 // catchFollowsTryBlock reports whether the catch clause at line i attaches
-// to a try block: the previous code line either completes a one-line try
-// statement or is the lone closing brace of a block opened by a try opener.
+// to a try block: the previous code line ends with the closing brace of a
+// block whose opening brace is preceded by a try clause.
 func catchFollowsTryBlock(code []string, i int) bool {
 	p := prevCodeLine(code, i)
-	if p < 0 {
+	if p < 0 || !strings.HasSuffix(strings.TrimSpace(code[p]), "}") {
 		return false
 	}
-	if strings.TrimSpace(code[p]) != "}" {
-		prev := strings.TrimSpace(code[p])
-		return reTryOpen.MatchString(code[p]) && strings.HasSuffix(prev, "}") &&
-			strings.Count(code[p], "{") == strings.Count(code[p], "}")
+	openLine, openCol, ok := matchingOpenBrace(code, p)
+	if !ok {
+		return false
 	}
+	prefix := string([]rune(code[openLine])[:openCol])
+	if strings.TrimSpace(prefix) != "" {
+		return reTryClause.MatchString(prefix)
+	}
+	t := prevCodeLine(code, openLine)
+	return t >= 0 && reTryClause.MatchString(code[t])
+}
+
+func matchingOpenBrace(code []string, closeLine int) (int, int, bool) {
 	depth := 0
-	for j := p; j >= 0; j-- {
-		depth += strings.Count(code[j], "}") - strings.Count(code[j], "{")
-		if depth != 0 {
-			continue
-		}
-		if reTryBlockOpen.MatchString(code[j]) {
-			return true
-		}
-		if strings.TrimSpace(code[j]) == "{" {
-			if t := prevCodeLine(code, j); t >= 0 {
-				return reTryLine.MatchString(code[t])
+	for j := closeLine; j >= 0; j-- {
+		runes := []rune(code[j])
+		for k := len(runes) - 1; k >= 0; k-- {
+			if runes[k] == '}' {
+				depth++
+			} else if runes[k] == '{' {
+				depth--
+				if depth == 0 {
+					return j, k, true
+				}
 			}
 		}
-		return false
 	}
-	return false
+	return 0, 0, false
 }
 
 func prevCodeLine(code []string, i int) int {
