@@ -43,6 +43,8 @@ REASON_CODES = {
     "DEPENDENCY_NOT_AUTHORIZED": "The action introduces dependencies without authorization.",
     "AGENT_BUDGET_EXHAUSTED": "The concurrent subagent delegation budget has been exhausted.",
     "RECOVERY_READ_ONLY": "Operating in read-only recovery mode due to state protection.",
+    "ENV_INSPECTION_REQUIRES_APPROVAL": "The action reads environment variables or an environment file.",
+    "SHELL_COMMAND_REQUIRES_APPROVAL": "The shell syntax does not identify a single environment operation.",
     "LOCK_DAMAGED": "The session lock is damaged and requires administrative remediation.",
 }
 
@@ -144,35 +146,87 @@ def _parse_agent_budget(contract, val):
 
 
 def analyze_shell_command(cmd_str):
-    """
-    Statically inspect shell commands for mutability, dependencies, and hashing.
-    Uses shlex for tokenization and standard library regex for pattern matching.
-    """
-    if not cmd_str or not cmd_str.strip():
-        return {"mutability": "read", "dependency_intent": False, "hash_intent": False, "reason": "empty"}
-
-    raw = cmd_str.strip()
-    if ">" in raw or ">>" in raw:
-        return {"mutability": "write", "dependency_intent": False, "hash_intent": False, "reason": "redirection"}
-
+    """Statically inspect shell commands for contract-relevant actions."""
+    raw = (cmd_str or "").strip()
+    analysis = {
+        "mutability": "read", "dependency_intent": False, "hash_intent": False,
+        "shell_approval_reason": None, "reason": "empty",
+    }
+    if not raw:
+        return analysis
     try:
         tokens = shlex.split(raw)
     except ValueError:
-        return {"mutability": "unknown", "dependency_intent": False, "hash_intent": False, "reason": "unparseable_syntax"}
+        analysis.update(mutability="unknown", reason="unparseable_syntax")
+        if raw.split(maxsplit=1)[0].rsplit("/", 1)[-1] == "env":
+            analysis["shell_approval_reason"] = "SHELL_COMMAND_REQUIRES_APPROVAL"
+        return analysis
 
-    if not tokens:
-        return {"mutability": "read", "dependency_intent": False, "hash_intent": False, "reason": "empty"}
+    analysis["reason"] = "analyzed_tokens"
+    if ">" in raw:
+        analysis.update(mutability="write", reason="redirection")
+    elif tokens and tokens[0].rsplit("/", 1)[-1] != "env":
+        _apply_existing_shell_rules(analysis, tokens)
 
-    dep_intent = _detect_package_manager_intent(tokens)
-    hash_intent = _detect_hashing_intent(tokens)
-    mutability = "write" if (dep_intent or _detect_mutating_command(tokens)) else "read"
+    # Look for environment actions at literal command heads; the general shell
+    # decision above continues to use its existing argument and redirection rules.
+    for segment in _shell_commands(raw):
+        wrapped_command, approval_reason = _environment_command(segment)
+        if approval_reason:
+            analysis["shell_approval_reason"] = analysis["shell_approval_reason"] or approval_reason
+        if wrapped_command:
+            _apply_existing_shell_rules(analysis, wrapped_command)
+    return analysis
 
-    return {
-        "mutability": mutability,
-        "dependency_intent": dep_intent,
-        "hash_intent": hash_intent,
-        "reason": "analyzed_tokens",
-    }
+
+def _apply_existing_shell_rules(analysis, tokens):
+    dependency_intent = _detect_package_manager_intent(tokens)
+    analysis["dependency_intent"] |= dependency_intent
+    analysis["hash_intent"] |= _detect_hashing_intent(tokens)
+    if dependency_intent or _detect_mutating_command(tokens):
+        analysis["mutability"] = "write"
+
+
+def _shell_commands(raw):
+    # Consume literal quoting and escapes before recognizing separators.
+    segments = []
+    start = 0
+    for symbol in re.finditer(r"""\\.|'[^']*'|"(?:\\.|[^"\\])*"|[;&|\n]+""", raw):
+        if symbol[0][0] not in ";&|\n":
+            continue
+        segments.append(raw[start:symbol.start()])
+        start = symbol.end()
+    segments.append(raw[start:])
+    return [tokens for segment in segments if (tokens := shlex.split(segment))]
+
+
+def _environment_command(tokens):
+    """Resolve literal env overrides and recognize direct inspection commands."""
+    wrapped = False
+    command = tokens[0].rsplit("/", 1)[-1]
+    if command == "env":
+        index = 2 if tokens[1:2] == ["--"] else 1
+        while index < len(tokens) and re.match(r"^[a-zA-Z_][a-zA-Z0-9_]*=", tokens[index]):
+            index += 1
+        if index == len(tokens):
+            return [], "ENV_INSPECTION_REQUIRES_APPROVAL"
+        tokens = tokens[index:]
+        command = tokens[0].rsplit("/", 1)[-1]
+        if command == "env" or command.startswith("-"):
+            return [], "SHELL_COMMAND_REQUIRES_APPROVAL"
+        wrapped = True
+    if _inspects_environment(command, tokens[1:]):
+        return [], "ENV_INSPECTION_REQUIRES_APPROVAL"
+    return ([command, *tokens[1:]] if wrapped else []), None
+
+
+def _inspects_environment(command, args):
+    if command == "printenv" or (command in {"export", "set"} and args in ([], ["-p"])):
+        return True
+    if command not in {"cat", "head", "tail", "more", "less", "grep", "source", "."}:
+        return False
+    names = (arg.rsplit("/", 1)[-1] for arg in args)
+    return any(name == ".env" or name.startswith(".env.") for name in names)
 
 
 def _detect_package_manager_intent(tokens):
@@ -247,6 +301,8 @@ def classify_tool_action(tool_name, tool_args):
         action["command"] = cmd
         action["hash_intent"] = shell_res["hash_intent"]
         action["dependency_intent"] = shell_res["dependency_intent"]
+        if shell_res["shell_approval_reason"]:
+            action["shell_approval_reason"] = shell_res["shell_approval_reason"]
         return action
 
     return _make_action(name, "unknown", [])
@@ -346,6 +402,14 @@ def decide(contract, action, state=None, depth=0, max_depth=100):
     dep_decision = _check_dependency_policy(contract, level, action)
     if dep_decision:
         return dep_decision
+
+    approval_reason = action.get("shell_approval_reason")
+    if approval_reason:
+        return _make_decision(
+            controlled_outcome(level, "require_user_approval"), "S",
+            approval_reason, REASON_CODES[approval_reason],
+            "Use an explicit command or request approval for this action.",
+        )
 
     delegation_decision = _check_delegation_budget(contract, level, action, state)
     if delegation_decision:

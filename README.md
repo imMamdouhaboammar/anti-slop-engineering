@@ -80,6 +80,7 @@ pipx install git+https://github.com/imMamdouhaboammar/anti-slop-engineering.git
 | `bunx anti-slop-engineering diff --base HEAD` | **Single Diff Guard**: Inspects git diff only for scope creep, unverified additions, ungrounded comments, and banned tokens. Exits 0 if no blocker patterns are identified. | Quick pre-commit diff triage. |
 | `bunx anti-slop-engineering check --base HEAD` | **Backwards-Compatible Diff Check**: Retains narrow Diff Guard triage scope (alias for `diff`). Does not run SRE Guard, linters, or test suites. | Preserved for existing script compatibility. |
 | `bunx anti-slop-engineering audit --base HEAD` | **Unified Multi-Guard Audit**: Runs all applicable active guards (Diff, SRE, AST, Contrast, Comment Budget, PR Boundary, Invariant Steward, etc.) and compiles a structured dossier in `anti-slop/audit-NNN.md`. Exits with code 1 if any blocker is found. | Comprehensive verification before PR creation or completion. |
+| `bunx anti-slop-engineering audit --base HEAD --restricted-env` | Restricts the audit guards to inherited executable, home, locale, temp, Windows startup, and CI branch variables. Ordinary audits inherit the caller environment. | Audit without inheriting unrelated environment variables. |
 | `bunx anti-slop-engineering check-all` | **Full Repository Quality Suite**: Runs `make check-all` (linting, Python unit tests, Bun security tests, Rust cargo test & clippy, and Go SRE tests). | Full CI-level verification across all polyglot targets. |
 
 > **Note on Makefile vs CLI:** In `Makefile`, `make check` runs developer checks (`lint + test-verbose + guard + sre`), while CLI `anti-slop-engineering check` is the narrow git diff triage. For repository-wide verification, use `make check-all` or `bunx anti-slop-engineering check-all`.
@@ -250,9 +251,9 @@ their existing inputs and limits.
 
 The package ships the CLI, Python guards, skills, and Rust and Go source. Installation only prints a setup hint. Run `anti-slop-engineering setup` to copy bundled skills into an agent's skill directory. Use Node.js 22.23.4 or later, or Bun with Node.js available on PATH for setup. Skill setup and Python-backed commands require Python 3.9 or later.
 
-Run `bunx anti-slop-engineering build` for an installed package, or `bun run build` in a checkout. Native builds require a stable Rust toolchain with Cargo and a host linker, plus Go 1.26.5 or later. Cargo can download locked dependencies on a cold cache. The CLI uses the resulting local binaries for one-shot `rust` and `toil` commands. Without a binary, `rust triage` and `toil audit` use the Python fallback for supported arguments. Other native-only operations print build instructions. Start `serve-rust` or `serve-go` explicitly to use HTTP on `127.0.0.1`.
+Run `bunx anti-slop-engineering build` for an installed package, or `bun run build` in a checkout. Native builds require Rust 1.97 or later with Cargo and a host linker, plus Go 1.26.5 or later. Cargo can download locked dependencies on a cold cache. The CLI uses the resulting local binaries for one-shot `rust` and `toil` commands. Without a binary, `rust triage` and `toil audit` use the Python fallback for supported arguments. Other native-only operations print build instructions. Start `serve-rust` or `serve-go` explicitly to use HTTP on `127.0.0.1`.
 
-On an Apple M4 Mac, a local tarball installed offline in about 1 second with compiler commands present or absent on PATH. The offline smoke test checks that package installation invokes neither compiler nor a remote skills installer. A release build with empty build caches and cached Rust dependencies took 22.4 seconds for Rust and 9.1 seconds for Go. The two binaries occupied 12.8 MiB, excluding build caches.
+On an Apple M4 Mac, a local tarball installed offline in about 1 second with compiler commands present or absent on PATH. The offline smoke test checks that package installation invokes neither compiler nor a remote skills installer. Before the JavaScript and TypeScript parser was added, a release build with empty build caches and cached Rust dependencies took 22.4 seconds for Rust and 9.1 seconds for Go. Those two binaries occupied 12.8 MiB, excluding build caches.
 
 | Distribution choice | Source builds | Optional prebuilt binaries |
 |---|---|---|
@@ -529,6 +530,7 @@ The real-time execution guard interceptor enforces boundaries before agent actio
 | **File Boundary Lock** | Rejects edits outside declared contract paths (`PATH_OUTSIDE_CONTRACT`) |
 | **Read-Only Mode Gate** | Blocks mutating tools (`write_file`, `edit_file`, mutating shell commands) in `review`/`answer`/`monitor` modes |
 | **Dependency Gate** | Flags unapproved package installations; issues single-use runner tickets when `deps=ask` |
+| **Environment Inspection** | Requests approval for direct environment inspection and unsupported `env` wrapper options in guard mode. Literal `env NAME=value command` follows the wrapped command’s policy. |
 | **Subagent Concurrency** | Halts subagent invocations when `active_subagents >= agents` budget |
 | **Pairwise Case Runner** | 16 declarative Good/Bad test cases verifying SHIT boundary invariants |
 

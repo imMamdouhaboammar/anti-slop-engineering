@@ -502,6 +502,96 @@ class EngineParityContractTests(unittest.TestCase):
             self.assertEqual(ga.returncode, 1, ga.stderr)
             self.assertTrue(any(f["code"] == "SRE-SCALE-SWALLOW" for f in json.loads(ga.stdout)["findings"]))
 
+    def test_rust_git_triage_parses_javascript_and_typescript_after_image(self):
+        if not self.rust_bin and not self.require_native:
+            self.skipTest("native Rust binary unavailable")
+        tick = chr(96)
+        plain = f"const note = {tick}\ncatch (err) {{}}\n{tick};\n"
+        nested = f"const note = {tick}outer \x24{{{tick}inner \x24{{value}}{tick}}}{tick};\n" + plain
+        recovery = "try { run(); } catch (err) {\n    report(err);\n}\n"
+        empty = "try { run(); } catch (err) {\n}\n"
+        wide_context = "one\ntwo\nthree\nfour\nfive\n"
+        inline = "try { run(); } catch (err) {}"
+        cases = (
+            ("src/plain.ts", plain.replace("catch (err) {}", "old") + recovery, plain + empty, [4]),
+            ("src/nested.ts", nested.replace("catch (err) {}", "old") + recovery, nested + empty, [5]),
+            ("src/interpolation.ts", "", f"const note = {tick}\x24{{(() => {{ {inline} }})()}}{tick};\n", [1]),
+            ("src/mid.ts", f"const note = {tick}\n{wide_context}old\n{wide_context}{tick};\n",
+             f"const note = {tick}\n{wide_context}catch (err) {{}}\n{wide_context}{tick};\n", []),
+            ("src/regex.js", f"const marker = /{tick}/;\n", f"const marker = /{tick}/;\n{inline}\n", [2]),
+            ("src/jsx.tsx", f"const marker = <div>{tick}</div>;\n",
+             f"const marker = <div>{tick}</div>;\n{inline}\n", [2]),
+            ("src/escaped.ts", "", f"const note = {tick}\\\x24{{catch (err) {{}}}} \\{tick}{tick};\n{inline}\n", [2]),
+            ("src/optional.mjs", "try { run(); } catch { report(); }\n", "try { run(); } catch {}", [1]),
+            ("src/unrelated.ts", inline + "\nconst old = 1;\n", inline + "\nconst next = 2;\n", []),
+            ("src/documented.ts", recovery,
+             "try { run(); } catch (err) {\n    // expected during shutdown\n}\n", []),
+            ("src/comment-before.ts", recovery, "// expected during shutdown\n" + empty, [2]),
+            ("src/recovery.ts", empty, recovery, []),
+            ("src/adjacent-deletion.ts", inline + "\nlet extra = true;\n", inline + "\n", []),
+            ("src/invalid-fallback.ts", "const value = 1;\n",
+             "const value = ;\n" + inline + "\n", [2]),
+            ("src/oversize-fallback.ts", "const value = 1;\n",
+             "//" + "x" * (2 * 1024 * 1024) + "\n" + inline + "\n", [2]),
+            ("src/with spaces café.ts", recovery, empty, [1]),
+            ("src/crlf.cts", recovery.replace("\n", "\r\n"), empty.replace("\n", "\r\n"), [1]),
+        )
+        for path, before, after, expected in cases:
+            with self.subTest(path=path):
+                repo_dir, env = self._create_repo({"README.md": "# Fixture\n"})
+                file = repo_dir / path
+                file.parent.mkdir(parents=True, exist_ok=True)
+                if before:
+                    file.write_bytes(before.encode())
+                    self._git(repo_dir, ["add", "--", path], env)
+                    self._git(repo_dir, ["commit", "-m", "pre-image"], env)
+                file.write_bytes(after.encode())
+                if not before:
+                    self._git(repo_dir, ["add", "--", path], env)
+                run = self._run_rust_triage(repo_dir)
+                self.assertEqual(run.returncode, int(bool(expected)), run.stderr)
+                findings = [
+                    (item["file"], item["line"], item["severity"])
+                    for item in json.loads(run.stdout)["findings"]
+                    if item["code"] == "STS-H02"
+                ]
+                self.assertEqual(findings, [(path, line, "Blocker") for line in expected])
+
+    def test_rust_read_only_deletion_keeps_existing_line_attribution(self):
+        if not self.rust_bin and not self.require_native:
+            self.skipTest("native Rust binary unavailable")
+        repo_dir, _ = self._create_repo({"fixture.ts": "const removed = 1;\nconst kept = 2;\n"})
+        (repo_dir / "fixture.ts").write_text("const kept = 2;\n", encoding="utf-8")
+        result = subprocess.run(
+            [self._require_rust(), "triage", "--base", "HEAD", "--read-only", "--format", "json"],
+            cwd=repo_dir,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 1, result.stderr)
+        findings = json.loads(result.stdout)["findings"]
+        self.assertEqual([(item["code"], item["line"]) for item in findings], [("STS-I01", 1)])
+
+    def test_rust_raw_patch_keeps_legacy_findings_even_with_local_source(self):
+        if not self.rust_bin and not self.require_native:
+            self.skipTest("native Rust binary unavailable")
+        before = "const note = \x60\none\ntwo\nthree\nfour\nfive\nold\nsix\nseven\neight\n\x60;\n"
+        repo_dir, env = self._create_repo({"fixture.ts": before})
+        (repo_dir / "fixture.ts").write_text(before.replace("old", "catch (err) {}"), encoding="utf-8")
+        patch = self._git(repo_dir, ["diff", "--unified=3", "HEAD", "--"], env).stdout
+        result = subprocess.run(
+            [self._require_rust(), "shit-check", "--format", "json"],
+            cwd=repo_dir,
+            input=patch,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 1)
+        findings = json.loads(result.stdout)["findings"]
+        self.assertEqual([(item["code"], item["line"]) for item in findings], [("STS-H02", 7)])
+
     def test_go_handler_audit_uses_full_source_syntax(self):
         if not self.go_bin and not self.require_native:
             self.skipTest("native Go binary unavailable")
