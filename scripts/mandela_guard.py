@@ -19,11 +19,10 @@ import subprocess
 import sys
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-try:
-    from .git_changeset import collect_changes, repository_root
-except ImportError:
+if not __package__:
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
-    from scripts.git_changeset import collect_changes, repository_root
+
+from scripts.git_changeset import collect_changes, repository_root
 
 TEST_FILE_EXTENSIONS = {".py", ".ts", ".js", ".tsx", ".jsx", ".go", ".rs"}
 
