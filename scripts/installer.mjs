@@ -202,14 +202,11 @@ export function detectAgents(location) {
   return AGENTS.flatMap((a) => fs.existsSync(path.dirname(skillPath(a, location))) ? [a.id] : [])
 }
 
-function safeCopy(src, dest, version, dryRun = false) {
+function runSafeInstall(args, input) {
   const helper = path.join(rootDir, 'scripts', 'safe_install.py')
   const candidates = process.platform === 'win32' ? [['py', '-3'], ['python', '']] : [['python3', '']]
   for (const [executable, flag] of candidates) {
-    const args = [...(flag ? [flag] : []), helper, '--source', src, '--dest', dest]
-    if (version) args.push('--version', version)
-    if (dryRun) args.push('--dry-run')
-    const result = spawnSync(executable, args, { encoding: 'utf8' })
+    const result = spawnSync(executable, [...(flag ? [flag] : []), helper, ...args], { encoding: 'utf8', input })
     if (result.error?.code === 'ENOENT') continue
     if (result.error || result.status !== 0) {
       throw new Error(result.stderr?.trim() || result.error?.message || `Safe installer exited ${result.status}`)
@@ -217,6 +214,10 @@ function safeCopy(src, dest, version, dryRun = false) {
     return JSON.parse(result.stdout)
   }
   throw new Error('Python 3 is required for safe file installation')
+}
+
+function safeCopy(source, destination) {
+  return runSafeInstall(['--source', source, '--dest', destination, '--version', VERSION])
 }
 
 function sourceForSkill(skill, source) {
@@ -243,18 +244,28 @@ export function installSkills({ skills, targets, overwrite = false, dryRun = fal
     }
   }
   const written = []
-  for (const t of targets) {
+  for (const target of targets) {
+    const previews = []
     for (const skill of skills) {
       const src = sourceForSkill(skill, source)
-
-      const dest = path.join(t.path, skill)
-      assertSafeFilePath(dest)
-      if (fs.existsSync(dest) && !overwrite) {
-        written.push({ skill, agents: t.agents.map((a) => a.id), path: dest, status: 'skipped' })
-        continue
+      const destination = path.join(target.path, skill)
+      const entry = { skill, agents: target.agents.map((agent) => agent.id), path: destination }
+      assertSafeFilePath(destination)
+      if (fs.existsSync(destination) && !overwrite) {
+        written.push({ ...entry, status: 'skipped' })
+      } else if (dryRun) {
+        previews.push({ index: written.length, paths: [src, destination] })
+        written.push(entry)
+      } else {
+        written.push({ ...entry, ...safeCopy(src, destination) })
       }
-      const outcome = safeCopy(src, dest, VERSION, dryRun)
-      written.push({ skill, agents: t.agents.map((a) => a.id), path: dest, ...outcome })
+    }
+    if (previews.length) {
+      const requests = JSON.stringify(previews.map(({ paths }) => paths))
+      const results = runSafeInstall(['--preview-batch', '--version', VERSION], requests)
+      previews.forEach(({ index }, position) => {
+        Object.assign(written[index], results[position])
+      })
     }
   }
   return written
@@ -323,7 +334,7 @@ function writeSelections(targets, scope, skills) {
     if (!fs.existsSync(coreSkillPath) && source) {
       try {
         const src = sourceForSkill(CORE_SKILL, source)
-        safeCopy(src, path.join(target.path, CORE_SKILL), VERSION, false)
+        safeCopy(src, path.join(target.path, CORE_SKILL))
       } catch {
         // repair attempt
       }
