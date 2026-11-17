@@ -23,6 +23,7 @@ if not __package__:
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 from scripts.git_changeset import collect_changes, repository_root
+from scripts.source_trivia import source_trivia
 
 TEST_FILE_EXTENSIONS = {".py", ".ts", ".js", ".tsx", ".jsx", ".go", ".rs"}
 
@@ -62,62 +63,10 @@ FRAME_INJECTION_PATTERNS = [
 ]
 
 
-def _literal_spans(content: str) -> List[Tuple[int, int]]:
-    """Return (start, end) spans of string literals and comments.
-
-    Pattern text inside a literal or comment is data — bad-pattern
-    fixtures embedded by guard test suites, pattern catalogs, or
-    documentation — not live code. Structural pattern matches that
-    start inside one of these spans are ignored by the scanner.
-    (Frame-injection checks are exempt: they audit literal contents
-    themselves.)
-    """
-    spans: List[Tuple[int, int]] = []
-    i, n = 0, len(content)
-    while i < n:
-        ch = content[i]
-        if ch in ("'", '"', "`"):
-            if content.startswith(ch * 3, i):
-                delim = ch * 3
-                j = i + 3
-                while j < n:
-                    if content[j] == "\\":
-                        j += 2
-                        continue
-                    if content.startswith(delim, j):
-                        break
-                    j += 1
-                end = j + 3 if j < n else n
-            else:
-                j = i + 1
-                while j < n:
-                    if content[j] == "\\":
-                        j += 2
-                        continue
-                    if content[j] == ch or content[j] == "\n":
-                        break
-                    j += 1
-                end = j + 1 if j < n and content[j] == ch else j
-            spans.append((i, end))
-            i = end
-        elif ch == "#" or content.startswith("//", i):
-            close = content.find("\n", i)
-            end = n if close == -1 else close
-            spans.append((i, end))
-            i = end
-        else:
-            i += 1
-    return spans
-
-
-def _inside_spans(pos: int, spans: List[Tuple[int, int]]) -> bool:
-    return any(start <= pos < end for start, end in spans)
-
-
 def scan_test_file_content(path: str, content: str) -> List[Dict[str, Any]]:
     findings = []
     lines = content.splitlines()
-    spans = _literal_spans(content)
+    in_trivia = source_trivia(path, content)
     line_offsets: List[int] = []
     _pos = 0
     for _raw_line in content.splitlines(keepends=True):
@@ -128,7 +77,7 @@ def scan_test_file_content(path: str, content: str) -> List[Dict[str, Any]]:
     for line_idx, line in enumerate(lines, start=1):
         for pattern, desc in TAUTOLOGY_PATTERNS:
             for match in pattern.finditer(line):
-                if not _inside_spans(line_offsets[line_idx - 1] + match.start(), spans):
+                if not in_trivia(line_offsets[line_idx - 1] + match.start()):
                     findings.append({
                         "id": f"MANDELA-TAUT-{len(findings)+1:03d}",
                         "file": path,
@@ -143,7 +92,7 @@ def scan_test_file_content(path: str, content: str) -> List[Dict[str, Any]]:
     # 2. Swallowed failures
     for pattern, desc in SWALLOWED_TEST_PATTERNS:
         for match in pattern.finditer(content):
-            if _inside_spans(match.start(), spans):
+            if in_trivia(match.start()):
                 continue
             start_pos = match.start()
             line_idx = content.count("\n", 0, start_pos) + 1
@@ -160,7 +109,7 @@ def scan_test_file_content(path: str, content: str) -> List[Dict[str, Any]]:
     # 3. Circular Mock confirmation
     for pattern, desc in CIRCULAR_MOCK_PATTERNS:
         for match in pattern.finditer(content):
-            if _inside_spans(match.start(), spans):
+            if in_trivia(match.start()):
                 continue
             start_pos = match.start()
             line_idx = content.count("\n", 0, start_pos) + 1
@@ -191,7 +140,7 @@ def scan_test_file_content(path: str, content: str) -> List[Dict[str, Any]]:
     # 5. Check for empty tests in Python (def test_... with only pass or docstring)
     py_test_func = re.compile(r"def\s+(test_[a-zA-Z0-9_]+)\s*\([^)]*\)\s*:(?:\s*['\"].*?['\"])?\s*\n(\s+)(pass|return)\s*$", re.MULTILINE)
     for match in py_test_func.finditer(content):
-        if _inside_spans(match.start(), spans):
+        if in_trivia(match.start()):
             continue
         start_pos = match.start()
         line_idx = content.count("\n", 0, start_pos) + 1

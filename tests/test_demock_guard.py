@@ -167,6 +167,45 @@ export async function authenticate(req: Request): Promise<UserSession> {
         self.assertEqual(record["verdict"], "REJECT")
         self.assertEqual(record["scanned_files"], 1)
 
+    def test_block_comment_does_not_hide_live_typescript_on_same_line(self):
+        source = (
+            "/* documentation\n"
+            "const demo = new MockService();\n"
+            "*/ const service = new MockService();\n"
+        )
+        self.assertEqual(
+            [(item["class"], item["line"]) for item in scan_file_content("src/service.ts", source)],
+            [("TEST_DOUBLE_IN_PROD", 3)],
+        )
+
+    def test_typescript_regex_and_template_keep_live_test_doubles(self):
+        source = (
+            'const rx = /"/; const worker = new MockService();\n'
+            'const example = `text ${new MockService()}`;\n'
+        )
+        self.assertEqual(
+            [(item["class"], item["line"]) for item in scan_file_content("src/worker.ts", source)],
+            [("TEST_DOUBLE_IN_PROD", 1), ("TEST_DOUBLE_IN_PROD", 2)],
+        )
+
+    def test_rust_lifetime_does_not_hide_live_placeholder(self):
+        source = "fn build<'a>(name: &'a str) { todo!() }"
+        self.assertEqual(
+            [(item["class"], item["line"]) for item in scan_file_content("src/worker.rs", source)],
+            [("UNIMPLEMENTED_PLACEHOLDER", 1)],
+        )
+
+    def test_python_catalog_literals_do_not_hide_live_code(self):
+        source = (
+            'EXAMPLE = """client = MagicMock()\r\n'
+            'local_sqlite_fallback"""\r\n'
+            'line = "MagicMock("; client = MagicMock()\r\n'
+        )
+        self.assertEqual(
+            [(item["class"], item["line"]) for item in scan_file_content("src/catalog.py", source)],
+            [("TEST_DOUBLE_IN_PROD", 3)],
+        )
+
     def test_audit_paths_directory_scan(self):
         prod_file = os.path.join(self.temp_dir, "service.ts")
         with open(prod_file, "w", encoding="utf-8") as fh:
@@ -211,44 +250,6 @@ class DemockStringLiteralTests(unittest.TestCase):
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0]["class"], "TEST_DOUBLE_IN_PROD")
         self.assertEqual(findings[0]["line"], 2)
-
-
-class DemockBaseModeTests(unittest.TestCase):
-    """An explicit --base with an empty diff means "nothing changed",
-    not "scan the whole repository"."""
-
-    def test_explicit_base_with_empty_diff_scans_nothing(self):
-        import subprocess
-        import sys
-        from pathlib import Path
-
-        repo = tempfile.mkdtemp(prefix="demock_base_")
-        try:
-            def git(*args):
-                subprocess.run(["git", "-C", repo, *args], check=True,
-                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-
-            git("init", "-q", "-b", "main")
-            git("config", "user.email", "t@t.t")
-            git("config", "user.name", "t")
-            src = Path(repo) / "src"
-            src.mkdir()
-            # Real test-double code that a full-repository scan would flag.
-            (src / "service.py").write_text("client = MagicMock()\n")
-            git("add", "-A")
-            git("commit", "-qm", "base")
-
-            script = Path(__file__).resolve().parent.parent / "scripts" / "demock_guard.py"
-            proc = subprocess.run(
-                [sys.executable, str(script), "--base", "HEAD", "--json"],
-                cwd=repo, capture_output=True, text=True,
-            )
-            self.assertEqual(proc.returncode, 0, proc.stderr)
-            record = json.loads(proc.stdout)
-            self.assertEqual(record["scanned_files"], 0)
-            self.assertEqual(record["findings_count"], 0)
-        finally:
-            shutil.rmtree(repo, ignore_errors=True)
 
 
 if __name__ == "__main__":

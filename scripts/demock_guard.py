@@ -23,6 +23,7 @@ if not __package__:
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 from scripts.git_changeset import validate_base_ref
+from scripts.source_trivia import source_trivia
 
 # Patterns to identify test directories and files that are exempt from demock checks
 TEST_PATH_PATTERNS = [
@@ -100,60 +101,10 @@ def get_git_diff_files(base_ref: str = "HEAD") -> List[Tuple[str, str]]:
     return files
 
 
-def _literal_spans(content: str) -> List[Tuple[int, int]]:
-    """Return (start, end) spans of string literals and comments.
-
-    Pattern text inside a literal or comment is data — the guard's own
-    pattern catalog, bad-pattern fixtures, or documentation — not live
-    code. Pattern matches that start inside one of these spans are
-    ignored by the scanner.
-    """
-    spans: List[Tuple[int, int]] = []
-    i, n = 0, len(content)
-    while i < n:
-        ch = content[i]
-        if ch in ("'", '"', "`"):
-            if content.startswith(ch * 3, i):
-                delim = ch * 3
-                j = i + 3
-                while j < n:
-                    if content[j] == "\\":
-                        j += 2
-                        continue
-                    if content.startswith(delim, j):
-                        break
-                    j += 1
-                end = j + 3 if j < n else n
-            else:
-                j = i + 1
-                while j < n:
-                    if content[j] == "\\":
-                        j += 2
-                        continue
-                    if content[j] == ch or content[j] == "\n":
-                        break
-                    j += 1
-                end = j + 1 if j < n and content[j] == ch else j
-            spans.append((i, end))
-            i = end
-        elif ch == "#" or content.startswith("//", i):
-            close = content.find("\n", i)
-            end = n if close == -1 else close
-            spans.append((i, end))
-            i = end
-        else:
-            i += 1
-    return spans
-
-
-def _inside_spans(pos: int, spans: List[Tuple[int, int]]) -> bool:
-    return any(start <= pos < end for start, end in spans)
-
-
 def scan_file_content(path: str, content: str) -> List[Dict[str, Any]]:
     findings = []
     lines = content.splitlines()
-    spans = _literal_spans(content)
+    in_trivia = source_trivia(path, content)
     line_offsets: List[int] = []
     _pos = 0
     for _raw_line in content.splitlines(keepends=True):
@@ -164,7 +115,7 @@ def scan_file_content(path: str, content: str) -> List[Dict[str, Any]]:
     for line_idx, line in enumerate(lines, start=1):
         for pattern, desc in TEST_DOUBLE_PATTERNS:
             for match in pattern.finditer(line):
-                if not _inside_spans(line_offsets[line_idx - 1] + match.start(), spans):
+                if not in_trivia(line_offsets[line_idx - 1] + match.start()):
                     findings.append({
                         "id": f"DEMOCK-TD-{len(findings)+1:03d}",
                         "file": path,
@@ -179,7 +130,7 @@ def scan_file_content(path: str, content: str) -> List[Dict[str, Any]]:
     # 2. Silent fallbacks (multi-line regex support)
     for pattern, desc in SILENT_FALLBACK_PATTERNS:
         for match in pattern.finditer(content):
-            if _inside_spans(match.start(), spans):
+            if in_trivia(match.start()):
                 continue
             # Calculate line number from character offset
             start_pos = match.start()
@@ -198,7 +149,7 @@ def scan_file_content(path: str, content: str) -> List[Dict[str, Any]]:
     # 3. Fail-open gates
     for pattern, desc in FAIL_OPEN_PATTERNS:
         for match in pattern.finditer(content):
-            if _inside_spans(match.start(), spans):
+            if in_trivia(match.start()):
                 continue
             start_pos = match.start()
             line_idx = content.count("\n", 0, start_pos) + 1
@@ -217,7 +168,7 @@ def scan_file_content(path: str, content: str) -> List[Dict[str, Any]]:
     for line_idx, line in enumerate(lines, start=1):
         for pattern, desc in PLACEHOLDER_PATTERNS:
             for match in pattern.finditer(line):
-                if not _inside_spans(line_offsets[line_idx - 1] + match.start(), spans):
+                if not in_trivia(line_offsets[line_idx - 1] + match.start()):
                     findings.append({
                         "id": f"DEMOCK-PH-{len(findings)+1:03d}",
                         "file": path,

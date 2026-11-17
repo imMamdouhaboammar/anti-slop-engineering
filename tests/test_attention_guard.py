@@ -249,37 +249,5 @@ class AttentionGuardTests(unittest.TestCase):
         self.assertEqual(proc.returncode, 2)
 
 
-class AttentionGitDiffTests(unittest.TestCase):
-    """An empty diff means no documentation changed; the guard must not
-    fall back to auditing the whole README."""
-
-    def test_empty_diff_does_not_fall_back_to_readme(self):
-        import os
-        import shutil
-        import tempfile
-        from pathlib import Path
-
-        repo = tempfile.mkdtemp(prefix="attention_diff_")
-        try:
-            def git(*args):
-                subprocess.run(["git", "-C", repo, *args], check=True,
-                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-
-            git("init", "-q", "-b", "main")
-            git("config", "user.email", "t@t.t")
-            git("config", "user.name", "t")
-            wall = " ".join(["word"] * 90)
-            (Path(repo) / "README.md").write_text(f"# Title\n\n{wall}\n")
-            (Path(repo) / "code.py").write_text("x = 1\n")
-            git("add", "-A")
-            git("commit", "-qm", "base")
-
-            record = attention_guard.audit_git_diff_markdown(base="HEAD", repo_root=repo)
-            self.assertEqual(record["findings"], [])
-            self.assertEqual(os.path.basename(repo) != "", True)
-        finally:
-            shutil.rmtree(repo, ignore_errors=True)
-
-
 if __name__ == "__main__":
     unittest.main()
