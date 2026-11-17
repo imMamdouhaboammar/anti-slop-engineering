@@ -54,3 +54,14 @@ Run `python3 scripts/verification_oracle_guard.py counterfactual --base <commit>
 - Baseline files come from the selected Git commit with the selected tests copied on top. Current files come from the working tree, including staged and unstaged edits and untracked files Git does not ignore. Each invocation starts in a fresh temporary checkout without Git metadata. Dependencies or fixtures missing from the snapshots may make the result inconclusive.
 - A verified result requires the selected test case to fail by assertion on the baseline and pass on the current snapshot. Default unittest, Go, and Bun runs attribute outcomes to the selected file. A missing dependency, no executed case, or a custom command without attributable evidence is inconclusive. Default unittest output cannot pair a failed subtest with a passing subtest. A test that already passes on the baseline has no red-state evidence.
 - Use `--check-flaky` to compare two independent runs per snapshot. The snapshots are discarded on completion.
+
+## Targeted Python mutation checks
+
+Run from the checkout with a changed condition in the selected function.
+
+~~~bash
+python3 scripts/targeted_mutation.py --source scripts/rule_registry.py \
+  --function finding_metadata --test tests/test_rule_registry.py --base HEAD --seed 17
+~~~
+
+The command negates up to four changed conditions from direct `if` statements. It runs a passing baseline and each mutant in fresh copies of tracked files. The score counts mutants that passed or failed assertions in the same test cases. Other results are reported separately. Select trusted offline unit tests. The child process has your account's permissions.
