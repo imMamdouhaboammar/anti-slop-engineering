@@ -29,7 +29,7 @@ from scripts.git_changeset import collect_changes, repository_root
 from scripts.retry_heuristics import INLINE_FLAT_RETRY, flat_retry_lines
 from scripts.source_trivia import source_trivia
 
-__version__ = '1.8.0'
+__version__ = '1.9.0'
 
 # File types subject to SRE code analysis
 CODE_EXTENSIONS = {
