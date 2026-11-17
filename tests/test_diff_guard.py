@@ -37,6 +37,21 @@ class DiffGuardTests(unittest.TestCase):
         result = subprocess.run([sys.executable, str(SCRIPT), '--repo', str(self.repo), '--base', 'HEAD', '--json', *extra], text=True, capture_output=True)
         return result, json.loads(result.stdout) if result.stdout.strip().startswith('{') else None
 
+    def test_fixed_rate_display_is_not_a_retry(self):
+        target = self.repo / 'src' / 'display.py'
+        target.write_text(
+            "import time\n"
+            "count = 0\n"
+            "while count < 4:\n"
+            "    display(count)\n"
+            "    time.sleep(2)\n"
+            "    count += 1\n"
+        )
+        git(self.repo, 'add', 'src/display.py')
+        result, report = self.check()
+        self.assertNotIn('SRE_SCALE_FLAT_RETRY', [finding['id'] for finding in report['findings']])
+        self.assertEqual(result.returncode, 0)
+
     def test_flags_flat_retry_multiline_body(self):
         (self.repo / 'src' / 'calc.py').write_text(
             "import time\n"

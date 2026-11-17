@@ -45,6 +45,21 @@ class SreGuardTests(unittest.TestCase):
             report = json.loads(res.stdout)
         return res, report
 
+    def test_fixed_rate_display_is_not_a_retry(self):
+        target = self.repo / 'src' / 'display.py'
+        target.write_text(
+            "import time\n"
+            "count = 0\n"
+            "while count < 4:\n"
+            "    display(count)\n"
+            "    time.sleep(2)\n"
+            "    count += 1\n"
+        )
+        git(self.repo, 'add', 'src/display.py')
+        result, report = self.run_sre("--base", "HEAD", "--json", "--strict")
+        self.assertNotIn('SCALE_UNBOUNDED_OR_FLAT_RETRY', [finding['id'] for finding in report['findings']])
+        self.assertEqual(result.returncode, 0)
+
     def test_flags_scale_flat_retry_multiline_body(self):
         (self.repo / 'src' / 'retry.py').write_text(
             "import time\n"

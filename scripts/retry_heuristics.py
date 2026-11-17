@@ -2,15 +2,16 @@
 """Identify bounded patterns used by the heuristic retry guards."""
 import re
 
-RETRY_HEADER = (
-    r'(?:while\s+True\s*:|while\s*\(\s*true\s*\)'
-    r'|while\s+\w+\s*<\s*\d+\s*:'
-    r'|for\s+(?:attempt|retry|i)\s+in\s+range\s*\(\s*\d+\s*\):)'
-)
+RETRY_COUNTER = r'(?:attempts?|retry|retries)'
+COUNTED_WHILE = rf'while\s+{RETRY_COUNTER}\s*<=?\s*\d+\s*:'
+LEGACY_FOR = r'for\s+(?:attempt|retry|i)\s+in\s+range\s*\(\s*\d+\s*\):'
+RETRY_FOR = rf'for\s+{RETRY_COUNTER}\s+in\s+range\s*\(\s*\d+\s*\):'
 FIXED_SLEEP = r'\bsleep\s*\(\s*[1-9]\d*\s*\)'
-INLINE_FLAT_RETRY = rf'(?i){RETRY_HEADER}.*{FIXED_SLEEP}'
-HEADER = re.compile(rf'^\s*{RETRY_HEADER}', re.IGNORECASE)
-SLEEP = re.compile(FIXED_SLEEP, re.IGNORECASE)
+INLINE_FLAT_RETRY = (
+    rf'(?i)(?:while\s+True\s*:|while\s*\(\s*true\s*\)|{LEGACY_FOR}|{COUNTED_WHILE}).*{FIXED_SLEEP}'
+)
+HEADER = re.compile(rf'^\s*(?:{COUNTED_WHILE}|{RETRY_FOR})', re.IGNORECASE)
+SLEEP = re.compile(rf'^(?:[\w.]+\.)?{FIXED_SLEEP}(?:\s*(?:#.*)?$)', re.IGNORECASE)
 
 
 def flat_retry_lines(lines):
