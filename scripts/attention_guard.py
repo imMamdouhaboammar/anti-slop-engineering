@@ -431,7 +431,9 @@ def audit_text(
     }
 
 
-def audit_git_diff_markdown(base: str = "HEAD", repo_root: Optional[str] = None) -> Dict[str, Any]:
+def audit_git_diff_markdown(
+    base: str = "HEAD", repo_root: Optional[str] = None, *, readme_on_empty: bool = False,
+) -> Dict[str, Any]:
     """Audit newly added markdown files or lines in a git diff."""
     base_id = validate_base_ref(repo_root or ".", base)
     try:
@@ -455,11 +457,15 @@ def audit_git_diff_markdown(base: str = "HEAD", repo_root: Optional[str] = None)
         elif is_doc and line.startswith("+") and not line.startswith("+++"):
             added_blocks.append(line[1:])
 
-    # An empty diff means no documentation changed, so there is nothing
-    # to audit. (Use --file README.md to audit the README explicitly;
-    # silently substituting it here blocks clean-tree audits on prose
-    # that was never part of the change.)
     text_to_audit = "\n".join(added_blocks)
+    if readme_on_empty and not text_to_audit.strip():
+        # Fallback to auditing README.md if diff is empty
+        readme_path = os.path.join(repo_root or ".", "README.md")
+        try:
+            with open(readme_path, "r", encoding="utf-8") as readme:
+                text_to_audit = readme.read()
+        except FileNotFoundError:
+            text_to_audit = ""
 
     return audit_text(text_to_audit, target_name="git-diff")
 
@@ -468,7 +474,7 @@ def main():
     parser = argparse.ArgumentParser(description="Cognitive Bandwidth & Attention Economy Guard")
     parser.add_argument("--file", "-f", help="Path to markdown or text file to audit")
     parser.add_argument("--text", "-t", help="Raw text string to audit directly")
-    parser.add_argument("--base", default="HEAD", help="Git base to check modified docs against")
+    parser.add_argument("--base", help="Git base to check modified docs against")
     parser.add_argument("--check-deliverable", action="store_true", help="Enforce 100%% deliverable purity (zero openers/closers)")
     parser.add_argument("--json", action="store_true", help="Output machine-readable JSON")
     parser.add_argument("--fail-on-blocker", action="store_true", help="Exit code 2 if blocker findings exist")
@@ -483,7 +489,10 @@ def main():
         record = audit_text(content, target_name=os.path.basename(args.file), check_deliverable=args.check_deliverable)
     else:
         try:
-            record = audit_git_diff_markdown(base=args.base)
+            record = audit_git_diff_markdown(
+                base="HEAD" if args.base is None else args.base,
+                readme_on_empty=args.base is None,
+            )
         except RuntimeError as exc:
             if args.json:
                 print(json.dumps({"error": str(exc)}))

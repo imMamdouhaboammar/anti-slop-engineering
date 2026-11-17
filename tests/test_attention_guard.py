@@ -22,6 +22,30 @@ import attention_guard  # noqa: E402
 
 class AttentionGuardTests(unittest.TestCase):
 
+    def test_explicit_empty_diff_does_not_audit_unchanged_readme(self):
+        with tempfile.TemporaryDirectory() as temp:
+            repo = Path(temp)
+            for args in (
+                ("init", "-q", "-b", "main"),
+                ("config", "user.name", "Attention Test"),
+                ("config", "user.email", "attention-test@example.invalid"),
+            ):
+                subprocess.run(["git", *args], cwd=repo, check=True, capture_output=True)
+            (repo / "README.md").write_text("word " * 150 + "\n", encoding="utf-8")
+            subprocess.run(["git", "add", "README.md"], cwd=repo, check=True)
+            subprocess.run(["git", "commit", "-qm", "initial readme"], cwd=repo, check=True)
+            command = [sys.executable, str(SCRIPTS_DIR / "attention_guard.py"), "--json", "--fail-on-blocker"]
+
+            diff = subprocess.run([*command, "--base", "HEAD"], cwd=repo, capture_output=True, text=True)
+            self.assertEqual(diff.returncode, 0, diff.stdout)
+            self.assertEqual(json.loads(diff.stdout)["findings"], [])
+
+            for args in ([], ["--file", "README.md"]):
+                with self.subTest(args=args):
+                    readme = subprocess.run([*command, *args], cwd=repo, capture_output=True, text=True)
+                    self.assertEqual(readme.returncode, 2, readme.stdout)
+                    self.assertTrue(any(f["severity"] == "blocker" for f in json.loads(readme.stdout)["findings"]))
+
     def test_scannability_metrics_clean(self):
         text = "**Result.** Deploy succeeded. All services active.\n\n→ Next: run smoke tests."
         m = attention_guard.calculate_scannability_metrics(text)
