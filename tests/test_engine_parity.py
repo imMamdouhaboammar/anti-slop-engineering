@@ -302,6 +302,8 @@ class EngineParityContractTests(unittest.TestCase):
             self.assertEqual(ga_data["sli"]["status"], expected["go_status"])
             self.assertTrue(any(f["code"] == expected["go_code"] for f in ga_data["findings"]))
 
+        self._assert_native_multiline_handler_detection()
+
     def _assert_catalog_normalization(self, engine, output, field):
         for finding in output["findings"]:
             rule = rule_registry.BY_CODE.get(finding[field])
@@ -577,22 +579,24 @@ class EngineParityContractTests(unittest.TestCase):
         if not self.rust_bin and not self.require_native:
             self.skipTest("native Rust binary unavailable")
         before = "const note = \x60\none\ntwo\nthree\nfour\nfive\nold\nsix\nseven\neight\n\x60;\n"
-        repo_dir, env = self._create_repo({"fixture.ts": before})
-        (repo_dir / "fixture.ts").write_text(before.replace("old", "catch (err) {}"), encoding="utf-8")
-        patch = self._git(repo_dir, ["diff", "--unified=3", "HEAD", "--"], env).stdout
-        result = subprocess.run(
-            [self._require_rust(), "shit-check", "--format", "json"],
-            cwd=repo_dir,
-            input=patch,
-            capture_output=True,
-            text=True,
-            check=False,
+        cases = (
+            ("catch (err) {}", [("STS-H02", 7)]),
+            ("} catch (err) {\n}", []),
         )
-        self.assertEqual(result.returncode, 1)
-        findings = json.loads(result.stdout)["findings"]
-        self.assertEqual([(item["code"], item["line"]) for item in findings], [("STS-H02", 7)])
+        for replacement, expected in cases:
+            with self.subTest(replacement=replacement):
+                repo_dir, env = self._create_repo({"fixture.ts": before})
+                (repo_dir / "fixture.ts").write_text(before.replace("old", replacement), encoding="utf-8")
+                patch = self._git(repo_dir, ["diff", "--unified=3", "HEAD", "--"], env).stdout
+                result = subprocess.run(
+                    [self._require_rust(), "shit-check", "--format", "json"],
+                    cwd=repo_dir, input=patch, capture_output=True, text=True, check=False,
+                )
+                self.assertEqual(result.returncode, int(bool(expected)), result.stderr or result.stdout)
+                findings = json.loads(result.stdout)["findings"]
+                self.assertEqual([(item["code"], item["line"]) for item in findings], expected)
 
-    def test_native_multiline_handler_distinguishes_syntax_and_scope(self):
+    def _assert_native_multiline_handler_detection(self):
         recovery = "try { work(); } catch (err) {\n    report(err);\n}\n"
         sources = {
             "src/removed-recovery.ts": (recovery, "try { work(); } catch (err) {\n}\n"),
@@ -610,38 +614,27 @@ class EngineParityContractTests(unittest.TestCase):
         repo_dir, env = self._create_repo({path: before for path, (before, _) in sources.items()})
         for path, (_, after) in sources.items():
             (repo_dir / path).write_text(after, encoding="utf-8")
-        patch = self._git(repo_dir, ["diff", "HEAD", "--"], env).stdout
-        rust = subprocess.run(
-            [self._require_rust(), "shit-check", "--format", "json"],
-            cwd=repo_dir, input=patch, capture_output=True, text=True, check=False,
-        )
-        go = self._run_go_audit(repo_dir)
+        reports = []
+        if self.rust_bin or self.require_native:
+            patch = self._git(repo_dir, ["diff", "HEAD", "--"], env).stdout
+            rust = subprocess.run(
+                [self._require_rust(), "shit-check", "--format", "json"],
+                cwd=repo_dir, input=patch, capture_output=True, text=True, check=False,
+            )
+            reports.append((rust, "STS-H02"))
+        if self.go_bin or self.require_native:
+            reports.append((self._run_go_audit(repo_dir), "SRE-SCALE-SWALLOW"))
         expected = [
             ("src/optional.ts", 1),
             ("src/removed-recovery.py", 3),
             ("src/removed-recovery.ts", 1),
             ("src/unrelated-comment.py", 3),
         ]
-        for report, code in ((rust, "STS-H02"), (go, "SRE-SCALE-SWALLOW")):
+        for report, code in reports:
             with self.subTest(code=code):
                 self.assertEqual(report.returncode, 1, report.stderr)
                 findings = json.loads(report.stdout)["findings"]
                 self.assertEqual(sorted((item["file"], item["line"]) for item in findings if item["code"] == code), expected)
-
-    def test_raw_multiline_handler_does_not_assume_source_before_the_hunk(self):
-        rust = self._require_rust()
-        before = "const note = \x60\none\ntwo\nthree\nfour\nfive\nold\nsix\nseven\neight\n\x60;\n"
-        repo_dir, env = self._create_repo({"fixture.ts": before})
-        (repo_dir / "fixture.ts").write_text(
-            before.replace("old", "} catch (err) {\n}"), encoding="utf-8",
-        )
-        patch = self._git(repo_dir, ["diff", "--unified=3", "HEAD", "--"], env).stdout
-        result = subprocess.run(
-            [rust, "shit-check", "--format", "json"],
-            cwd=repo_dir, input=patch, capture_output=True, text=True, check=False,
-        )
-        self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
-        self.assertEqual(json.loads(result.stdout)["findings"], [])
 
     def test_go_handler_audit_uses_full_source_syntax(self):
         if not self.go_bin and not self.require_native:
