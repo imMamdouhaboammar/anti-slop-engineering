@@ -16,6 +16,7 @@ if not __package__:
 
 from scripts.diff_lifecycle import load_hooks, run_hook
 from scripts.git_changeset import collect_changes, repository_root
+from scripts.retry_heuristics import INLINE_FLAT_RETRY, flat_retry_lines
 
 __version__ = '1.8.0'
 
@@ -30,7 +31,7 @@ PATTERNS = [
     ('DEV_NOTE_IN_UI', 'blocker', r'(?i)<(?:p|span|div|small|Alert|Badge|Text|Label|h[1-6])[^>]*>[^<]*(?:\b(?:note|todo|fixme|agent note|dev note|developer note)\s*:|\bmock data displayed\b|\bplaceholder until\b)[^<]*</'),
     ('PATRONIZING_UI_COPY', 'review', r'(?i)<(?:p|span|small|div|Label|HelperText)[^>]*>[^<]*(?:\b(?:please enter your|click (?:here|this button) to|this (?:modal|form|button) allows you to)\b)[^<]*</'),
     ('TRIVIAL_COMMENT_NARRATION', 'review', r'(?i)^\s*(?://|#)\s*(?:(?:increment|decrement)\s+\w+|(?:return|returns)\s+(?:the\s+)?(?:result|response|value|data|error|promise|true|false)|(?:initialize|init)\s+(?:state|variable|array|object|list|dict)|(?:check|verify)\s+if\s+(?:\w+\s+is\s+)?(?:null|undefined|empty|none)|handle\s+(?:click|change|submit|event|button)|(?:constructor|destructor)\b|import\s+(?:modules?|packages?|react|dependencies)|call\s+(?:the\s+)?\w+\s+function)'),
-    ('SRE_SCALE_FLAT_RETRY', 'review', r'(?i)(?:while\s+True\s*:|while\s*\(\s*true\s*\)|for\s+(?:attempt|retry|i)\s+in\s+range\s*\(\s*\d+\s*\):).*(?:sleep\s*\(\s*[1-9]\d*\s*\))'),
+    ('SRE_SCALE_FLAT_RETRY', 'review', INLINE_FLAT_RETRY),
     ('SRE_SCALE_SLEEP_BAND_AID', 'review', r'(?i)\b(?:time\.sleep\s*\(\s*(?:0?\.[1-9]|[1-9])\d*\s*\)|thread\.sleep\s*\(\s*\d+\s*\)|setTimeout\s*\([^,]+,\s*(?:100|200|500|1000|2000|5000)\s*\))'),
     ('SRE_SCALE_UNBOUNDED_CONCURRENCY', 'review', r'(?i)(?:Promise\.all\s*\(\s*(?:\w+|\w+\.[a-zA-Z0-9_]+)\.map\s*\(|asyncio\.gather\s*\(\s*\*\s*(?:\[|\w))'),
     ('SRE_YAGNI_SPECULATIVE_CODE', 'review', r'(?i)(?:#|//|/\*)\s*(?:TODO\s*\(\s*(?:future|later|v2|next)\s*\)|placeholder for (?:future|upcoming|v2)|will be (?:supported|implemented|used) (?:later|in v2)|reserved for future use)'),
@@ -143,6 +144,43 @@ def audit_patch_lines(added_lines):
     return findings
 
 
+def audit_multiline_retries(root, files, added_lines):
+    added_by_file = {}
+    for raw_path, number, _ in added_lines:
+        added_by_file.setdefault(raw_path, set()).add(number)
+
+    findings = []
+    for change in files:
+        path = change["new_path"]
+        if path is None or path["text"] is None or change["new_mode"] not in {"100644", "100755"}:
+            continue
+        name = path["text"]
+        changed = added_by_file.get(name.encode("utf-8"))
+        if not changed or any(pattern.search(name) for pattern in (GENERATED_PATH, DOC_PATH, TEST_PATH)):
+            continue
+        if re.search(r'(?i)(?:^|/)references/', name):
+            continue
+        target = root / name
+        try:
+            if target.is_symlink() or not target.is_file() or not target.resolve().is_relative_to(root):
+                continue
+            lines = target.read_text(encoding="utf-8", errors="replace").splitlines()
+        except OSError:
+            continue
+        for header, sleep in flat_retry_lines(lines):
+            if header not in changed and sleep not in changed:
+                continue
+            findings.append({
+                'id': 'SRE_SCALE_FLAT_RETRY',
+                'severity': 'review',
+                'file': name,
+                'line': header if header in changed else sleep,
+                'evidence': f"{lines[header - 1].strip()} -> {lines[sleep - 1].strip()}"[:180],
+                'action': 'Inspect the retry loop and replace the fixed sleep with bounded backoff and jitter.',
+            })
+    return findings
+
+
 def scan(repo, base, max_lines=400, *, hooks_dir=None):
     root = repository_root(repo)
     hooks = load_hooks(hooks_dir, root) if hooks_dir is not None else {}
@@ -172,6 +210,7 @@ def scan(repo, base, max_lines=400, *, hooks_dir=None):
         file_counts, untracked, max_lines
     )
     patch_findings = audit_patch_lines(added_lines)
+    patch_findings.extend(audit_multiline_retries(pathlib.Path(root).resolve(), evidence["files"], added_lines))
     findings = meta_findings + patch_findings
 
     report = {
