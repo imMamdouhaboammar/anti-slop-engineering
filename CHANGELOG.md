@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.0] - 2026-11-17
+
+### Added
+
+- The Claude Code guard can stop further writes after three consecutive Python syntax errors in the same session and file. Watch mode stays advisory. A single-use override requires an audit reason (#223).
+- `contract preflight` checks the API contract record envelope and required sections before the full audit (#226).
+- The targeted mutation runner tests changed Python conditions or direct Boolean returns with a focused unittest file in disposable copies (#222, #225).
+
+### Fixed
+
+- Rust verifies split catches against Git source context, and Go reports line-initial empty JavaScript and TypeScript catches. Both retain the handler line. The Go check distinguishes class methods and regex literals from handler syntax (#219, #220, #224).
+- The Python readiness check distinguishes conditional responses and fixture text from real static success responses (#221).
+- Git ignores local action and checkpoint state, including audit logs and approval tickets.
+
 ## [1.9.0] - 2026-11-17
 
 ### Added
