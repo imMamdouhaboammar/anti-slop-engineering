@@ -2,54 +2,34 @@
 """Literal and comment spans for structural source checks."""
 
 from bisect import bisect_right
+from io import StringIO
+from itertools import accumulate
 from pathlib import Path
+import tokenize
 
 from scripts.ast_slop_guard import JS_TS_EXTS, _mask_string_literals
 
 
 def python_trivia_spans(content: str):
-    """Return (start, end) spans of string literals and comments.
-
-    Pattern text inside a literal or comment is data — the guard's own
-    pattern catalog, bad-pattern fixtures, or documentation — not live
-    code. Pattern matches that start inside one of these spans are
-    ignored by the scanner.
-    """
+    offsets = list(accumulate((len(line) + 1 for line in content.split("\n")), initial=0))
     spans = []
-    i, n = 0, len(content)
-    while i < n:
-        ch = content[i]
-        if ch in ("'", '"'):
-            if content.startswith(ch * 3, i):
-                delim = ch * 3
-                j = i + 3
-                while j < n:
-                    if content[j] == "\\":
-                        j += 2
-                        continue
-                    if content.startswith(delim, j):
-                        break
-                    j += 1
-                end = j + 3 if j < n else n
-            else:
-                j = i + 1
-                while j < n:
-                    if content[j] == "\\":
-                        j += 2
-                        continue
-                    if content[j] == ch or content[j] == "\n":
-                        break
-                    j += 1
-                end = j + 1 if j < n and content[j] == ch else j
-            spans.append((i, end))
-            i = end
-        elif ch == "#":
-            close = content.find("\n", i)
-            end = n if close == -1 else close
-            spans.append((i, end))
-            i = end
-        else:
-            i += 1
+    try:
+        for token in tokenize.generate_tokens(StringIO(content).readline):
+            if token.type == tokenize.STRING:
+                # Python 3.9–3.11 emit one token for a complete f-string.
+                body = token.string.lstrip("rRbBuUfFtT")
+                prefix = token.string[:len(token.string) - len(body)].lower()
+                if "f" in prefix or "t" in prefix:
+                    continue
+            elif token.type != tokenize.COMMENT and tokenize.tok_name[token.type] not in {
+                "FSTRING_MIDDLE", "TSTRING_MIDDLE",
+            }:
+                continue
+            start_line, start_col = token.start
+            end_line, end_col = token.end
+            spans.append((offsets[start_line - 1] + start_col, offsets[end_line - 1] + end_col))
+    except (tokenize.TokenError, IndentationError):
+        return spans
     return spans
 
 

@@ -195,6 +195,13 @@ export async function authenticate(req: Request): Promise<UserSession> {
             [("UNIMPLEMENTED_PLACEHOLDER", 1)],
         )
 
+    def test_python_format_expression_preserves_live_test_double(self):
+        source = 'message = f"{MagicMock()}"\n'
+        self.assertEqual(
+            [(item["class"], item["line"]) for item in scan_file_content("src/service.py", source)],
+            [("TEST_DOUBLE_IN_PROD", 1)],
+        )
+
     def test_python_catalog_literals_do_not_hide_live_code(self):
         source = (
             'EXAMPLE = """client = MagicMock()\r\n'
