@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
-"""Mutate changed Python conditions and run a trusted unittest file in disposable copies."""
+"""Mutate changed Python conditions or Boolean returns and run a trusted unittest file in disposable copies."""
 
 import argparse
 import ast
@@ -25,29 +25,42 @@ from scripts.verification_oracle_guard import (
 
 MAX_MUTANTS = 4
 TEST_TIMEOUT = 10
+NEGATE_CONDITION = "negate_condition"
+FLIP_BOOLEAN_RETURN = "flip_boolean_return"
 
 
-def changed_conditions(source, function_name, hunks):
+def changed_expressions(source, function_name, hunks, operator):
     tree = ast.parse(source.decode("utf-8"))
     functions = [node for node in tree.body
                  if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == function_name]
     if len(functions) != 1:
         raise ValueError(f"Expected one top-level function named {function_name!r}")
+    statements = functions[0].body
+    if operator == NEGATE_CONDITION:
+        expressions = (statement.test for statement in statements if isinstance(statement, ast.If))
+    else:
+        expressions = (
+            statement.value for statement in statements
+            if isinstance(statement, ast.Return) and isinstance(statement.value, ast.Constant)
+            and type(statement.value.value) is bool
+        )
     return [
-        statement.test
-        for statement in functions[0].body
-        if isinstance(statement, ast.If) and any(
-            hunk["new_count"] and hunk["new_start"] <= statement.test.end_lineno
-            and statement.test.lineno < hunk["new_start"] + hunk["new_count"]
+        node for node in expressions if any(
+            hunk["new_count"] and hunk["new_start"] <= node.end_lineno
+            and node.lineno < hunk["new_start"] + hunk["new_count"]
             for hunk in hunks
         )
     ]
 
 
-def negate_condition(source, node, offsets):
+def mutate_expression(source, node, offsets, operator):
     start = offsets[node.lineno - 1] + node.col_offset
     end = offsets[node.end_lineno - 1] + node.end_col_offset
-    return source[:start] + b"not (" + source[start:end] + b")" + source[end:]
+    if operator == NEGATE_CONDITION:
+        replacement = b"not (" + source[start:end] + b")"
+    else:
+        replacement = b"False" if node.value else b"True"
+    return source[:start] + replacement + source[end:]
 
 
 def run_snapshot_test(snapshot, work, test_file, source_file, replacement=None):
@@ -59,10 +72,10 @@ def run_snapshot_test(snapshot, work, test_file, source_file, replacement=None):
     return _execute_test_isolated(test_file, checkout, timeout=TEST_TIMEOUT)
 
 
-def score_mutants(report, candidates, snapshot, workspace, source_file, test_file, source, baseline_cases):
+def score_mutants(report, candidates, snapshot, workspace, source_file, test_file, source, baseline_cases, operator):
     offsets = list(accumulate(map(len, source.splitlines(keepends=True)), initial=0))
-    for number, condition in enumerate(candidates):
-        mutant = negate_condition(source, condition, offsets)
+    for number, expression in enumerate(candidates):
+        mutant = mutate_expression(source, expression, offsets, operator)
         status = "inconclusive"
         try:
             compile(mutant, source_file, "exec")
@@ -79,9 +92,9 @@ def score_mutants(report, candidates, snapshot, workspace, source_file, test_fil
                 elif observation == "passed":
                     status = "survived"
         report["results"].append({
-            "operator": "negate_condition",
-            "line": condition.lineno,
-            "end_line": condition.end_lineno,
+            "operator": operator,
+            "line": expression.lineno,
+            "end_line": expression.end_lineno,
             "status": status,
             "observation": observation,
         })
@@ -91,7 +104,9 @@ def score_mutants(report, candidates, snapshot, workspace, source_file, test_fil
         report["status"] = "evaluated"
 
 
-def run_targeted_mutation(root, source_file, function_name, test_file, base, seed):
+def run_targeted_mutation(root, source_file, function_name, test_file, base, seed, operator=NEGATE_CONDITION):
+    if operator not in {NEGATE_CONDITION, FLIP_BOOLEAN_RETURN}:
+        raise ValueError(f"Unsupported mutation operator: {operator!r}")
     tracked = {os.fsdecode(item) for item in git(root, "ls-files", "--cached", "-z").split(b"\0") if item}
     for name, directory in ((source_file, "scripts"), (test_file, "tests")):
         path = Path(name)
@@ -104,7 +119,7 @@ def run_targeted_mutation(root, source_file, function_name, test_file, base, see
     changes = collect_changes(root, base)
     hunks = next((entry["hunks"] for entry in changes["files"]
                   if entry["new_path"] and entry["new_path"]["text"] == source_file and not entry["binary"]), ())
-    candidates = changed_conditions(source, function_name, hunks)
+    candidates = changed_expressions(source, function_name, hunks, operator)
     random.Random(seed).shuffle(candidates)
     report = {
         "status": "no_mutants" if not candidates else "inconclusive",
@@ -124,22 +139,23 @@ def run_targeted_mutation(root, source_file, function_name, test_file, base, see
         baseline, cases = run_snapshot_test(snapshot, workspace / "baseline", test_file, source_file)
         report["baseline"] = baseline["classification"]
         if baseline["classification"] == "passed":
-            score_mutants(report, candidates[:MAX_MUTANTS], snapshot, workspace, source_file, test_file, source, cases)
+            score_mutants(report, candidates[:MAX_MUTANTS], snapshot, workspace, source_file, test_file, source, cases, operator)
     return report
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source", required=True, help="Tracked Python source under scripts/")
-    parser.add_argument("--function", required=True, help="Top-level function with direct if statements")
+    parser.add_argument("--function", required=True, help="Top-level function containing the changed expression")
     parser.add_argument("--test", required=True, help="Tracked offline unittest file under tests/")
     parser.add_argument("--base", default="HEAD", help="Git commit used to select changed lines")
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--operator", choices=(NEGATE_CONDITION, FLIP_BOOLEAN_RETURN), default=NEGATE_CONDITION)
     args = parser.parse_args()
     try:
         report = run_targeted_mutation(
             Path(repository_root(Path.cwd())).resolve(),
-            args.source, args.function, args.test, args.base, args.seed,
+            args.source, args.function, args.test, args.base, args.seed, args.operator,
         )
     except (OSError, RuntimeError, SyntaxError, ValueError) as error:
         parser.error(str(error))
