@@ -8,9 +8,9 @@ import datetime
 import hashlib
 import json
 import pathlib
+import re
 import shlex
 import shutil
-import sre_compile
 import subprocess
 import sys
 
@@ -27,89 +27,94 @@ def format_git_error(command, returncode, stdout="", stderr=""):
     detail = stderr.strip() or stdout.strip() or f"exit code {returncode}"
     return f"Git command failed (exit {returncode}): {shlex.join(list(command))}\n{detail}"
 
-SEMVER_PATTERN = sre_compile.compile(
+SEMVER_PATTERN = re.compile(
     r'^(?P<major>\d{1,8})\.(?P<minor>\d{1,8})\.(?P<patch>\d{1,8})(?:-(?P<prerelease>[0-9A-Za-z.-]{1,50}))?$'
 )
 
 MANIFEST_TARGETS = [
     {
         "file": "package.json",
-        "pattern": sre_compile.compile(r'("version"\s*:\s*)"[^"]+"'),
+        "pattern": re.compile(r'("version"\s*:\s*)"[^"]+"'),
         "replacement": r'\g<1>"{version}"',
     },
     {
         "file": "pyproject.toml",
-        "pattern": sre_compile.compile(r'(version\s*=\s*)"[^"]+"'),
+        "pattern": re.compile(r'(version\s*=\s*)"[^"]+"'),
         "replacement": r'\g<1>"{version}"',
     },
     {
         "file": ".skills.json",
-        "pattern": sre_compile.compile(r'("version"\s*:\s*)"[^"]+"'),
+        "pattern": re.compile(r'("version"\s*:\s*)"[^"]+"'),
         "replacement": r'\g<1>"{version}"',
     },
     {
         "file": "marketplace.json",
-        "pattern": sre_compile.compile(r'("version"\s*:\s*)"[^"]+"'),
+        "pattern": re.compile(r'("version"\s*:\s*)"[^"]+"'),
         "replacement": r'\g<1>"{version}"',
     },
     {
         "file": "SKILL.md",
-        "pattern": sre_compile.compile(r'(version\s*:\s*)"[^"]+"'),
+        "pattern": re.compile(r'(version\s*:\s*)"[^"]+"'),
         "replacement": r'\g<1>"{version}"',
     },
     {
         "file": "bin/cli.js",
-        "pattern": sre_compile.compile(r'Anti-Slop Engineering CLI \(v[^\)]+\)'),
+        "pattern": re.compile(r'Anti-Slop Engineering CLI \(v[^\)]+\)'),
         "replacement": r'Anti-Slop Engineering CLI (v{version})',
     },
     {
         "file": "CITATION.cff",
-        "pattern": sre_compile.compile(r'(?m)(^version\s*:\s*)[^\n]+'),
+        "pattern": re.compile(r'(?m)(^version\s*:\s*)[^\n]+'),
         "replacement": r'\g<1>{version}',
     },
     {
         "file": "CITATION.cff",
-        "pattern": sre_compile.compile(r'(date-released\s*:\s*)[^\n]+'),
+        "pattern": re.compile(r'(date-released\s*:\s*)[^\n]+'),
         "replacement": r'\g<1>{release_date}',
     },
     {
         "file": "submission/listing.json",
-        "pattern": sre_compile.compile(r'("version"\s*:\s*)"[^"]+"'),
+        "pattern": re.compile(r'("version"\s*:\s*)"[^"]+"'),
         "replacement": r'\g<1>"{version}"',
     },
     {
         "file": "submission/reviewer-packet.json",
-        "pattern": sre_compile.compile(r'("version"\s*:\s*)"[^"]+"'),
+        "pattern": re.compile(r'("version"\s*:\s*)"[^"]+"'),
         "replacement": r'\g<1>"{version}"',
     },
     {
         "file": "services/anti-slop-rust/Cargo.toml",
-        "pattern": sre_compile.compile(r'(\[package\][\s\S]*?version\s*=\s*)"[^"]+"'),
+        "pattern": re.compile(r'(\[package\][\s\S]*?version\s*=\s*)"[^"]+"'),
         "replacement": r'\g<1>"{version}"',
     },
     {
         "file": "services/toil-guard-go/pkg/model/types.go",
-        "pattern": sre_compile.compile(r'(Version\s*:\s*)"[^"]+"'),
+        "pattern": re.compile(r'(Version\s*:\s*)"[^"]+"'),
         "replacement": r'\g<1>"{version}"',
     },
     {
         "file": "services/toil-guard-go/pkg/server/server.go",
-        "pattern": sre_compile.compile(r'("version"\s*:\s*)"[^"]+"'),
+        "pattern": re.compile(r'("version"\s*:\s*)"[^"]+"'),
         "replacement": r'\g<1>"{version}"',
     },
     {
         "file": "scripts/diff_guard.py",
-        "pattern": sre_compile.compile(r"(__version__\s*=\s*)'[^']+'"),
+        "pattern": re.compile(r"(__version__\s*=\s*)'[^']+'"),
         "replacement": r"\g<1>'{version}'",
     },
     {
         "file": "scripts/sre_guard.py",
-        "pattern": sre_compile.compile(r"(__version__\s*=\s*)'[^']+'"),
+        "pattern": re.compile(r"(__version__\s*=\s*)'[^']+'"),
+        "replacement": r"\g<1>'{version}'",
+    },
+    {
+        "file": "scripts/ast_slop_guard.py",
+        "pattern": re.compile(r"(__version__\s*=\s*)'[^']+'"),
         "replacement": r"\g<1>'{version}'",
     },
     {
         "file": ".codex-plugin/plugin.json",
-        "pattern": sre_compile.compile(r'("version"\s*:\s*)"[^"]+"'),
+        "pattern": re.compile(r'("version"\s*:\s*)"[^"]+"'),
         "replacement": r'\g<1>"{version}"',
     },
 ]
