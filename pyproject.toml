@@ -59,6 +59,9 @@ dev = [
 diff-guard = "scripts.diff_guard:main"
 sre-guard = "scripts.sre_guard:main"
 
+[tool.setuptools]
+packages = ["scripts"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
