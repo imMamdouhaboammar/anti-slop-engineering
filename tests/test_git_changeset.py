@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from scripts.git_changeset import collect_changes, path_record
+from scripts.git_changeset import collect_changes, path_record, validate_base_ref
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -149,3 +149,9 @@ class ChangeSetTests(unittest.TestCase):
             collect_changes(self.repo, "HEAD", "commit")
         with self.assertRaises(RuntimeError):
             collect_changes(self.repo, "--not-a-ref", "worktree")
+
+    def test_validate_base_ref_resolves_valid_and_rejects_invalid(self):
+        self.assertEqual(validate_base_ref(self.repo, "HEAD"), self.base)
+        with self.assertRaises(RuntimeError) as ctx:
+            validate_base_ref(self.repo, "NOPE_INVALID_REF")
+        self.assertIn("NOPE_INVALID_REF", str(ctx.exception))
