@@ -35,6 +35,12 @@ LOCAL_CONFIG_DIR = Path.cwd() / ".anti-slop"
 LOCAL_SETTINGS_FILE = LOCAL_CONFIG_DIR / "settings.json"
 AUDIT_DIR = Path.cwd() / "anti-slop"
 GUARD_TIMEOUT_SECONDS = 60
+GUARD_ENV_NAMES = frozenset({
+    "PATH", "HOME", "USERPROFILE", "SYSTEMROOT", "WINDIR", "COMSPEC", "PATHEXT",
+    "TMPDIR", "TEMP", "TMP", "LANG", "LANGUAGE", "LC_ALL", "LC_CTYPE", "LC_COLLATE",
+    "LC_MESSAGES", "LC_MONETARY", "LC_NUMERIC", "LC_TIME",
+    "GITHUB_HEAD_REF", "GITHUB_REF_NAME",
+})
 
 GUARD_REGISTRY: Dict[str, Dict[str, Any]] = {
     "diff_guard": {
@@ -727,9 +733,13 @@ def handle_mode(args: List[str]) -> int:
         return 2
 
 
-def run_command(cmd: List[str]) -> Dict[str, Any]:
+def run_command(cmd: List[str], *, restricted_env: bool = False) -> Dict[str, Any]:
+    env = None
+    if restricted_env:
+        # Windows exposes its case-insensitive environment under uppercase keys.
+        env = {name: value for name, value in os.environ.items() if name in GUARD_ENV_NAMES}
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=GUARD_TIMEOUT_SECONDS)
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=GUARD_TIMEOUT_SECONDS, env=env)
         return {"exit_code": proc.returncode, "stdout": proc.stdout, "stderr": proc.stderr,
                 "timed_out": False, "error": None}
     except subprocess.TimeoutExpired as exc:
@@ -1059,6 +1069,8 @@ def evaluate_guard(
     name: str,
     command: Optional[List[str]],
     spec: Optional[Dict[str, Any]] = None,
+    *,
+    restricted_env: bool = False,
 ) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
     spec = spec or GUARD_REGISTRY.get(name, {})
     result: Dict[str, Any] = {
@@ -1090,7 +1102,7 @@ def evaluate_guard(
             result["reason"] = f"Guard script not present in scripts directory: {script_path.name}"
         return result, []
 
-    process = run_command(command)
+    process = run_command(command, restricted_env=restricted_env)
     result.update({key: process[key] for key in ("exit_code", "stderr", "timed_out", "error")})
     if result["error"]:
         result["status"] = "ERROR"
@@ -1160,6 +1172,7 @@ def collect_audit_findings(
     template_file: str = "", canary_token: str = "",
     records: Optional[Dict[str, str]] = None,
     installed_skills: Optional[set[str]] = None,
+    restricted_env: bool = False,
     **extra_records: Any,
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Dict[str, Any]]]:
     records_map: Dict[str, str] = {}
@@ -1206,7 +1219,7 @@ def collect_audit_findings(
             record_file=resolved_record,
         )
 
-        outcome, child_findings = evaluate_guard(name, command, spec)
+        outcome, child_findings = evaluate_guard(name, command, spec, restricted_env=restricted_env)
         guards[name] = outcome
         findings.extend(child_findings)
 
@@ -1474,6 +1487,7 @@ def run_audit(
     pr_body_file: str = "", template_file: str = "", canary_token: str = "",
     mode: Optional[str] = None, records: Optional[Dict[str, str]] = None,
     installed_selection: Optional[Path] = None,
+    restricted_env: bool = False,
     **extra_records: Any,
 ) -> int:
     installed_skills = None
@@ -1486,7 +1500,7 @@ def run_audit(
     findings, guards = collect_audit_findings(
         base, pr_title=pr_title, pr_body_file=pr_body_file,
         template_file=template_file, canary_token=canary_token,
-        records=records, installed_skills=installed_skills, **extra_records
+        records=records, installed_skills=installed_skills, restricted_env=restricted_env, **extra_records
     )
     blockers = sum(1 for finding in findings if finding["severity"] == "BLOCKER")
     has_error = any(result.get("status") == "ERROR" or result.get("error") for result in guards.values())
@@ -1541,6 +1555,10 @@ def handle_audit(args: List[str]) -> int:
     parser = argparse.ArgumentParser(description="Run the unified Anti-Slop audit")
     parser.add_argument("--base", default="HEAD")
     parser.add_argument("--json", action="store_true")
+    parser.add_argument(
+        "--restricted-env", action="store_true",
+        help="Pass only runtime, locale, temp, and CI branch variables to audit guards",
+    )
     parser.add_argument("--installed-selection", type=Path,
                         help="Opt in to installed optional review skills using a format-1 selection manifest")
     parser.add_argument("--pr-title", default="")
@@ -1567,6 +1585,7 @@ def handle_audit(args: List[str]) -> int:
         options.pr_body_file, options.template_file, options.canary_token,
         mode=options.mode,
         installed_selection=options.installed_selection,
+        restricted_env=options.restricted_env,
         decision_record=options.decision_record,
         root_fix_record=options.root_fix_record,
         future_scale_record=options.future_scale_record,
