@@ -205,6 +205,20 @@ def _find_regex_end(line, start):
     return None
 
 
+def _ends_control_condition(prefix):
+    depth = 0
+    for index in range(len(prefix) - 1, -1, -1):
+        char = prefix[index]
+        if char == ')':
+            depth += 1
+        elif char == '(':
+            depth -= 1
+            if depth == 0:
+                before = prefix[:index].rstrip()
+                return bool(re.search(r'(?:^|[^\w.$])(?:if|while|for|with)\s*$', before))
+    return False
+
+
 def _is_regex_start(out, idx):
     """Check whether '/' at idx can start a JS/TS regex literal."""
     prefix = ''.join(out[:idx]).rstrip()
@@ -215,6 +229,8 @@ def _is_regex_start(out, idx):
     if prefix.endswith('=>'):
         return True
     last = prefix[-1]
+    if last == ')':
+        return _ends_control_condition(prefix)
     if last in _REGEX_PRECEDERS:
         return True
     if last == '!':

@@ -88,6 +88,20 @@ class AstSlopGuardTests(unittest.TestCase):
         finding_ids = [f['id'] for f in report['findings']]
         self.assertIn('CHAINED_TYPE_ASSERTION', finding_ids)
 
+    def test_regex_after_control_condition_preserves_following_code(self):
+        code = (
+            "if (ready(check())) /[`]/.test(value);\n"
+            "const invalid = raw as unknown as User;\n"
+        )
+        file_path = self.repo / 'conditional_regex.ts'
+        file_path.write_text(code)
+        result = self.run_guard(str(file_path), '--json')
+        hits = [
+            item['line'] for item in json.loads(result.stdout)['findings']
+            if item['id'] == 'CHAINED_TYPE_ASSERTION'
+        ]
+        self.assertEqual(hits, [2])
+
     def test_regex_after_arrow_does_not_desync_masking(self):
         file_path = self.repo / 'arrow_regex.ts'
         file_path.write_text(
