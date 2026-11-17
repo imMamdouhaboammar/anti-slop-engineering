@@ -71,3 +71,147 @@ diff --git a/worker.py b/worker.py
     assert_eq!(findings[0].category, ViolationCategory::HypotheticalHardening);
     assert_eq!(findings[0].code, "STS-H02");
 }
+
+fn swallow_findings(diff: &str) -> Vec<usize> {
+    let interceptor = ShitInterceptor::new();
+    interceptor
+        .audit_diff(diff, None, false)
+        .iter()
+        .filter(|f| f.code == "STS-H02")
+        .map(|f| f.line)
+        .collect()
+}
+
+#[test]
+fn test_multiline_python_error_swallowing() {
+    let diff = r#"
+diff --git a/job.py b/job.py
+--- a/job.py
++++ b/job.py
+@@ -1 +1,5 @@
++try:
++    run()
++except Exception:
++    pass
+ finish()
+"#;
+    assert_eq!(swallow_findings(diff), vec![3]);
+}
+
+#[test]
+fn test_multiline_js_catch_error_swallowing() {
+    let diff = r#"
+diff --git a/app.ts b/app.ts
+--- a/app.ts
++++ b/app.ts
+@@ -1,4 +1,6 @@
++try {
++    invoke();
++} catch (err) {
++}
+"#;
+    assert_eq!(swallow_findings(diff), vec![3]);
+}
+
+#[test]
+fn test_multiline_nonempty_catch_not_flagged() {
+    let diff = r#"
+diff --git a/app.ts b/app.ts
+--- a/app.ts
++++ b/app.ts
+@@ -1,4 +1,6 @@
++try {
++    invoke();
++} catch (err) {
++    console.error(err);
++}
+"#;
+    assert!(swallow_findings(diff).is_empty());
+}
+
+#[test]
+fn test_multiline_python_nonempty_suite_not_flagged() {
+    let diff = r#"
+diff --git a/job.py b/job.py
+--- a/job.py
++++ b/job.py
+@@ -1 +1,5 @@
++try:
++    run()
++except Exception:
++    log_failure()
+ finish()
+"#;
+    assert!(swallow_findings(diff).is_empty());
+}
+
+#[test]
+fn test_python_except_replacement_flagged() {
+    let diff = "diff --git a/worker.py b/worker.py\n--- a/worker.py\n+++ b/worker.py\n@@ -8,4 +8,4 @@\n     except RuntimeError:\n-        report()\n+        pass\n     finish()\n";
+    assert_eq!(swallow_findings(diff), vec![9]);
+}
+
+#[test]
+fn test_template_literal_catch_skeleton_not_flagged() {
+    let diff = r#"
+diff --git a/tpl.ts b/tpl.ts
+--- a/tpl.ts
++++ b/tpl.ts
+@@ -1 +1,5 @@
++const tpl = `
++} catch (e) {
++}
++`;
+ finish();
+"#;
+    assert!(swallow_findings(diff).is_empty());
+}
+
+#[test]
+fn test_python_triple_quoted_string_not_flagged() {
+    let diff = r#"
+diff --git a/doc.py b/doc.py
+--- a/doc.py
++++ b/doc.py
+@@ -1 +1,5 @@
++message = """
++except Exception:
++    pass
++"""
+ finish()
+"#;
+    assert!(swallow_findings(diff).is_empty());
+}
+
+#[test]
+fn test_catch_with_reason_comment_not_flagged() {
+    let diff = r#"
+diff --git a/app.ts b/app.ts
+--- a/app.ts
++++ b/app.ts
+@@ -1,4 +1,6 @@
++try {
++    invoke();
++} catch (err) {
++    // intentional: best-effort cleanup
++}
+"#;
+    assert!(swallow_findings(diff).is_empty());
+}
+
+#[test]
+fn test_hunk_ending_at_pass_not_flagged() {
+    // Conservative boundary: the suite may continue past the hunk, so a
+    // hunk that ends exactly at the `pass` line is not flagged.
+    let diff = r#"
+diff --git a/job.py b/job.py
+--- a/job.py
++++ b/job.py
+@@ -5,0 +6,4 @@
++try:
++    run()
++except Exception:
++    pass
+"#;
+    assert!(swallow_findings(diff).is_empty());
+}
