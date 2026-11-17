@@ -165,7 +165,7 @@ bunx anti-slop-engineering sre --base HEAD
 # Audit specific files or directories:
 bunx anti-slop-engineering sre --files src/ lib/
 
-# CI strict gate — exits 2 on blockers:
+# CI strict gate — exits 2 on active-diff blockers (all blockers with --files):
 bunx anti-slop-engineering sre --base HEAD --strict
 
 # Custom thresholds:
