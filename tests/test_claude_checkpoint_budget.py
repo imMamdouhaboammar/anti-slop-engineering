@@ -27,12 +27,13 @@ class ClaudeCheckpointBudgetTests(unittest.TestCase):
                               cwd=self.project, capture_output=True, text=True, check=False)
         self.assertEqual(proc.returncode, 0, proc.stderr)
 
-    def invoke(self, phase, name="snippet.py", session="sess-1", tool="Write"):
+    def invoke(self, phase, name="snippet.py", session="sess-1", tool="Write", raw_path=None):
+        file_path = raw_path if raw_path is not None else str(self.project / name)
         payload = {
             "hook_event_name": phase,
             "tool_name": tool,
             "tool_use_id": "toolu_budget_001",
-            "tool_input": {"file_path": str(self.project / name), "content": "fixture only"},
+            "tool_input": {"file_path": file_path, "content": "fixture only"},
             "cwd": str(self.project),
         }
         if session is not None:
@@ -48,10 +49,6 @@ class ClaudeCheckpointBudgetTests(unittest.TestCase):
     def post_message(self, **kwargs):
         result = self.invoke("PostToolUse", **kwargs)
         return result["hookSpecificOutput"]["additionalContext"]
-
-    def exhaust_budget(self):
-        for _ in range(3):
-            self.post_message()
 
     def test_budget_exhaustion_denies_further_writes(self):
         first = self.post_message()
@@ -85,12 +82,15 @@ class ClaudeCheckpointBudgetTests(unittest.TestCase):
         self.assertEqual(self.invoke("PreToolUse"), {})
 
     def test_override_restores_writes_and_is_audited(self):
-        self.exhaust_budget()
-        self.assertNotEqual(self.invoke("PreToolUse"), {})
+        self.post_message(raw_path="./snippet.py")
+        self.post_message(raw_path=str(self.project / "." / "snippet.py"))
+        third = self.post_message()
+        self.assertIn("budget exhausted", third)
+        self.assertNotEqual(self.invoke("PreToolUse", raw_path="./snippet.py"), {})
         override = self.project / ".anti-slop" / "checkpoint-override.json"
         override.write_text(json.dumps({
             "session_id": "sess-1",
-            "target": str(self.source),
+            "target": "snippet.py",
             "reason": "operator reviewed the failure",
         }))
         self.assertEqual(self.invoke("PreToolUse"), {})
@@ -108,7 +108,16 @@ class ClaudeCheckpointBudgetTests(unittest.TestCase):
         message = self.post_message()
         self.assertIn("Python syntax error at line 2", message)
         self.assertNotIn("budget exhausted", message)
+        self.assertEqual(json.loads(state.read_text()), {"sess-1\nsnippet.py": {"failures": 1}})
         self.assertEqual(self.invoke("PreToolUse"), {})
+        audit_path = self.project / ".anti-slop" / "checkpoint-audit.jsonl"
+        outside = self.project / "outside.jsonl"
+        outside.write_text("")
+        audit_path.unlink()
+        audit_path.symlink_to(outside)
+        message = self.post_message()
+        self.assertIn("Python syntax error at line 2", message)
+        self.assertEqual(outside.read_text(), "")
 
     def test_skipped_checks_do_not_consume_budget(self):
         self.source.write_bytes(b"x" * (64 * 1024 + 1))

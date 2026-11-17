@@ -17,6 +17,7 @@ if not __package__:
 
 from scripts.exec_guard import (
     SessionStateManager,
+    _hook_targets,
     _load_hook_policy,
     evaluate_hook_event,
     read_hook_object,
@@ -129,31 +130,50 @@ def _checkpoint_state_dir(project):
     return project / ".anti-slop"
 
 
+def _canonical_checkpoint_target(project, target):
+    if not isinstance(target, str) or not target:
+        return None
+    try:
+        return _hook_targets({"target_paths": [target]}, project)[0]
+    except (OSError, ValueError, RuntimeError):
+        return None
+
+
 def _load_checkpoint_state(state_dir):
     path = state_dir / CHECKPOINT_STATE_FILE
-    if path.is_symlink():
+    if state_dir.is_symlink() or path.is_symlink():
         raise ValueError("Checkpoint state must be local")
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError:
+    except (FileNotFoundError, ValueError):
         return {}
     return data if isinstance(data, dict) else {}
 
 
 def _save_checkpoint_state(state_dir, state):
     state_dir.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile(
-        "w", dir=state_dir, prefix="checkpoint-state-", delete=False, encoding="utf-8"
-    ) as stream:
-        stream.write(json.dumps(state, indent=2))
-        tmp_path = Path(stream.name)
-    tmp_path.replace(state_dir / CHECKPOINT_STATE_FILE)
+    if state_dir.is_symlink():
+        raise ValueError("Checkpoint state directory must be local")
+    descriptor, temp = tempfile.mkstemp(prefix="checkpoint-state-", dir=state_dir)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+            json.dump(state, stream, indent=2)
+        os.replace(temp, state_dir / CHECKPOINT_STATE_FILE)
+    finally:
+        Path(temp).unlink(missing_ok=True)
 
 
 def _audit_checkpoint(state_dir, event, session_id, target, **fields):
+    path = state_dir / CHECKPOINT_AUDIT_FILE
+    if state_dir.is_symlink() or path.is_symlink():
+        raise ValueError("Checkpoint audit log must be local")
     entry = {"event": event, "session_id": session_id, "target": target, "at": time.time()}
     entry.update(fields)
-    with open(state_dir / CHECKPOINT_AUDIT_FILE, "a", encoding="utf-8") as stream:
+    flags = os.O_WRONLY | os.O_CREAT | os.O_APPEND | getattr(os, "O_NOFOLLOW", 0)
+    fd = os.open(path, flags, 0o600)
+    with os.fdopen(fd, "a", encoding="utf-8") as stream:
+        if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+            raise ValueError("Checkpoint audit log must be a regular file")
         stream.write(json.dumps(entry) + "\n")
 
 
@@ -165,8 +185,11 @@ def _record_checkpoint_outcome(project, session_id, target, kind):
     """
     if kind not in ("error", "ok"):
         return False
+    canonical = _canonical_checkpoint_target(project, target)
+    if not canonical:
+        return False
     state_dir = _checkpoint_state_dir(project)
-    key = f"{session_id}\n{target}"
+    key = f"{session_id}\n{canonical}"
     try:
         manager = SessionStateManager(state_dir)
         with manager.exclusive_lock():
@@ -175,15 +198,15 @@ def _record_checkpoint_outcome(project, session_id, target, kind):
                 if key in state:
                     del state[key]
                     _save_checkpoint_state(state_dir, state)
-                    _audit_checkpoint(state_dir, "cleared", session_id, target)
+                    _audit_checkpoint(state_dir, "cleared", session_id, canonical)
                 return False
             entry = state.get(key)
             failures = (entry.get("failures", 0) if isinstance(entry, dict) else 0) + 1
             state[key] = {"failures": failures}
             _save_checkpoint_state(state_dir, state)
-            _audit_checkpoint(state_dir, "failure", session_id, target, failures=failures)
+            _audit_checkpoint(state_dir, "failure", session_id, canonical, failures=failures)
             if failures >= CHECKPOINT_ATTEMPT_BUDGET:
-                _audit_checkpoint(state_dir, "exhausted", session_id, target, failures=failures)
+                _audit_checkpoint(state_dir, "exhausted", session_id, canonical, failures=failures)
                 return True
             return False
     except (AttributeError, OSError, ValueError, RuntimeError, TypeError, KeyError):
@@ -196,8 +219,11 @@ def _checkpoint_denial(project, session_id, target):
     A matching operator override in the state directory is consumed once,
     audited, and clears the budget. Any state problem degrades to no denial.
     """
+    canonical = _canonical_checkpoint_target(project, target)
+    if not canonical:
+        return None
     state_dir = _checkpoint_state_dir(project)
-    key = f"{session_id}\n{target}"
+    key = f"{session_id}\n{canonical}"
     try:
         manager = SessionStateManager(state_dir)
         with manager.exclusive_lock():
@@ -213,15 +239,19 @@ def _checkpoint_denial(project, session_id, target):
                     override = json.loads(override_path.read_text(encoding="utf-8"))
                 except ValueError:
                     override = None
+            override_target = (
+                _canonical_checkpoint_target(project, override.get("target"))
+                if isinstance(override, dict) else None
+            )
             if isinstance(override, dict) and override.get("session_id") == session_id \
-                    and override.get("target") == target:
+                    and override_target == canonical:
                 override_path.unlink()
                 del state[key]
                 _save_checkpoint_state(state_dir, state)
-                _audit_checkpoint(state_dir, "override_applied", session_id, target,
+                _audit_checkpoint(state_dir, "override_applied", session_id, canonical,
                                   reason=str(override.get("reason", "")))
                 return None
-            _audit_checkpoint(state_dir, "pre_write_denied", session_id, target,
+            _audit_checkpoint(state_dir, "pre_write_denied", session_id, canonical,
                               failures=failures)
             return (
                 "Checkpoint attempt budget exhausted for this file in this session after "
