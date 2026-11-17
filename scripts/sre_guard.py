@@ -20,12 +20,14 @@ import os
 import pathlib
 import re
 import sys
+from itertools import accumulate
 
 if not __package__:
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 from scripts.git_changeset import collect_changes, repository_root
 from scripts.retry_heuristics import INLINE_FLAT_RETRY, flat_retry_lines
+from scripts.source_trivia import source_trivia
 
 __version__ = '1.8.0'
 
@@ -294,6 +296,11 @@ def scan_file_sre(file_path, content, max_nesting=4, max_function_lines=80, is_t
     findings = []
     seen = set()
     lines = content.splitlines()
+
+    python_trivia = None
+    if pathlib.Path(file_path).suffix.lower() in {'.py', '.pyi'}:
+        python_trivia = source_trivia(file_path, content)
+        offsets = list(accumulate(map(len, content.splitlines(keepends=True)), initial=0))
     is_self_script = str(file_path).endswith('sre_guard.py')
 
     for line_idx, line in enumerate(lines, 1):
@@ -308,6 +315,9 @@ def scan_file_sre(file_path, content, max_nesting=4, max_function_lines=80, is_t
         if next_line_text:
             is_py_swallow = bool(re.search(r'^\s*except(?:\s+[^:]*)?:\s*$', line) and re.match(r'^(?:pass|\.\.\.)\b', next_line_text))
             is_js_swallow = bool(re.search(r'^\s*catch\s*(?:\([^)]*\))?\s*\{\s*$', line) and next_line_text.startswith('}'))
+            if is_py_swallow and python_trivia is not None:
+                indent = len(line) - len(line.lstrip())
+                is_py_swallow = not python_trivia(offsets[line_idx - 1] + indent)
             if is_py_swallow or is_js_swallow:
                 add_finding(
                     findings, seen, 'SCALE', 'SCALE_TOIL_ERROR_SWALLOW', 'blocker',
