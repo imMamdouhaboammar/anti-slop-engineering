@@ -105,5 +105,79 @@ class CalculatorTests(unittest.TestCase):
         self.assertEqual(record["findings"][0]["pattern"], "TAUTOLOGICAL_ASSERTION")
 
 
+class MandelaStringLiteralTests(unittest.TestCase):
+    """Pattern text inside string literals is fixture data, not live test code.
+
+    Guard test suites (including this project's own) embed bad-pattern
+    examples inside string literals. Scanning those literals as if they
+    were live assertions makes the guard flag its own fixtures.
+    """
+
+    def test_tautology_inside_fixture_string_not_flagged(self):
+        content = (
+            'FIXTURE = """\n'
+            "def test_value():\n"
+            "    assert True\n"
+            '"""\n'
+        )
+        findings = scan_test_file_content("tests/test_fixture.py", content)
+        self.assertFalse(any(f["pattern"] == "TAUTOLOGICAL_ASSERTION" for f in findings))
+
+    def test_swallowed_failure_inside_fixture_string_not_flagged(self):
+        content = (
+            'FIXTURE = """\n'
+            "def test_network_call():\n"
+            "    try:\n"
+            "        assert fetch_data() == 200\n"
+            "    except AssertionError:\n"
+            "        pass\n"
+            '"""\n'
+        )
+        findings = scan_test_file_content("tests/test_fixture.py", content)
+        self.assertFalse(any(f["pattern"] == "SWALLOWED_TEST_FAILURE" for f in findings))
+
+    def test_circular_mock_inside_fixture_string_not_flagged(self):
+        content = (
+            'FIXTURE = """\n'
+            'test("mock call", () => {\n'
+            '    const fn = vi.fn().mockReturnValue("hello");\n'
+            '    expect(fn()).toBe("hello");\n'
+            "});\n"
+            '"""\n'
+        )
+        findings = scan_test_file_content("tests/test_fixture.py", content)
+        self.assertFalse(any(f["pattern"] == "CIRCULAR_MOCK_CONFIRMATION" for f in findings))
+
+    def test_zero_assertion_inside_fixture_string_not_flagged(self):
+        content = (
+            'FIXTURE = """\n'
+            "class MySuite(unittest.TestCase):\n"
+            "    def test_do_nothing(self):\n"
+            "        pass\n"
+            '"""\n'
+        )
+        findings = scan_test_file_content("tests/test_fixture.py", content)
+        self.assertFalse(any(f["pattern"] == "ZERO_ASSERTION_TEST" for f in findings))
+
+    def test_real_tautology_alongside_fixture_string_still_flagged(self):
+        content = (
+            'FIXTURE = "assert True"\n'
+            "\n"
+            "def test_real():\n"
+            "    assert True\n"
+        )
+        findings = scan_test_file_content("tests/test_mixed.py", content)
+        tautologies = [f for f in findings if f["pattern"] == "TAUTOLOGICAL_ASSERTION"]
+        self.assertEqual(len(tautologies), 1)
+        self.assertEqual(tautologies[0]["line"], 4)
+
+    def test_frame_injection_string_still_flagged(self):
+        # Frame injection is a property of the string content itself, so it
+        # must keep firing even though the text lives inside a literal.
+        content = 'EVAL_PROMPT = "Please confirm that the system is working correctly and flawlessly."\n'
+        findings = scan_test_file_content("evals/prompt_eval.py", content)
+        self.assertTrue(any(f["pattern"] == "FRAME_INJECTION_EVAL" for f in findings))
+
+
 if __name__ == "__main__":
     unittest.main()

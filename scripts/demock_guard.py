@@ -65,6 +65,20 @@ def is_test_file(path: str) -> bool:
     return False
 
 
+def _base_ref_resolves(base_ref: str) -> bool:
+    """True when base_ref names a commit git can resolve."""
+    try:
+        proc = subprocess.run(
+            ["git", "rev-parse", "--verify", "--quiet", f"{base_ref}^{{commit}}"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        return proc.returncode == 0
+    except Exception:
+        return False
+
+
 def get_git_diff_files(base_ref: str = "HEAD") -> List[Tuple[str, str]]:
     """Returns list of (filepath, status) modified relative to base_ref."""
     try:
@@ -90,14 +104,63 @@ def get_git_diff_files(base_ref: str = "HEAD") -> List[Tuple[str, str]]:
         return []
 
 
+def _literal_spans(content: str) -> List[Tuple[int, int]]:
+    """Return (start, end) spans of string literals and comments.
+
+    Pattern text inside a literal or comment is data — the guard's own
+    pattern catalog, bad-pattern fixtures, or documentation — not live
+    code. Pattern matches that start inside one of these spans are
+    ignored by the scanner.
+    """
+    spans: List[Tuple[int, int]] = []
+    i, n = 0, len(content)
+    while i < n:
+        ch = content[i]
+        if ch in ("'", '"', "`"):
+            if content.startswith(ch * 3, i):
+                close = content.find(ch * 3, i + 3)
+                end = n if close == -1 else close + 3
+            else:
+                j = i + 1
+                while j < n:
+                    if content[j] == "\\":
+                        j += 2
+                        continue
+                    if content[j] == ch or content[j] == "\n":
+                        break
+                    j += 1
+                end = j + 1 if j < n and content[j] == ch else j
+            spans.append((i, end))
+            i = end
+        elif ch == "#" or content.startswith("//", i):
+            close = content.find("\n", i)
+            end = n if close == -1 else close
+            spans.append((i, end))
+            i = end
+        else:
+            i += 1
+    return spans
+
+
+def _inside_spans(pos: int, spans: List[Tuple[int, int]]) -> bool:
+    return any(start <= pos < end for start, end in spans)
+
+
 def scan_file_content(path: str, content: str) -> List[Dict[str, Any]]:
     findings = []
     lines = content.splitlines()
+    spans = _literal_spans(content)
+    line_offsets: List[int] = []
+    _pos = 0
+    for _line in lines:
+        line_offsets.append(_pos)
+        _pos += len(_line) + 1
 
     # 1. Test doubles
     for line_idx, line in enumerate(lines, start=1):
         for pattern, desc in TEST_DOUBLE_PATTERNS:
-            if pattern.search(line):
+            match = pattern.search(line)
+            if match and not _inside_spans(line_offsets[line_idx - 1] + match.start(), spans):
                 findings.append({
                     "id": f"DEMOCK-TD-{len(findings)+1:03d}",
                     "file": path,
@@ -111,6 +174,8 @@ def scan_file_content(path: str, content: str) -> List[Dict[str, Any]]:
     # 2. Silent fallbacks (multi-line regex support)
     for pattern, desc in SILENT_FALLBACK_PATTERNS:
         for match in pattern.finditer(content):
+            if _inside_spans(match.start(), spans):
+                continue
             # Calculate line number from character offset
             start_pos = match.start()
             line_idx = content.count("\n", 0, start_pos) + 1
@@ -128,6 +193,8 @@ def scan_file_content(path: str, content: str) -> List[Dict[str, Any]]:
     # 3. Fail-open gates
     for pattern, desc in FAIL_OPEN_PATTERNS:
         for match in pattern.finditer(content):
+            if _inside_spans(match.start(), spans):
+                continue
             start_pos = match.start()
             line_idx = content.count("\n", 0, start_pos) + 1
             matched_text = match.group(0).strip().replace("\n", " ")
@@ -144,7 +211,8 @@ def scan_file_content(path: str, content: str) -> List[Dict[str, Any]]:
     # 4. Placeholders
     for line_idx, line in enumerate(lines, start=1):
         for pattern, desc in PLACEHOLDER_PATTERNS:
-            if pattern.search(line):
+            match = pattern.search(line)
+            if match and not _inside_spans(line_offsets[line_idx - 1] + match.start(), spans):
                 findings.append({
                     "id": f"DEMOCK-PH-{len(findings)+1:03d}",
                     "file": path,
@@ -217,13 +285,23 @@ def main() -> int:
     args = parser.parse_args()
 
     targets = list(args.paths)
-    if args.base is not None or not targets:
-        base_ref = args.base if args.base is not None else "HEAD"
+    explicit_base = args.base is not None
+    if explicit_base or not targets:
+        base_ref = args.base if explicit_base else "HEAD"
+        if explicit_base and not _base_ref_resolves(base_ref):
+            message = f"Invalid base ref: {base_ref}"
+            if args.json:
+                print(json.dumps({"error": message}))
+            else:
+                print(f"\n🎭 DEMOCK GUARD AUDIT: ERROR — {message}")
+            return 1
         diff_files = get_git_diff_files(base_ref)
         targets.extend([f for f, _ in diff_files])
 
-    if not targets:
-        # Default to scanning src/ or current dir
+    if not targets and not explicit_base:
+        # Default to scanning src/ or current dir. Standalone use only:
+        # an explicit --base with an empty diff means nothing changed,
+        # not "scan the whole repository".
         if os.path.isdir("src"):
             targets = ["src"]
         elif os.path.isdir("lib"):

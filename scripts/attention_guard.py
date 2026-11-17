@@ -446,15 +446,11 @@ def audit_git_diff_markdown(base: str = "HEAD", repo_root: Optional[str] = None)
         elif is_doc and line.startswith("+") and not line.startswith("+++"):
             added_blocks.append(line[1:])
 
+    # An empty diff means no documentation changed, so there is nothing
+    # to audit. (Use --file README.md to audit the README explicitly;
+    # silently substituting it here blocks clean-tree audits on prose
+    # that was never part of the change.)
     text_to_audit = "\n".join(added_blocks)
-    if not text_to_audit.strip():
-        # Fallback to auditing README.md if diff is empty
-        readme_path = os.path.join(repo_root or ".", "README.md")
-        try:
-            with open(readme_path, "r", encoding="utf-8") as readme:
-                text_to_audit = readme.read()
-        except FileNotFoundError:
-            text_to_audit = ""
 
     return audit_text(text_to_audit, target_name="git-diff")
 
