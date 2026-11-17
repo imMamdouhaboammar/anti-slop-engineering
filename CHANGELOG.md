@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.0] - 2026-11-17
+
+### Added
+
+- Claude Code, Codex, and Gemini hook previews in the installer with separate opt-in setup for each adapter (#156, #161, #166).
+- Exact-ID catalog lookup and free-text search through `explain` (#128).
+- Counterfactual test verification and optional local API evidence (#126, #151).
+
+### Fixed
+
+- Native Go and Rust checks retain source context and attribution for supported Git-backed empty handlers (#165, #169). The Python SRE guard ignores handler-shaped text inside string literals (#214).
+- Diff-scoped guards report against the requested base and preserve executable code in interpolated strings (#195, #203, #205, #208).
+- The installer preserves existing configuration and previews batch operations before writing (#130, #213).
+- Overlapping audits keep distinct reports, and the checkout-local agent vault is ignored (#216, #217).
+
 ## [1.8.0] - 2026-11-14
 
 ### Added
