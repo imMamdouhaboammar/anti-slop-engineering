@@ -16,6 +16,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from bump_version import (  # noqa: E402
+    MANIFEST_TARGETS,
     bump_repository_version,
     compute_next_version,
     parse_semver,
@@ -95,6 +96,22 @@ class BumpVersionTests(unittest.TestCase):
             cargo_content = (rust_dir / "Cargo.toml").read_text(encoding="utf-8")
             self.assertIn('version = "1.1.0"', cargo_content)
 
+    def test_manifest_targets_cover_ast_slop_guard(self):
+        files = [target["file"] for target in MANIFEST_TARGETS]
+        self.assertIn("scripts/ast_slop_guard.py", files)
+
+    def test_bump_updates_ast_slop_guard_version(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = pathlib.Path(tmp_dir)
+            (tmp_path / "package.json").write_text(json.dumps({"name": "test", "version": "1.0.0"}), encoding="utf-8")
+            scripts_dir = tmp_path / "scripts"
+            scripts_dir.mkdir()
+            ast_guard = scripts_dir / "ast_slop_guard.py"
+            ast_guard.write_text("__version__ = '1.0.0'\n", encoding="utf-8")
+            report = bump_repository_version(tmp_path, "patch", dry_run=False)
+            self.assertIn("scripts/ast_slop_guard.py", report["updated_files"])
+            self.assertIn("__version__ = '1.0.1'", ast_guard.read_text(encoding="utf-8"))
+
     def test_missing_package_json_raises(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             with self.assertRaises(FileNotFoundError):
@@ -110,7 +127,7 @@ class BumpVersionTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
         data = json.loads(result.stdout)
         self.assertTrue(data["dry_run"])
-        self.assertEqual(len(data["updated_files"]), 15)
+        self.assertEqual(len(data["updated_files"]), 16)
 
 
 class BumpVersionGitSafetyTests(unittest.TestCase):

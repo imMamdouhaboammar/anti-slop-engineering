@@ -94,20 +94,22 @@ def is_detached_head(repo_root: Optional[str] = None) -> bool:
 
 
 def resolve_base_ref(base: str, repo_root: Optional[str] = None) -> str:
-    """Resolve base ref safely against local and remote references."""
+    """Resolve base ref against local and remote references.
+
+    Only the requested ref (or its ``origin/`` counterpart) may resolve;
+    an unresolvable base raises RuntimeError instead of silently
+    substituting a different ref.
+    """
     candidates = [base, f"origin/{base}"]
     for candidate in candidates:
-        code, _, _ = run_git(["rev-parse", "--verify", candidate], cwd=repo_root)
+        code, _, _ = run_git(
+            ["rev-parse", "--verify", "--end-of-options", f"{candidate}^{{commit}}"],
+            cwd=repo_root,
+        )
         if code == 0:
             return candidate
 
-    # Try merge-base with origin/main or origin/master if base is missing
-    for default_branch in ["origin/main", "origin/master", "HEAD~1"]:
-        code, _, _ = run_git(["rev-parse", "--verify", default_branch], cwd=repo_root)
-        if code == 0:
-            return default_branch
-
-    return "HEAD"
+    raise RuntimeError(f"Unresolvable base ref {base!r}: neither {base!r} nor 'origin/{base}' exists")
 
 
 def get_commit_list(base_ref: str, repo_root: Optional[str] = None) -> List[Dict[str, str]]:
@@ -119,7 +121,7 @@ def get_commit_list(base_ref: str, repo_root: Optional[str] = None) -> List[Dict
         log_range = [f"{base_ref}..HEAD"]
 
     code, out, _ = run_git(
-        ["log"] + log_range + ["--format=%H%x1f%an%x1f%ae%x1f%s%x1f%b%x1e"], cwd=repo_root
+        ["log"] + log_range + ["--format=%H%x1f%an%x1f%ae%x1f%s%x1f%b%x1e", "--"], cwd=repo_root
     )
     if code != 0 or not out:
         # Fallback to inspecting current HEAD commit
@@ -253,13 +255,13 @@ def audit_pr_boundary(
         })
 
     # 3. Path Fencing & Metadata Spam Checks
-    code, changed_files_out, _ = run_git(["diff", "--name-only", resolved_base, "HEAD"], cwd=repo_root)
+    code, changed_files_out, _ = run_git(["diff", "--name-only", resolved_base, "HEAD", "--"], cwd=repo_root)
     if code == 0 and changed_files_out:
         changed_files = [f.strip() for f in changed_files_out.splitlines() if f.strip()]
         metadata_paths = {"README.md", "LICENSE", "SECURITY.md", "CODE_OF_CONDUCT.md"}
         if all(os.path.basename(f) in metadata_paths for f in changed_files):
             # Check diff size
-            code, diff_numstat, _ = run_git(["diff", "--numstat", resolved_base, "HEAD"], cwd=repo_root)
+            code, diff_numstat, _ = run_git(["diff", "--numstat", resolved_base, "HEAD", "--"], cwd=repo_root)
             total_added = sum(
                 int(line.split()[0])
                 for line in diff_numstat.splitlines()
@@ -445,14 +447,21 @@ def main():
         with open(args.template_file, "r", encoding="utf-8") as f:
             template_content = f.read()
 
-    record = audit_pr_boundary(
-        base=args.base,
-        repo_root=args.repo,
-        pr_title=args.pr_title,
-        pr_body=pr_body,
-        template_content=template_content,
-        require_conventional=args.require_conventional,
-    )
+    try:
+        record = audit_pr_boundary(
+            base=args.base,
+            repo_root=args.repo,
+            pr_title=args.pr_title,
+            pr_body=pr_body,
+            template_content=template_content,
+            require_conventional=args.require_conventional,
+        )
+    except RuntimeError as exc:
+        if args.json:
+            print(json.dumps({"error": str(exc)}))
+        else:
+            print(f"ERROR: {exc}", file=sys.stderr)
+        sys.exit(1)
 
     if template_missing:
         template_guidance = (

@@ -9,6 +9,7 @@ Unit Tests for Cognitive Bandwidth & Attention Economy Guard (scripts/attention_
 import json
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -149,6 +150,43 @@ class AttentionGuardTests(unittest.TestCase):
         max_len, violations = attention_guard.check_working_memory_bounds(long_list)
         self.assertEqual(max_len, 7)
         self.assertEqual(len(violations), 1)
+
+    def test_cli_invalid_base_fails_closed(self):
+        proc = subprocess.run(
+            [sys.executable, str(SCRIPTS_DIR / "attention_guard.py"), "--base", "NOPE_INVALID_REF", "--json"],
+            cwd=str(SCRIPTS_DIR.parent),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("NOPE_INVALID_REF", proc.stdout + proc.stderr)
+
+    def test_cli_base_matching_filename_succeeds(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo = Path(tmpdir)
+            for cmd in (
+                ["git", "init", "-q", "-b", "main"],
+                ["git", "config", "user.name", "Test Committer"],
+                ["git", "config", "user.email", "test@example.com"],
+            ):
+                subprocess.run(cmd, cwd=repo, check=True, capture_output=True)
+            (repo / "main").write_text("binary placeholder\n", encoding="utf-8")
+            (repo / "README.md").write_text("**Result.** Initial doc.\n", encoding="utf-8")
+            subprocess.run(["git", "add", "."], cwd=repo, check=True, capture_output=True)
+            subprocess.run(["git", "commit", "-qm", "initial"], cwd=repo, check=True, capture_output=True)
+            (repo / "README.md").write_text("**Result.** Updated doc.\n", encoding="utf-8")
+
+            proc = subprocess.run(
+                [sys.executable, str(SCRIPTS_DIR / "attention_guard.py"), "--base", "main", "--json"],
+                cwd=repo,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+            record = json.loads(proc.stdout)
+            self.assertEqual(record["code"], "NO_ATTENTION_FINDINGS")
 
     def test_cli_help(self):
         proc = subprocess.run(
