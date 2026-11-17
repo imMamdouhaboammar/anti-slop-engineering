@@ -236,6 +236,59 @@ class ApiContractGuardTests(unittest.TestCase):
         )
         self.assertEqual(proc_invalid.returncode, 2)
 
+    def test_schema_preflight_missing_or_invalid_schema_version_fails(self):
+        record = make_valid_record()
+        record["schema_version"] = "2.0"
+        result = api_contract_guard.audit(record)
+        self.assertEqual(result["record_status"], "incomplete")
+        codes = [f["code"] for f in result["findings"]]
+        self.assertIn("INVALID_SCHEMA_VERSION", codes)
+
+        del record["schema_version"]
+        result2 = api_contract_guard.audit(record)
+        self.assertEqual(result2["record_status"], "incomplete")
+        codes2 = [f["code"] for f in result2["findings"]]
+        self.assertIn("INVALID_SCHEMA_VERSION", codes2)
+
+    def test_schema_preflight_missing_or_short_contract_id_fails(self):
+        record = make_valid_record()
+        record["contract_id"] = "a"
+        result = api_contract_guard.audit(record)
+        self.assertEqual(result["record_status"], "incomplete")
+        codes = [f["code"] for f in result["findings"]]
+        self.assertIn("INVALID_CONTRACT_ID", codes)
+
+    def test_schema_preflight_missing_mandatory_blocks_fails(self):
+        record = make_valid_record()
+        del record["pit_of_success_defaults"]
+        result = api_contract_guard.audit(record)
+        self.assertEqual(result["record_status"], "incomplete")
+        codes = [f["code"] for f in result["findings"]]
+        self.assertIn("INVALID_PIT_OF_SUCCESS", codes)
+
+    def test_preflight_function_and_cli(self):
+        repo_root = Path(__file__).resolve().parent.parent
+        script = repo_root / "scripts" / "api_contract_guard.py"
+        record_file = repo_root / "skills" / "api-ergonomics-and-contract-governor" / "examples" / "api-contract-record.json"
+
+        record = make_valid_record()
+        result = api_contract_guard.preflight(record)
+        self.assertTrue(result["preflight_passed"])
+        self.assertEqual(result["record_status"], "complete")
+        record["pit_of_success_defaults"]["default_timeout_ms"] = 0
+        self.assertTrue(api_contract_guard.preflight(record)["preflight_passed"])
+        self.assertEqual(api_contract_guard.audit(record)["record_status"], "incomplete")
+
+        proc = subprocess.run(
+            [sys.executable, str(script), "preflight", str(record_file), "--json"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(proc.returncode, 0)
+        data = json.loads(proc.stdout)
+        self.assertTrue(data["preflight_passed"])
+
 
 if __name__ == "__main__":
     unittest.main()
