@@ -443,6 +443,17 @@ def parse_excludes(items):
     return {part.strip() for item in (items or ()) for part in item.split(",") if part.strip()}
 
 
+def preview_batch(jobs, version, excludes):
+    if not isinstance(jobs, list):
+        raise ValueError("Preview batch must be a list of source and destination pairs")
+    for job in jobs:
+        if not isinstance(job, list) or len(job) != 2 or any(
+            not isinstance(path, str) or not path for path in job
+        ):
+            raise ValueError("Preview jobs need a source and destination path")
+    return [preview_tree(source, destination, version, excludes) for source, destination in jobs]
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source")
@@ -451,7 +462,9 @@ def main():
     parser.add_argument("--exclude", action="append", default=[], help="Exclude relative path or directory name")
     parser.add_argument("--write-instruction")
     parser.add_argument("--expected-hash")
-    parser.add_argument("--dry-run", action="store_true")
+    operation_flags = parser.add_mutually_exclusive_group()
+    operation_flags.add_argument("--dry-run", action="store_true")
+    operation_flags.add_argument("--preview-batch", action="store_true")
     options = parser.parse_args()
     try:
         if options.write_instruction is not None:
@@ -459,11 +472,14 @@ def main():
                 parser.error("--write-instruction requires --expected-hash")
             write_instruction(options.write_instruction, sys.stdin.buffer.read(), options.expected_hash)
             return 0
+        excludes = parse_excludes(options.exclude) or None
+        if options.preview_batch:
+            print(json.dumps(preview_batch(json.load(sys.stdin), options.version, excludes)))
+            return 0
         if not options.source or not options.dest:
             parser.error("--source and --dest are required for installation")
-        excludes = parse_excludes(options.exclude)
         operation = preview_tree if options.dry_run else install_tree
-        print(json.dumps(operation(options.source, options.dest, options.version, excludes=excludes or None)))
+        print(json.dumps(operation(options.source, options.dest, options.version, excludes=excludes)))
     except (OSError, ValueError) as exc:
         print(f"Installer error: {exc}", file=sys.stderr)
         return 2

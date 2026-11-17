@@ -1,6 +1,7 @@
 import os
 import json
 import stat
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -24,6 +25,21 @@ class SafeFileInstallTests(unittest.TestCase):
 
     def install(self):
         return safe_install.install_tree(self.source, self.dest)
+
+    def test_batch_preview_matches_single_plans_without_creating_destinations(self):
+        other = self.dest.with_name("second")
+        command = [sys.executable, str(Path(safe_install.__file__)), "--preview-batch"]
+        result = subprocess.run(
+            command,
+            input=json.dumps([[str(self.source), str(target)] for target in (self.dest, other)]),
+            text=True, capture_output=True, check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            json.loads(result.stdout),
+            [safe_install.preview_tree(self.source, target) for target in (self.dest, other)],
+        )
+        self.assertFalse(self.dest.parent.exists())
 
     def test_fresh_install_and_idempotent_reinstall(self):
         first = self.install()
