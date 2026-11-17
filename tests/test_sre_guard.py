@@ -359,6 +359,29 @@ class SreGuardTests(unittest.TestCase):
         finding_ids = [f['id'] for f in report['findings']]
         self.assertNotIn('SCALE_UNBOUNDED_CONCURRENCY', finding_ids)
 
+    def test_swallow_check_distinguishes_python_fixture_and_live_handler(self):
+        target = self.repo / 'src/worker.py'
+        target.write_text(
+            'fixture = """\n'
+            'try:\n'
+            '    run()\n'
+            'except RuntimeError:\n'
+            '    pass\n'
+            '"""\n'
+            'try:\n'
+            '    run()\n'
+            'except RuntimeError:\n'
+            '    pass\n',
+            encoding='utf-8',
+        )
+        git(self.repo, 'add', 'src/worker.py')
+        result, report = self.run_sre('--base', 'HEAD', '--json', '--strict')
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(
+            [item['line'] for item in report['findings'] if item['id'] == 'SCALE_TOIL_ERROR_SWALLOW'],
+            [9],
+        )
+
     def test_flags_scale_toil_error_swallow(self):
         (self.repo / 'src' / 'toil.py').write_text(
             "def run_job():\n"
