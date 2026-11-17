@@ -43,6 +43,7 @@ coverage.xml
 cover/
 
 # Environments & secrets
+/agent-kernel/env-vault/
 .env
 .env.*
 !.env.example
