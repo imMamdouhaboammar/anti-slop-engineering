@@ -147,8 +147,8 @@ diff --git a/job.py b/job.py
 
 #[test]
 fn test_python_except_replacement_flagged() {
-    let diff = "diff --git a/worker.py b/worker.py\n--- a/worker.py\n+++ b/worker.py\n@@ -8,4 +8,4 @@\n     except RuntimeError:\n-        report()\n+        pass\n     finish()\n";
-    assert_eq!(swallow_findings(diff), vec![9]);
+    let diff = "diff --git a/worker.py b/worker.py\n--- a/worker.py\n+++ b/worker.py\n@@ -1,5 +1,5 @@\n try:\n     run()\n except RuntimeError:\n-    report()\n+    pass\n finish()\n";
+    assert_eq!(swallow_findings(diff), vec![4]);
 }
 
 #[test]
@@ -221,7 +221,7 @@ fn test_hunk_ending_at_pass_not_flagged() {
 diff --git a/job.py b/job.py
 --- a/job.py
 +++ b/job.py
-@@ -5,0 +6,4 @@
+@@ -0,0 +1,4 @@
 +try:
 +    run()
 +except Exception:

@@ -160,7 +160,7 @@ func CheckToilAndScale(filePath string, content string) []model.Finding {
 
 var (
 	rePythonExcept = regexp.MustCompile(`^(\s*)except\b[^:]*:\s*$`)
-	reCatchOpen    = regexp.MustCompile(`catch\s*\([^)]*\)\s*\{`)
+	reCatchOpen    = regexp.MustCompile(`\}\s*catch\b(?:\s*\([^)]*\))?\s*\{`)
 	reGoErrOpen    = regexp.MustCompile(`if\s+err\s*!=\s*nil\s*\{`)
 )
 
@@ -192,7 +192,7 @@ func codeViewsPython(lines, code []string, comments [][]commentSpan) {
 		runes := []rune(line)
 		for j := 0; j < len(runes); {
 			if triple != "" {
-				if strings.HasPrefix(string(runes[j:]), triple) {
+				if j+3 <= len(runes) && string(runes[j:j+3]) == triple {
 					b.WriteString("   ")
 					j += 3
 					triple = ""
@@ -214,18 +214,7 @@ func codeViewsPython(lines, code []string, comments [][]commentSpan) {
 				break
 			}
 			if c == '"' || c == '\'' {
-				j++
-				for j < len(runes) {
-					if runes[j] == '\\' {
-						j += 2
-						continue
-					}
-					if runes[j] == c {
-						j++
-						break
-					}
-					j++
-				}
+				j = skipQuoted(runes, j)
 				b.WriteByte(' ')
 				continue
 			}
@@ -240,7 +229,8 @@ func codeViewsCLike(filePath string, lines, code []string, comments [][]commentS
 	templates := strings.HasSuffix(filePath, ".js") || strings.HasSuffix(filePath, ".jsx") ||
 		strings.HasSuffix(filePath, ".ts") || strings.HasSuffix(filePath, ".tsx") ||
 		strings.HasSuffix(filePath, ".mjs") || strings.HasSuffix(filePath, ".cjs")
-	inBlockComment := false
+	goSource := strings.HasSuffix(filePath, ".go")
+	inBlockComment, inRawString := false, false
 	var templateStack []int
 	for i, line := range lines {
 		var b strings.Builder
@@ -261,6 +251,14 @@ func codeViewsCLike(filePath string, lines, code []string, comments [][]commentS
 					b.WriteByte(' ')
 					j++
 				}
+				continue
+			}
+			if goSource && (inRawString || runes[j] == '`') {
+				if runes[j] == '`' {
+					inRawString = !inRawString
+				}
+				b.WriteByte(' ')
+				j++
 				continue
 			}
 			if len(templateStack) > 0 && templateStack[len(templateStack)-1] == 0 {
@@ -305,18 +303,7 @@ func codeViewsCLike(filePath string, lines, code []string, comments [][]commentS
 				continue
 			}
 			if c == '"' || c == '\'' {
-				j++
-				for j < len(runes) {
-					if runes[j] == '\\' {
-						j += 2
-						continue
-					}
-					if runes[j] == c {
-						j++
-						break
-					}
-					j++
-				}
+				j = skipQuoted(runes, j)
 				b.WriteByte(' ')
 				continue
 			}
@@ -341,6 +328,22 @@ func codeViewsCLike(filePath string, lines, code []string, comments [][]commentS
 		}
 		code[i] = b.String()
 	}
+}
+
+func skipQuoted(runes []rune, start int) int {
+	quote := runes[start]
+	i := start + 1
+	for i < len(runes) {
+		switch runes[i] {
+		case quote:
+			return i + 1
+		case '\\':
+			i += 2
+		default:
+			i++
+		}
+	}
+	return i
 }
 
 func indentWidth(codeLine string) int {
@@ -406,7 +409,7 @@ func pythonBlockSwallows(code []string, comments [][]commentSpan, findings map[i
 		for j := i + 1; j < len(code); j++ {
 			trimmed := strings.TrimSpace(code[j])
 			if trimmed == "" {
-				if commentsHaveIgnoreReason(comments[j]) {
+				if indentWidth(code[j]) > indent && commentsHaveIgnoreReason(comments[j]) {
 					reason = true
 				}
 				continue

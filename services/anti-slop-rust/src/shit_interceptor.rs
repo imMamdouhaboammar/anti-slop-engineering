@@ -100,7 +100,7 @@ impl ShitInterceptor {
             )
             .unwrap(),
             re_py_except: Regex::new(r#"^(\s*)except\b[^:]*:\s*$"#).unwrap(),
-            re_catch_open: Regex::new(r#"catch\s*\([^)]*\)\s*\{"#).unwrap(),
+            re_catch_open: Regex::new(r#"\}\s*catch\b(?:\s*\([^)]*\))?\s*\{"#).unwrap(),
             re_ignore_reason: Regex::new(
                 r#"(?i)\b(?:expected|intentional|deliberate|by design|safe to ignore|fallback|no-?op)\b"#,
             )
@@ -191,7 +191,8 @@ impl ShitInterceptor {
     }
 
     fn flush_hunk(&self, findings: &mut Vec<Finding>, file: &str, hunk: &[HunkLine]) {
-        if hunk.is_empty() || file.is_empty() {
+        // A mid-file hunk cannot establish whether it begins inside a literal.
+        if hunk.first().is_none_or(|line| line.line_no > 1) || file.is_empty() {
             return;
         }
         for finding in self.audit_hunk_multiline(file, hunk) {
@@ -218,15 +219,21 @@ impl ShitInterceptor {
         }
         let mut findings = Vec::new();
         for (idx, hl) in hunk.iter().enumerate() {
-            if hl.kind != b'+' {
+            if hl.kind == b'-' {
                 continue;
             }
             let Some(m) = self.re_catch_open.find(&code[idx]) else {
                 continue;
             };
             let brace_char = code[idx][..m.end() - 1].chars().count();
-            if brace_block_is_empty(hunk, &code, &comments, idx, brace_char, &self.re_ignore_reason)
-            {
+            if brace_block_is_empty(
+                hunk,
+                &code,
+                &comments,
+                idx,
+                brace_char,
+                &self.re_ignore_reason,
+            ) {
                 findings.push(swallow_finding(file, hl.line_no));
             }
         }
@@ -248,7 +255,8 @@ impl ShitInterceptor {
             let Some(caps) = self.re_py_except.captures(&code[idx]) else {
                 continue;
             };
-            if let Some(line) = self.python_suite_swallow(hunk, code, comments, idx, caps[1].len()) {
+            if let Some(line) = self.python_suite_swallow(hunk, code, comments, idx, caps[1].len())
+            {
                 findings.push(swallow_finding(file, line));
             }
         }
@@ -270,14 +278,18 @@ impl ShitInterceptor {
     ) -> Option<usize> {
         let mut noop = false;
         let mut first_added_noop = None;
+        let mut removed_code = false;
         let mut reason = has_ignore_reason(&comments[idx], &self.re_ignore_reason);
         for (j, hl) in hunk.iter().enumerate().skip(idx + 1) {
             if hl.kind == b'-' {
+                removed_code |= indent_width(&hl.text) > indent && !hl.text.trim().is_empty();
                 continue;
             }
             let trimmed = code[j].trim();
             if trimmed.is_empty() {
-                reason |= has_ignore_reason(&comments[j], &self.re_ignore_reason);
+                if indent_width(&code[j]) > indent {
+                    reason |= has_ignore_reason(&comments[j], &self.re_ignore_reason);
+                }
                 continue;
             }
             if indent_width(&code[j]) <= indent {
@@ -285,7 +297,7 @@ impl ShitInterceptor {
                     return if hunk[idx].kind == b'+' {
                         Some(hunk[idx].line_no)
                     } else {
-                        first_added_noop
+                        first_added_noop.or_else(|| removed_code.then_some(hunk[idx].line_no))
                     };
                 }
                 return None;
@@ -446,6 +458,21 @@ fn check_scope_creep(
     }
 }
 
+fn skip_quoted(chars: &[char], start: usize) -> usize {
+    let quote = chars[start];
+    let mut index = start + 1;
+    while let Some(&c) = chars.get(index) {
+        index += 1;
+        if c == quote {
+            break;
+        }
+        if c == '\\' {
+            index += 1;
+        }
+    }
+    index
+}
+
 fn indent_width(code_line: &str) -> usize {
     code_line
         .chars()
@@ -472,8 +499,10 @@ fn brace_block_is_empty(
 ) -> bool {
     let mut depth = 0usize;
     let mut empty = true;
+    let mut changed = hunk[start].kind == b'+';
     for (i, hl) in hunk.iter().enumerate().skip(start) {
         if hl.kind == b'-' {
+            changed |= !hl.text.trim().is_empty();
             continue;
         }
         let min_col = if i == start { brace_char } else { 0 };
@@ -507,7 +536,7 @@ fn brace_block_is_empty(
             return false;
         }
         if closed {
-            return empty;
+            return empty && changed;
         }
     }
     false
@@ -573,19 +602,7 @@ fn code_views_python(
                     break;
                 }
                 '"' | '\'' => {
-                    let quote = chars[j];
-                    j += 1;
-                    while j < chars.len() {
-                        if chars[j] == '\\' {
-                            j += 2;
-                            continue;
-                        }
-                        let done = chars[j] == quote;
-                        j += 1;
-                        if done {
-                            break;
-                        }
-                    }
+                    j = skip_quoted(&chars, j);
                     out.push(' ');
                 }
                 c => {
@@ -649,9 +666,8 @@ fn code_views_clike(
                         j += 1;
                     }
                     '$' if j + 1 < chars.len() && chars[j + 1] == '{' => {
-                        if let Some(depth) = template_stack.last_mut() {
-                            *depth = 1;
-                        }
+                        let top = template_stack.len() - 1;
+                        template_stack[top] = 1;
                         out.push_str("  ");
                         j += 2;
                     }
@@ -680,28 +696,16 @@ fn code_views_clike(
                     j += 1;
                 }
                 '"' | '\'' => {
-                    let quote = chars[j];
-                    j += 1;
-                    while j < chars.len() {
-                        if chars[j] == '\\' {
-                            j += 2;
-                            continue;
-                        }
-                        let done = chars[j] == quote;
-                        j += 1;
-                        if done {
-                            break;
-                        }
-                    }
+                    j = skip_quoted(&chars, j);
                     out.push(' ');
                 }
                 c => {
-                    if let Some(depth) = template_stack.last_mut() {
+                    if let Some(top) = template_stack.len().checked_sub(1) {
                         if c == '{' {
-                            *depth += 1;
+                            template_stack[top] += 1;
                         } else if c == '}' {
-                            *depth -= 1;
-                            if *depth == 0 {
+                            template_stack[top] -= 1;
+                            if template_stack[top] == 0 {
                                 out.push(' ');
                                 j += 1;
                                 continue;

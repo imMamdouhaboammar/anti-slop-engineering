@@ -172,3 +172,10 @@ func TestCheckToilAndScale_CRLFMultilineHandlers(t *testing.T) {
 		t.Fatalf("expected CRLF Go fallback finding at line 3, got %v", got)
 	}
 }
+
+func TestCheckToilAndScale_FallbackDistinguishesGoRawStrings(t *testing.T) {
+	content := "package main\nvar help = \x60${}\nif err != nil {\n}\n\x60\nfunc f() {\n\tif err != nil {\n\t}\n}\nfunc malformed( {\n"
+	if got := swallowLines("app.go", content); len(got) != 1 || got[0] != 7 {
+		t.Fatalf("expected only the actual handler at line 7, got %v", got)
+	}
+}
