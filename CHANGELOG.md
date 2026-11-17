@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Claude Code, Codex, and Gemini hook previews in the installer with separate opt-in setup for each adapter (#156, #161, #166).
-- Exact-ID catalog lookup and free-text search through `explain` (#128, #211).
+- Exact-ID catalog lookup and free-text search through `explain` (#128).
 - Counterfactual test verification and optional local API evidence (#126, #151).
 
 ### Fixed
