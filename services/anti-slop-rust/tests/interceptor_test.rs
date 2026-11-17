@@ -165,6 +165,20 @@ diff --git a/tpl.ts b/tpl.ts
  finish();
 "#;
     assert!(swallow_findings(diff).is_empty());
+
+    let nested = r#"
+diff --git a/tpl.ts b/tpl.ts
+--- a/tpl.ts
++++ b/tpl.ts
+@@ -1 +1,6 @@
++const tpl = `outer ${`
++try { run(); } catch (e) {
++}
++`} tail ${`{`}`;
++try { real(); } catch (e) {
++}
+"#;
+    assert_eq!(swallow_findings(nested), vec![5]);
 }
 
 #[test]

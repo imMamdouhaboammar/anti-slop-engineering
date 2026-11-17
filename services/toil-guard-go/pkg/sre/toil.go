@@ -241,8 +241,7 @@ func codeViewsCLike(filePath string, lines, code []string, comments [][]commentS
 		strings.HasSuffix(filePath, ".ts") || strings.HasSuffix(filePath, ".tsx") ||
 		strings.HasSuffix(filePath, ".mjs") || strings.HasSuffix(filePath, ".cjs")
 	inBlockComment := false
-	inTemplate := false
-	templateExprDepth := 0
+	var templateStack []int
 	for i, line := range lines {
 		var b strings.Builder
 		var blockBuf strings.Builder
@@ -264,20 +263,20 @@ func codeViewsCLike(filePath string, lines, code []string, comments [][]commentS
 				}
 				continue
 			}
-			if inTemplate && templateExprDepth == 0 {
+			if len(templateStack) > 0 && templateStack[len(templateStack)-1] == 0 {
 				if runes[j] == '\\' {
 					b.WriteString("  ")
 					j += 2
 					continue
 				}
 				if runes[j] == '`' {
-					inTemplate = false
+					templateStack = templateStack[:len(templateStack)-1]
 					b.WriteByte(' ')
 					j++
 					continue
 				}
 				if runes[j] == '$' && j+1 < len(runes) && runes[j+1] == '{' {
-					templateExprDepth = 1
+					templateStack[len(templateStack)-1] = 1
 					b.WriteString("  ")
 					j += 2
 					continue
@@ -300,7 +299,7 @@ func codeViewsCLike(filePath string, lines, code []string, comments [][]commentS
 				continue
 			}
 			if templates && c == '`' {
-				inTemplate = true
+				templateStack = append(templateStack, 0)
 				b.WriteByte(' ')
 				j++
 				continue
@@ -321,12 +320,17 @@ func codeViewsCLike(filePath string, lines, code []string, comments [][]commentS
 				b.WriteByte(' ')
 				continue
 			}
-			if inTemplate && templateExprDepth > 0 {
+			if len(templateStack) > 0 {
+				top := len(templateStack) - 1
 				if c == '{' {
-					templateExprDepth++
-				}
-				if c == '}' {
-					templateExprDepth--
+					templateStack[top]++
+				} else if c == '}' {
+					templateStack[top]--
+					if templateStack[top] == 0 {
+						b.WriteByte(' ')
+						j++
+						continue
+					}
 				}
 			}
 			b.WriteRune(c)

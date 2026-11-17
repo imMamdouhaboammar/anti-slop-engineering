@@ -609,8 +609,7 @@ fn code_views_clike(
         .iter()
         .any(|ext| file.ends_with(ext));
     let mut in_block_comment = false;
-    let mut in_template = false;
-    let mut template_expr_depth = 0usize;
+    let mut template_stack: Vec<usize> = Vec::new();
     for hl in hunk {
         if hl.kind == b'-' {
             code.push(String::new());
@@ -638,19 +637,21 @@ fn code_views_clike(
                 }
                 continue;
             }
-            if in_template && template_expr_depth == 0 {
+            if template_stack.last() == Some(&0) {
                 match chars[j] {
                     '\\' => {
                         out.push_str("  ");
                         j += 2;
                     }
                     '`' => {
-                        in_template = false;
+                        template_stack.pop();
                         out.push(' ');
                         j += 1;
                     }
                     '$' if j + 1 < chars.len() && chars[j + 1] == '{' => {
-                        template_expr_depth = 1;
+                        if let Some(depth) = template_stack.last_mut() {
+                            *depth = 1;
+                        }
                         out.push_str("  ");
                         j += 2;
                     }
@@ -674,7 +675,7 @@ fn code_views_clike(
                     j += 2;
                 }
                 '`' if templates => {
-                    in_template = true;
+                    template_stack.push(0);
                     out.push(' ');
                     j += 1;
                 }
@@ -695,11 +696,16 @@ fn code_views_clike(
                     out.push(' ');
                 }
                 c => {
-                    if in_template {
+                    if let Some(depth) = template_stack.last_mut() {
                         if c == '{' {
-                            template_expr_depth += 1;
+                            *depth += 1;
                         } else if c == '}' {
-                            template_expr_depth -= 1;
+                            *depth -= 1;
+                            if *depth == 0 {
+                                out.push(' ');
+                                j += 1;
+                                continue;
+                            }
                         }
                     }
                     out.push(c);

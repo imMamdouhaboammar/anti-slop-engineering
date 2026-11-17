@@ -89,6 +89,10 @@ func TestCheckToilAndScale_LiteralContentsNotFlagged(t *testing.T) {
 	if got := swallowLines("tpl.ts", "const tpl = `\n} catch (e) {\n}\n`;\n"); len(got) != 0 {
 		t.Fatalf("expected no findings inside template literal, got %v", got)
 	}
+	nested := "const tpl = `outer ${`\ntry { run(); } catch (e) {\n}\n`} tail ${`{`}`;\ntry { real(); } catch (e) {\n}\n"
+	if got := swallowLines("tpl.ts", nested); len(got) != 1 || got[0] != 5 {
+		t.Fatalf("expected only line 5 flagged after nested template literal, got %v", got)
+	}
 	if got := swallowLines("doc.py", "message = \"\"\"\nexcept Exception:\n    pass\n\"\"\"\n"); len(got) != 0 {
 		t.Fatalf("expected no findings inside triple-quoted string, got %v", got)
 	}
