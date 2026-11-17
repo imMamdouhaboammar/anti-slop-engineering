@@ -93,7 +93,7 @@ SRE_PATTERNS = [
         'SCALE',
         'SCALE_UNBOUNDED_CONCURRENCY',
         'review',
-        sre_compile.compile(r'(?i)(?:Promise\.all\s*\(\s*(?:\w+|\w+\.[a-zA-Z0-9_]+)\.map\s*\(|asyncio\.gather\s*\(\s*\*\s*\[)'),
+        sre_compile.compile(r'(?i)(?:Promise\.all\s*\(\s*(?:\w+|\w+\.[a-zA-Z0-9_]+)\.map\s*\(|asyncio\.gather\s*\(\s*\*\s*(?:\[|\w))'),
         'SCALE violation: Unbounded concurrency mapping detected without pool, concurrency limiter, or chunking. Constrain parallel operations with a semaphore or worker queue to prevent resource starvation.'
     ),
     # SCALE: Swallowed exceptions causing operational toil

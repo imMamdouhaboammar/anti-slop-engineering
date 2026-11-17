@@ -251,6 +251,30 @@ class SreGuardTests(unittest.TestCase):
         finding_ids = [f['id'] for f in report['findings']]
         self.assertIn('SCALE_UNBOUNDED_CONCURRENCY', finding_ids)
 
+    def test_flags_scale_unbounded_concurrency_gather_star_tasks(self):
+        (self.repo / 'src' / 'fanout.py').write_text(
+            "import asyncio\n"
+            "\n"
+            "async def run_all(tasks):\n"
+            "    return await asyncio.gather(*tasks)\n"
+        )
+        git(self.repo, 'add', 'src/fanout.py')
+        res, report = self.run_sre('--base', 'HEAD', '--json')
+        finding_ids = [f['id'] for f in report['findings']]
+        self.assertIn('SCALE_UNBOUNDED_CONCURRENCY', finding_ids)
+
+    def test_does_not_flag_gather_with_fixed_arguments(self):
+        (self.repo / 'src' / 'fanout.py').write_text(
+            "import asyncio\n"
+            "\n"
+            "async def run_pair(first, second):\n"
+            "    return await asyncio.gather(first(), second())\n"
+        )
+        git(self.repo, 'add', 'src/fanout.py')
+        res, report = self.run_sre('--base', 'HEAD', '--json')
+        finding_ids = [f['id'] for f in report['findings']]
+        self.assertNotIn('SCALE_UNBOUNDED_CONCURRENCY', finding_ids)
+
     def test_flags_scale_toil_error_swallow(self):
         (self.repo / 'src' / 'toil.py').write_text(
             "def run_job():\n"
