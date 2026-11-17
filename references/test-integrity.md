@@ -64,4 +64,4 @@ python3 scripts/targeted_mutation.py --source scripts/rule_registry.py \
   --function finding_metadata --test tests/test_rule_registry.py --base HEAD --seed 17
 ~~~
 
-The command negates up to four changed conditions from direct `if` statements. It runs a passing baseline and each mutant in fresh copies of tracked files. The score counts mutants that passed or failed assertions in the same test cases. Other results are reported separately. Select trusted offline unit tests. The child process has your account's permissions.
+The command negates up to four changed conditions from direct `if` statements. Pass `--operator flip_boolean_return` to flip changed `True` or `False` values in direct `return` statements. It runs a passing baseline and each mutant in fresh copies of tracked files. The score counts mutants that passed or failed assertions in the same test cases. Other results are reported separately. Select trusted offline unit tests. The child process has your account's permissions.
