@@ -108,7 +108,9 @@ class AstSlopGuardTests(unittest.TestCase):
 
     def git(self, *args):
         return subprocess.run(
-            ['git', '-C', str(self.repo), *args], text=True, capture_output=True, check=True
+            ['git', '-c', 'commit.gpgSign=false', '-c', 'core.hooksPath=/dev/null',
+             '-C', str(self.repo), *args],
+            text=True, capture_output=True, check=True,
         )
 
     def init_git_repo(self):

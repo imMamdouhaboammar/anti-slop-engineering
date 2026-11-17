@@ -175,13 +175,7 @@ impl ShitInterceptor {
         }
 
         if self.re_swallow_error.is_match(code) {
-            findings.push(Self::hardening_blocker(
-                file,
-                line_no,
-                "STS-H02",
-                "Hypothetical hardening: swallowing error without logging or structured recovery.",
-                "Handle errors explicitly or propagate them with actionable context.",
-            ));
+            findings.push(swallow_finding(file, line_no));
         }
 
         if self.re_hypothetical_wrapper.is_match(code) {
@@ -235,6 +229,16 @@ impl ShitInterceptor {
             suggestion: suggestion.to_string(),
         }
     }
+}
+
+pub(crate) fn swallow_finding(file: &str, line_no: usize) -> Finding {
+    ShitInterceptor::hardening_blocker(
+                file,
+                line_no,
+                "STS-H02",
+                "Hypothetical hardening: swallowing error without logging or structured recovery.",
+                "Handle errors explicitly or propagate them with actionable context.",
+    )
 }
 
 pub(crate) fn extract_hunk_line(line: &str) -> Option<usize> {
