@@ -238,7 +238,7 @@ impl ShitInterceptor {
         file: &str,
         hunk: &[HunkLine],
         code: &[String],
-        comments: &[String],
+        comments: &[Vec<(usize, String)>],
     ) -> Vec<Finding> {
         let mut findings = Vec::new();
         for (idx, hl) in hunk.iter().enumerate() {
@@ -264,20 +264,20 @@ impl ShitInterceptor {
         &self,
         hunk: &[HunkLine],
         code: &[String],
-        comments: &[String],
+        comments: &[Vec<(usize, String)>],
         idx: usize,
         indent: usize,
     ) -> Option<usize> {
         let mut noop = false;
         let mut first_added_noop = None;
-        let mut reason = self.re_ignore_reason.is_match(&comments[idx]);
+        let mut reason = has_ignore_reason(&comments[idx], &self.re_ignore_reason);
         for (j, hl) in hunk.iter().enumerate().skip(idx + 1) {
             if hl.kind == b'-' {
                 continue;
             }
             let trimmed = code[j].trim();
             if trimmed.is_empty() {
-                reason |= self.re_ignore_reason.is_match(&comments[j]);
+                reason |= has_ignore_reason(&comments[j], &self.re_ignore_reason);
                 continue;
             }
             if indent_width(&code[j]) <= indent {
@@ -290,7 +290,7 @@ impl ShitInterceptor {
                 }
                 return None;
             }
-            reason |= self.re_ignore_reason.is_match(&comments[j]);
+            reason |= has_ignore_reason(&comments[j], &self.re_ignore_reason);
             if trimmed == "pass" || trimmed == "..." {
                 noop = true;
                 if hl.kind == b'+' && first_added_noop.is_none() {
@@ -453,13 +453,19 @@ fn indent_width(code_line: &str) -> usize {
         .count()
 }
 
+fn has_ignore_reason(comments: &[(usize, String)], re_ignore_reason: &Regex) -> bool {
+    comments
+        .iter()
+        .any(|(_, text)| re_ignore_reason.is_match(text))
+}
+
 /// Reports whether the brace block opening at `brace_char` in
 /// code[start] contains no code before its matching close brace and no
 /// documented ignore reason in its comments.
 fn brace_block_is_empty(
     hunk: &[HunkLine],
     code: &[String],
-    comments: &[String],
+    comments: &[Vec<(usize, String)>],
     start: usize,
     brace_char: usize,
     re_ignore_reason: &Regex,
@@ -470,9 +476,9 @@ fn brace_block_is_empty(
         if hl.kind == b'-' {
             continue;
         }
-        if depth > 0 && re_ignore_reason.is_match(&comments[i]) {
-            return false;
-        }
+        let min_col = if i == start { brace_char } else { 0 };
+        let mut max_col = usize::MAX;
+        let mut closed = false;
         for (j, c) in code[i].chars().enumerate() {
             if i == start && j < brace_char {
                 continue;
@@ -482,7 +488,9 @@ fn brace_block_is_empty(
                 '}' => {
                     depth -= 1;
                     if depth == 0 {
-                        return empty;
+                        max_col = j;
+                        closed = true;
+                        break;
                     }
                 }
                 _ => {
@@ -491,6 +499,15 @@ fn brace_block_is_empty(
                     }
                 }
             }
+        }
+        if comments[i]
+            .iter()
+            .any(|(col, text)| *col >= min_col && *col < max_col && re_ignore_reason.is_match(text))
+        {
+            return false;
+        }
+        if closed {
+            return empty;
         }
     }
     false
@@ -502,7 +519,7 @@ fn brace_block_is_empty(
 /// block comments) are tracked across the hunk's context and added
 /// lines so handler-shaped text inside them is never treated as code.
 /// Deleted lines belong to the old file and contribute empty views.
-fn hunk_code_views(file: &str, hunk: &[HunkLine]) -> (Vec<String>, Vec<String>) {
+fn hunk_code_views(file: &str, hunk: &[HunkLine]) -> (Vec<String>, Vec<Vec<(usize, String)>>) {
     let mut code = Vec::with_capacity(hunk.len());
     let mut comments = Vec::with_capacity(hunk.len());
     if file.ends_with(".py") {
@@ -513,17 +530,21 @@ fn hunk_code_views(file: &str, hunk: &[HunkLine]) -> (Vec<String>, Vec<String>) 
     (code, comments)
 }
 
-fn code_views_python(hunk: &[HunkLine], code: &mut Vec<String>, comments: &mut Vec<String>) {
+fn code_views_python(
+    hunk: &[HunkLine],
+    code: &mut Vec<String>,
+    comments: &mut Vec<Vec<(usize, String)>>,
+) {
     let mut triple: Option<[char; 3]> = None;
     for hl in hunk {
         if hl.kind == b'-' {
             code.push(String::new());
-            comments.push(String::new());
+            comments.push(Vec::new());
             continue;
         }
         let chars: Vec<char> = hl.text.chars().collect();
         let mut out = String::new();
-        let mut comment = String::new();
+        let mut line_comments = Vec::new();
         let mut j = 0;
         while j < chars.len() {
             if let Some(t) = triple {
@@ -548,7 +569,7 @@ fn code_views_python(hunk: &[HunkLine], code: &mut Vec<String>, comments: &mut V
             }
             match chars[j] {
                 '#' => {
-                    comment = chars[j..].iter().collect();
+                    line_comments.push((out.chars().count(), chars[j..].iter().collect()));
                     break;
                 }
                 '"' | '\'' => {
@@ -574,7 +595,7 @@ fn code_views_python(hunk: &[HunkLine], code: &mut Vec<String>, comments: &mut V
             }
         }
         code.push(out);
-        comments.push(comment);
+        comments.push(line_comments);
     }
 }
 
@@ -582,7 +603,7 @@ fn code_views_clike(
     file: &str,
     hunk: &[HunkLine],
     code: &mut Vec<String>,
-    comments: &mut Vec<String>,
+    comments: &mut Vec<Vec<(usize, String)>>,
 ) {
     let templates = [".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"]
         .iter()
@@ -593,20 +614,25 @@ fn code_views_clike(
     for hl in hunk {
         if hl.kind == b'-' {
             code.push(String::new());
-            comments.push(String::new());
+            comments.push(Vec::new());
             continue;
         }
         let chars: Vec<char> = hl.text.chars().collect();
         let mut out = String::new();
-        let mut comment = String::new();
+        let mut line_comments = Vec::new();
+        let mut block_buf = String::new();
+        let mut block_col = 0usize;
         let mut j = 0;
         while j < chars.len() {
             if in_block_comment {
                 if chars[j] == '*' && j + 1 < chars.len() && chars[j + 1] == '/' {
                     in_block_comment = false;
+                    block_buf.push_str("*/");
+                    line_comments.push((block_col, std::mem::take(&mut block_buf)));
                     out.push_str("  ");
                     j += 2;
                 } else {
+                    block_buf.push(chars[j]);
                     out.push(' ');
                     j += 1;
                 }
@@ -637,11 +663,13 @@ fn code_views_clike(
             }
             match chars[j] {
                 '/' if j + 1 < chars.len() && chars[j + 1] == '/' => {
-                    comment = chars[j..].iter().collect();
+                    line_comments.push((out.chars().count(), chars[j..].iter().collect()));
                     break;
                 }
                 '/' if j + 1 < chars.len() && chars[j + 1] == '*' => {
                     in_block_comment = true;
+                    block_col = out.chars().count();
+                    block_buf.push_str("/*");
                     out.push_str("  ");
                     j += 2;
                 }
@@ -679,8 +707,11 @@ fn code_views_clike(
                 }
             }
         }
+        if in_block_comment {
+            line_comments.push((block_col, block_buf));
+        }
         code.push(out);
-        comments.push(comment);
+        comments.push(line_comments);
     }
 }
 

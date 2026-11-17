@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/imMamdouhaboammar/anti-slop-engineering/services/toil-guard-go/pkg/model"
@@ -163,14 +164,19 @@ var (
 	reGoErrOpen    = regexp.MustCompile(`if\s+err\s*!=\s*nil\s*\{`)
 )
 
+type commentSpan struct {
+	col  int
+	text string
+}
+
 // codeViews returns, per line, the code with string and comment content
 // blanked out, plus the comment text found on that line. Multiline
 // literals (Python triple quotes, JS template literals, C block
 // comments) are tracked across lines so handler-shaped text inside
 // them is never treated as code.
-func codeViews(filePath string, lines []string) ([]string, []string) {
+func codeViews(filePath string, lines []string) ([]string, [][]commentSpan) {
 	code := make([]string, len(lines))
-	comments := make([]string, len(lines))
+	comments := make([][]commentSpan, len(lines))
 	if strings.HasSuffix(filePath, ".py") {
 		codeViewsPython(lines, code, comments)
 		return code, comments
@@ -179,7 +185,7 @@ func codeViews(filePath string, lines []string) ([]string, []string) {
 	return code, comments
 }
 
-func codeViewsPython(lines, code, comments []string) {
+func codeViewsPython(lines, code []string, comments [][]commentSpan) {
 	triple := ""
 	for i, line := range lines {
 		var b strings.Builder
@@ -204,7 +210,7 @@ func codeViewsPython(lines, code, comments []string) {
 			}
 			c := runes[j]
 			if c == '#' {
-				comments[i] = string(runes[j:])
+				comments[i] = append(comments[i], commentSpan{col: utf8.RuneCountInString(b.String()), text: string(runes[j:])})
 				break
 			}
 			if c == '"' || c == '\'' {
@@ -230,7 +236,7 @@ func codeViewsPython(lines, code, comments []string) {
 	}
 }
 
-func codeViewsCLike(filePath string, lines, code, comments []string) {
+func codeViewsCLike(filePath string, lines, code []string, comments [][]commentSpan) {
 	templates := strings.HasSuffix(filePath, ".js") || strings.HasSuffix(filePath, ".jsx") ||
 		strings.HasSuffix(filePath, ".ts") || strings.HasSuffix(filePath, ".tsx") ||
 		strings.HasSuffix(filePath, ".mjs") || strings.HasSuffix(filePath, ".cjs")
@@ -239,14 +245,20 @@ func codeViewsCLike(filePath string, lines, code, comments []string) {
 	templateExprDepth := 0
 	for i, line := range lines {
 		var b strings.Builder
+		var blockBuf strings.Builder
+		blockCol := 0
 		runes := []rune(line)
 		for j := 0; j < len(runes); {
 			if inBlockComment {
 				if runes[j] == '*' && j+1 < len(runes) && runes[j+1] == '/' {
 					inBlockComment = false
+					blockBuf.WriteString("*/")
+					comments[i] = append(comments[i], commentSpan{col: blockCol, text: blockBuf.String()})
+					blockBuf.Reset()
 					b.WriteString("  ")
 					j += 2
 				} else {
+					blockBuf.WriteRune(runes[j])
 					b.WriteByte(' ')
 					j++
 				}
@@ -276,11 +288,13 @@ func codeViewsCLike(filePath string, lines, code, comments []string) {
 			}
 			c := runes[j]
 			if c == '/' && j+1 < len(runes) && runes[j+1] == '/' {
-				comments[i] = string(runes[j:])
+				comments[i] = append(comments[i], commentSpan{col: utf8.RuneCountInString(b.String()), text: string(runes[j:])})
 				break
 			}
 			if c == '/' && j+1 < len(runes) && runes[j+1] == '*' {
 				inBlockComment = true
+				blockCol = utf8.RuneCountInString(b.String())
+				blockBuf.WriteString("/*")
 				b.WriteString("  ")
 				j += 2
 				continue
@@ -317,6 +331,9 @@ func codeViewsCLike(filePath string, lines, code, comments []string) {
 			}
 			b.WriteRune(c)
 			j++
+		}
+		if inBlockComment {
+			comments[i] = append(comments[i], commentSpan{col: blockCol, text: blockBuf.String()})
 		}
 		code[i] = b.String()
 	}
@@ -365,18 +382,27 @@ func blockSwallowedErrorLines(filePath string, lines []string) map[int]bool {
 	return findings
 }
 
-func pythonBlockSwallows(code, comments []string, findings map[int]bool) {
+func commentsHaveIgnoreReason(spans []commentSpan) bool {
+	for _, span := range spans {
+		if reIgnoredErrorReason.MatchString(span.text) {
+			return true
+		}
+	}
+	return false
+}
+
+func pythonBlockSwallows(code []string, comments [][]commentSpan, findings map[int]bool) {
 	for i, cv := range code {
 		m := rePythonExcept.FindStringSubmatch(cv)
 		if m == nil {
 			continue
 		}
 		indent := len(m[1])
-		noop, real, reason := 0, false, reIgnoredErrorReason.MatchString(comments[i])
+		noop, real, reason := 0, false, commentsHaveIgnoreReason(comments[i])
 		for j := i + 1; j < len(code); j++ {
 			trimmed := strings.TrimSpace(code[j])
 			if trimmed == "" {
-				if reIgnoredErrorReason.MatchString(comments[j]) {
+				if commentsHaveIgnoreReason(comments[j]) {
 					reason = true
 				}
 				continue
@@ -384,7 +410,7 @@ func pythonBlockSwallows(code, comments []string, findings map[int]bool) {
 			if indentWidth(code[j]) <= indent {
 				break
 			}
-			if reIgnoredErrorReason.MatchString(comments[j]) {
+			if commentsHaveIgnoreReason(comments[j]) {
 				reason = true
 			}
 			if trimmed == "pass" || trimmed == "..." {
@@ -403,32 +429,40 @@ func pythonBlockSwallows(code, comments []string, findings map[int]bool) {
 // braceBlockIsEmpty reports whether the brace block opening at
 // code[startLine][bracePos] contains no code before its matching close
 // brace, and no documented ignore reason in its comments.
-func braceBlockIsEmpty(code, comments []string, startLine, bracePos int) bool {
+func braceBlockIsEmpty(code []string, comments [][]commentSpan, startLine, bracePos int) bool {
 	depth := 0
 	empty := true
 	for i := startLine; i < len(code); i++ {
-		if reIgnoredErrorReason.MatchString(comments[i]) && depth > 0 {
-			return false
-		}
-		runes := []rune(code[i])
-		start := 0
+		minCol := 0
 		if i == startLine {
-			start = bracePos
+			minCol = bracePos
 		}
-		for j := start; j < len(runes); j++ {
+		maxCol := len(code[i]) + 1
+		closed := false
+		runes := []rune(code[i])
+		for j := minCol; j < len(runes) && !closed; j++ {
 			switch runes[j] {
 			case '{':
 				depth++
 			case '}':
 				depth--
 				if depth == 0 {
-					return empty
+					maxCol = j
+					closed = true
 				}
 			default:
-				if depth > 0 && runes[j] != ' ' && runes[j] != '\t' {
+				if depth > 0 && !unicode.IsSpace(runes[j]) {
 					empty = false
 				}
 			}
+		}
+		for _, span := range comments[i] {
+			if span.col >= minCol && span.col < maxCol && reIgnoredErrorReason.MatchString(span.text) {
+				return false
+			}
+		}
+		if closed {
+			return empty
 		}
 	}
 	return false

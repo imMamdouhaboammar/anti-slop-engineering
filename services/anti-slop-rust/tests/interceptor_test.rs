@@ -215,3 +215,70 @@ diff --git a/job.py b/job.py
 "#;
     assert!(swallow_findings(diff).is_empty());
 }
+
+#[test]
+fn test_catch_opening_line_and_block_comment_reasons_not_flagged() {
+    let opening_line = r#"
+diff --git a/app.ts b/app.ts
+--- a/app.ts
++++ b/app.ts
+@@ -1,4 +1,5 @@
++try {
++    invoke();
++} catch (err) { // intentional
++}
+"#;
+    assert!(swallow_findings(opening_line).is_empty());
+
+    let inline_block = r#"
+diff --git a/app.ts b/app.ts
+--- a/app.ts
++++ b/app.ts
+@@ -1,4 +1,4 @@
++try {
++    invoke();
++} catch (err) { /* intentional */ }
+"#;
+    assert!(swallow_findings(inline_block).is_empty());
+
+    let multiline_block = r#"
+diff --git a/app.ts b/app.ts
+--- a/app.ts
++++ b/app.ts
+@@ -1,4 +1,8 @@
++try {
++    invoke();
++} catch (err) {
++/*
++ * intentional: best-effort cleanup
++ */
++}
+"#;
+    assert!(swallow_findings(multiline_block).is_empty());
+}
+
+#[test]
+fn test_comment_outside_catch_block_does_not_exempt_empty_handler() {
+    let before_catch = r#"
+diff --git a/app.ts b/app.ts
+--- a/app.ts
++++ b/app.ts
+@@ -1,4 +1,5 @@
++try {
++    invoke();
++/* intentional */ } catch (err) {
++}
+"#;
+    assert_eq!(swallow_findings(before_catch), vec![3]);
+
+    let unrelated_block = r#"
+diff --git a/app.ts b/app.ts
+--- a/app.ts
++++ b/app.ts
+@@ -1,4 +1,4 @@
++try {
++    invoke();
++} catch (err) { /* todo */ }
+"#;
+    assert_eq!(swallow_findings(unrelated_block), vec![3]);
+}

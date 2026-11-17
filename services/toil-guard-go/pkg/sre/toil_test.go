@@ -107,3 +107,64 @@ func TestCheckToilAndScale_UnparseableGoFallback(t *testing.T) {
 		t.Fatalf("expected one swallow finding at line 5, got %v", got)
 	}
 }
+
+func TestCheckToilAndScale_BraceOpeningAndBlockCommentIgnores(t *testing.T) {
+	cases := []struct {
+		name    string
+		file    string
+		content string
+	}{
+		{
+			name:    "ts opening line comment",
+			file:    "app.ts",
+			content: "try {\n  work();\n} catch (e) { // intentional\n}\n",
+		},
+		{
+			name:    "ts inline block comment",
+			file:    "app.ts",
+			content: "try {\n  work();\n} catch (e) { /* intentional */ }\n",
+		},
+		{
+			name:    "ts multiline block comment",
+			file:    "app.ts",
+			content: "try {\n  work();\n} catch (e) {\n/*\n * intentional: best-effort cleanup\n */\n}\n",
+		},
+		{
+			name:    "go fallback opening line comment",
+			file:    "main.go",
+			content: "package main\nfunc f() {\n\tif err != nil { // expected\n\t}\n}\nfunc broken( {\n",
+		},
+		{
+			name:    "go fallback inline block comment",
+			file:    "main.go",
+			content: "package main\nfunc f() {\n\tif err != nil { /* expected */ }\n}\nfunc broken( {\n",
+		},
+	}
+	for _, tc := range cases {
+		if got := swallowLines(tc.file, tc.content); len(got) != 0 {
+			t.Errorf("%s: expected no findings, got %v", tc.name, got)
+		}
+	}
+}
+
+func TestCheckToilAndScale_BraceCommentOutsideDoesNotExempt(t *testing.T) {
+	before := "try {\n  work();\n/* intentional */ } catch (e) {\n}\n"
+	if got := swallowLines("app.ts", before); len(got) != 1 || got[0] != 3 {
+		t.Fatalf("expected finding at line 3, got %v", got)
+	}
+	unrelated := "try {\n  work();\n} catch (e) { /* todo */ }\n"
+	if got := swallowLines("app.ts", unrelated); len(got) != 1 || got[0] != 3 {
+		t.Fatalf("expected finding at line 3, got %v", got)
+	}
+}
+
+func TestCheckToilAndScale_CRLFMultilineHandlers(t *testing.T) {
+	ts := "try {\r\n  work();\r\n} catch (e) {\r\n}\r\n"
+	if got := swallowLines("app.ts", ts); len(got) != 1 || got[0] != 3 {
+		t.Fatalf("expected CRLF catch finding at line 3, got %v", got)
+	}
+	goFallback := "package main\r\nfunc f() {\r\n\tif err != nil {\r\n\t}\r\n}\r\nfunc broken( {\r\n"
+	if got := swallowLines("main.go", goFallback); len(got) != 1 || got[0] != 3 {
+		t.Fatalf("expected CRLF Go fallback finding at line 3, got %v", got)
+	}
+}
