@@ -68,7 +68,7 @@ class CompositeActionInputTests(unittest.TestCase):
                 "base": "HEAD",
                 "pr-title": title,
                 "pr-body-file": "",
-                "template-file": ".github/pull_request_template.md",
+                "template-file": ".github/PULL_REQUEST_TEMPLATE.md",
                 "canary-token": "",
                 "fail-on-blocker": "false",
             }

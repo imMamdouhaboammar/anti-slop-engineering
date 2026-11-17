@@ -93,7 +93,7 @@ SRE_PATTERNS = [
         'SCALE',
         'SCALE_UNBOUNDED_CONCURRENCY',
         'review',
-        sre_compile.compile(r'(?i)(?:Promise\.all\s*\(\s*(?:\w+|\w+\.[a-zA-Z0-9_]+)\.map\s*\(|asyncio\.gather\s*\(\s*\*\s*\[)'),
+        sre_compile.compile(r'(?i)(?:Promise\.all\s*\(\s*(?:\w+|\w+\.[a-zA-Z0-9_]+)\.map\s*\(|asyncio\.gather\s*\(\s*\*\s*(?:\[|\w))'),
         'SCALE violation: Unbounded concurrency mapping detected without pool, concurrency limiter, or chunking. Constrain parallel operations with a semaphore or worker queue to prevent resource starvation.'
     ),
     # SCALE: Swallowed exceptions causing operational toil
@@ -375,6 +375,21 @@ def build_sre_summary(file_count, findings, base=None):
     return report
 
 
+def count_blocking_blockers(findings, diff_mode=False):
+    """Count blockers that block the exit verdict.
+
+    In diff mode, a blocker whose line is outside the active diff
+    (``in_active_diff`` is False) is pre-existing: it is still reported
+    and still counted in ``summary['blockers']``, but it does not block.
+    Findings without ``in_active_diff`` (full-file scans) always block.
+    """
+    return sum(
+        1 for f in findings
+        if f['severity'] == 'blocker'
+        and not (diff_mode and f.get('in_active_diff') is False)
+    )
+
+
 def scan_git_diff(repo, base='HEAD', max_nesting=4, min_dup_lines=4, max_function_lines=80):
     """Analyze the worktree against a base commit using Git change-set evidence."""
     repo = pathlib.Path(repository_root(repo)).resolve()
@@ -445,7 +460,7 @@ def main():
     p.add_argument('--files', nargs='*', help='Explicit file paths or directories to analyze')
     p.add_argument('--json', action='store_true', help='Output machine-readable JSON report')
     p.add_argument('--strict', '--fail-on-violation', dest='strict', action='store_true',
-                   help='Exit code 2 if any SRE blocker is identified')
+                   help='Exit code 2 if a blocking SRE blocker is identified (diff mode: active-diff blockers only)')
     p.add_argument('--max-nesting', type=int, default=4, help='Max allowed nesting depth for KISS check (default: 4)')
     p.add_argument('--min-dup-lines', type=int, default=4, help='Min consecutive lines to flag as DRY duplicate (default: 4)')
     p.add_argument('--max-function-lines', type=int, default=80, help='Max lines for single function (default: 80)')
@@ -459,8 +474,10 @@ def main():
             'max_function_lines': args.max_function_lines
         }
         if args.files:
+            diff_mode = False
             report = scan_paths(args.files, **common_kwargs)
         else:
+            diff_mode = True
             base = args.base or 'HEAD'
             report = scan_git_diff(
                 pathlib.Path(args.repo).resolve(),
@@ -489,9 +506,11 @@ def main():
             print(f"[{sev}][{cat}] {f['id']} at {loc}")
             print(f"  Evidence: {f.get('evidence', '')}")
             print(f"  Action:   {f.get('action', '')}")
+            if diff_mode and f.get('in_active_diff') is False:
+                print("  Note:     Pre-existing finding outside the active diff; non-blocking in diff mode.")
             print()
 
-    if args.strict and report['summary']['blockers'] > 0:
+    if args.strict and count_blocking_blockers(report['findings'], diff_mode=diff_mode) > 0:
         return 2
 
     return 0

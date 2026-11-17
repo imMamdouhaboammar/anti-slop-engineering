@@ -5,6 +5,68 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] - 2026-11-14
+
+### Added
+- **Interactive Plugin Installer (#41):**
+  - Core-first interactive plugin selection during installation, with reproducible non-interactive alternatives.
+- **Unified Guard Catalog in Audit Runner (#50):**
+  - Full shipped guard catalog wired into the unified `audit` runner instead of a partial subset.
+- **Discoverability (#37, #45):**
+  - Curated skills.sh repository page groupings and a live skills.sh install count badge in the README.
+
+### Fixed
+- **Composite Action:** Audit outcomes are aggregated once and the CI status is preserved (#34).
+- **Audit Integrity:** Unified audit fails closed on incomplete guard execution instead of reporting a partial pass (#36).
+- **Installer Safety:** User changes are preserved during installation and updates (#39); CLI links resolve from verified installation targets (#40); checkout-local files stay out of installs and Git (#55).
+- **CLI Contracts:** Exit contracts aligned across `check`, `audit`, and `check-all` (#52); native build and daemonless CLI acceptance criteria fulfilled (#53); audit CLI compatibility restored on Python 3.14 (#54).
+- **Audit Remediation:** The nonexistent `fix` command was replaced with a reviewable remediation contract (#49).
+- **Toil Guard (Go):** Clean Git repositories return a zero-change report instead of an error (#42).
+- **Forensic Hunter:** SQL injection detection calibrated and false positives on template strings eliminated (#46).
+- **Skill Validation:** Clean-checkout skill validator added and `AGENTS.md` pointers repaired (#47).
+- **Release Staging:** Bumped manifests are staged selectively and Git errors fail loudly during release bumps (#44).
+
+### Security
+- **Composite Action:** Script injection from caller-controlled inputs is prevented (#35).
+
+### Changed
+- **CI & Tests:** Bun security suite wired into CI with hardened assertions (#43); shared native/Python differential parity fixtures added with a CI contract gate (#48); package-install offline test resolves real Bash and npm (#56).
+- **Documentation:** Install Anti-Slop lifecycle documentation and test metrics expanded in the README (#57).
+
+## [1.7.0] - 2026-11-10
+
+### Added
+- **Polyglot Guard Fleet:**
+  - 40 zero-dependency Python guards (Python >= 3.9) covering SRE discipline, AST slop, PR boundary hygiene, honeypots, comment budget, cognitive attention, invariant stewardship, demock verification, and Mandela test leakage.
+- **AST Slop Gate & Oxlint Plugins:**
+  - 15 AST rules and Effect AST linters via `bunx anti-slop-engineering install-oxlint`.
+- **Native Microservices:**
+  - Rust microservice (`anti-slop-rust`, axum 0.8.9) and Go microservice (`toil-guard`) staged under `dist/bin/`.
+
+### Changed
+- **Distribution:** Published and verified live on npm as `anti-slop-engineering@1.7.0`; bit-for-bit reproducible Codex / ChatGPT plugin archive (`anti-slop-engineering-1.7.0.zip`, SHA-256 verified) bundled with `SHA256SUMS`.
+- **CI & Dependencies:** GitHub Actions and toolchain setup modernized across workflows (checkout 7.0.1, setup-python 7.1.0, setup-node 7.1.0, setup-go 7.0.0, setup-bun 2.2.0, axum 0.8.9).
+
+## [1.6.0] - 2026-11-09
+
+### Added
+- **In-Flight Execution Guard (`scripts/exec_guard.py` & CLI `exec` / `exec-guard`):**
+  - Intercepts agent tool actions (PreToolUse) in real time before execution.
+  - Parses `$anti-slop [mode] [level] [files=...] [hash=...] [deps=...] [agents=N] -- [task]` directives.
+  - Enforces file boundary locks (`PATH_OUTSIDE_CONTRACT`), rejects mutating tools during read-only `review`/`answer`/`monitor` modes, issues single-use runner tickets for dependencies (`deps=ask`), and bounds concurrent subagent fanout.
+- **Pairwise Evaluation Case Runner (`scripts/run_cases.py` & CLI `cases`):**
+  - Declarative Good/Bad evaluation suite with 16 pairs across Scope Creep (S), Hypothetical Hardening (H), Intent Violation (I), and Task Thrashing (T).
+  - Cases validated against `schemas/anti-slop-case.schema.json`.
+- **Install Anti-Slop (Oxlint & Skill):**
+  - Agent slash command `/install-anti-slop` and CLI runner `bunx anti-slop-engineering install-oxlint`.
+  - Bundled 15 AST lint rules and optional Effect plugin for TypeScript and JavaScript codebases.
+
+### Changed
+- **Distribution & Native Microservices:**
+  - Published live to the npm registry (`anti-slop-engineering@1.6.0`).
+  - Precompiled Rust (`anti-slop-rust`) and Go (`toil-guard`) microservices staged in `dist/bin/`.
+  - Deterministic archive-root plugin ZIP (`anti-slop-engineering-1.6.0.zip`) with reproducible timestamps and SHA-256 verification, accompanied by submission metadata (`reviewer-packet.json`, `SHA256SUMS`).
+
 ## [1.5.0] - 2026-11-09
 
 ### Added
