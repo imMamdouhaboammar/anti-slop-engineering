@@ -7,7 +7,6 @@ use anti_slop_rust::shit_interceptor::ShitInterceptor;
 use clap::{Parser, Subcommand};
 use std::fs;
 use std::io::{self, Read};
-use std::process::Command;
 
 #[derive(Parser)]
 #[command(name = "anti-slop-rust")]
@@ -194,16 +193,7 @@ fn run_ladder_audit(paths: Vec<String>, format: &str) -> io::Result<()> {
 }
 
 fn run_triage(base: &str, read_only: bool, format: &str) -> io::Result<()> {
-    let output = Command::new("git").args(["diff", base, "--"]).output()?;
-    if !output.status.success() {
-        return Err(io::Error::other(format!(
-            "git diff {base} failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        )));
-    }
-    let diff_content = String::from_utf8_lossy(&output.stdout).to_string();
-
-    let report = anti_slop_rust::triage_diff(&diff_content, None, read_only);
+    let report = anti_slop_rust::triage_git(base, read_only)?;
     finish_with_report(&report, format);
     Ok(())
 }

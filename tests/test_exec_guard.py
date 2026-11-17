@@ -8,6 +8,7 @@ core decision engine, approval tickets, and atomic state locks.
 import json
 import os
 import shutil
+import subprocess
 import tempfile
 import time
 import unittest
@@ -126,6 +127,69 @@ class ExecGuardShellAnalysisTests(unittest.TestCase):
         for cmd in hash_commands:
             analysis = exec_guard.analyze_shell_command(cmd)
             self.assertTrue(analysis["hash_intent"], f"Failed for {cmd}")
+
+
+class ExecGuardEnvironmentCliTests(unittest.TestCase):
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.script = Path(exec_guard.__file__)
+        setup = self.run_guard("parse-prompt", "$anti-slop change guard -- Check command policy")
+        self.assertEqual(setup.returncode, 0, setup.stderr)
+
+    def run_guard(self, *args):
+        return subprocess.run(
+            [sys.executable, self.script, *args], cwd=self.directory.name,
+            capture_output=True, text=True, check=False,
+        )
+
+    def assert_command(self, command, exit_code, outcome, reason):
+        result = self.run_guard("check-action", "--tool", "terminal", "--args", json.dumps({"command": command}))
+        self.assertEqual(result.returncode, exit_code, result.stdout + result.stderr)
+        decision = json.loads(result.stdout)
+        self.assertEqual((decision["outcome"], decision["reason_code"]), (outcome, reason))
+
+    def test_environment_inspection_requires_approval(self):
+        for command in (
+            "env",
+            "env SAMPLE=value",
+            "printenv SAMPLE",
+            "export -p",
+            "set",
+            "cat config/.env.local",
+            "git status && printenv SAMPLE",
+        ):
+            with self.subTest(command=command):
+                self.assert_command(command, 2, "require_user_approval", "ENV_INSPECTION_REQUIRES_APPROVAL")
+
+    def test_literal_overrides_and_read_only_pipeline_are_allowed(self):
+        for command in (
+            "env LC_ALL=C git status",
+            'env -- SAMPLE="two words" git status',
+            'env SAMPLE="two; words" git status',
+            "git status | head -n 1",
+            "printf '%s' 'printenv SAMPLE'",
+        ):
+            with self.subTest(command=command):
+                self.assert_command(command, 0, "allow", "WITHIN_CONTRACT")
+
+    def test_environment_override_keeps_existing_command_rules(self):
+        self.assert_command(
+            "env SAMPLE=value shasum artifact.txt", 2, "deny_and_explain", "HASH_NOT_AUTHORIZED",
+        )
+
+    def test_environment_inspection_in_watch_mode_is_reported(self):
+        setup = self.run_guard("parse-prompt", "$anti-slop change watch -- Check command policy")
+        self.assertEqual(setup.returncode, 0, setup.stderr)
+        self.assert_command("printenv SAMPLE", 2, "report_and_defer", "ENV_INSPECTION_REQUIRES_APPROVAL")
+
+    def test_malformed_environment_wrapper_requires_approval(self):
+        self.assert_command('env SAMPLE="incomplete', 2, "require_user_approval", "SHELL_COMMAND_REQUIRES_APPROVAL")
+
+    def test_unsupported_environment_wrapper_requires_approval(self):
+        self.assert_command(
+            "env -S 'git status' | head -n 1", 2, "require_user_approval", "SHELL_COMMAND_REQUIRES_APPROVAL",
+        )
 
 
 class ExecGuardDecisionTests(unittest.TestCase):
