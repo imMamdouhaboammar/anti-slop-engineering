@@ -10,7 +10,9 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from threading import Barrier, local
 from unittest.mock import patch
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
@@ -105,6 +107,31 @@ class AuditRunnerTests(unittest.TestCase):
         res = subprocess.run([sys.executable, script, "mode"], capture_output=True, text=True)
         self.assertEqual(res.returncode, 0)
         self.assertIn("Current anti-slop-engineering mode:", res.stdout)
+
+    def test_overlapping_audits_keep_both_dossiers(self):
+        workers = local()
+        selected = Barrier(2)
+
+        def select_at_same_time():
+            path = get_next_audit_file()
+            if not getattr(workers, "selected", False):
+                workers.selected = True
+                selected.wait(timeout=15)
+            return path
+
+        with tempfile.TemporaryDirectory() as tmp:
+            audit_dir = Path(tmp)
+            with (
+                patch.object(audit_runner, "AUDIT_DIR", audit_dir),
+                patch.object(audit_runner, "get_next_audit_file", select_at_same_time),
+                ThreadPoolExecutor(max_workers=2) as pool,
+            ):
+                runs = [pool.submit(audit_runner.run_audit, mode=mode) for mode in ("during", "after")]
+                self.assertEqual([run.result(timeout=60) for run in runs], [0, 0])
+            dossiers = sorted(audit_dir.glob("audit-*.md"))
+            self.assertEqual(len(dossiers), 2)
+            for dossier in dossiers:
+                self.assertIn(dossier.stem, dossier.read_text(encoding="utf-8"))
 
     def test_audit_accepts_restricted_environment_with_real_guards(self):
         with tempfile.TemporaryDirectory() as directory:

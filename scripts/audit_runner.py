@@ -1516,7 +1516,7 @@ def generate_audit_markdown(
     lines.extend(_render_remediation_workflow(findings, effective_mode, guards=guards))
 
     content = "\n".join(lines) + "\n"
-    with open(audit_file, "w", encoding="utf-8") as out_f:
+    with audit_file.open("x", encoding="utf-8") as out_f:
         out_f.write(content)
     return content
 
@@ -1547,8 +1547,14 @@ def run_audit(
     audit_file = None
     effective_mode = mode if mode is not None else load_settings().get("mode", "during")
     try:
-        audit_file = get_next_audit_file()
-        generate_audit_markdown(findings, audit_file, status=status, guards=guards, mode=effective_mode)
+        while audit_file is None:
+            candidate = get_next_audit_file()
+            try:
+                generate_audit_markdown(findings, candidate, status=status, guards=guards, mode=effective_mode)
+            except FileExistsError:
+                # A concurrent audit claimed this name after we selected it.
+                continue
+            audit_file = candidate
     except OSError as exc:
         status = "ERROR"
         audit_error = f"Unable to write audit report: {exc}"
