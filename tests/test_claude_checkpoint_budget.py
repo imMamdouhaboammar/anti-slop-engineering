@@ -167,6 +167,42 @@ class ClaudeCheckpointBudgetTests(unittest.TestCase):
         os.mkfifo(audit)
         self.assertIn("Python syntax error", self.post_message())
 
+    def test_manual_correction_restores_writes_after_exhaustion(self):
+        for _ in range(3):
+            self.post_message()
+        self.source.write_text(GOOD_SOURCE)
+        self.assertEqual(self.invoke("PreToolUse"), {})
+        self.source.write_text(BAD_SOURCE)
+        self.assertNotIn("budget exhausted", self.post_message())
+
+    def test_unavailable_audit_does_not_lift_denial_or_consume_override(self):
+        audit = self.project / ".anti-slop" / "checkpoint-audit.jsonl"
+        audit.mkdir()
+        for _ in range(2):
+            self.post_message()
+        self.assertIn("budget exhausted", self.post_message())
+        override = self.project / ".anti-slop" / "checkpoint-override.json"
+        override.write_text(json.dumps({"session_id": "sess-1", "target": "snippet.py", "reason": "reviewed"}))
+        result = self.invoke("PreToolUse")
+        self.assertEqual(result.get("hookSpecificOutput", {}).get("permissionDecision"), "deny")
+        self.assertTrue(override.is_file())
+
+    def test_busy_lock_does_not_lift_an_exhausted_budget(self):
+        for _ in range(3):
+            self.post_message()
+        lock = self.project / ".anti-slop" / ".lock"
+        lock.mkdir()
+        (lock / "owner.json").write_text(json.dumps({"pid": os.getpid()}))
+        result = self.invoke("PreToolUse")
+        self.assertEqual(result.get("hookSpecificOutput", {}).get("permissionDecision"), "deny")
+
+    def test_managed_checkpoint_files_require_operator_access(self):
+        self.arm("$anti-slop change guard -- Edit examples")
+        for name in ("checkpoint-state.json", "checkpoint-audit.jsonl", "checkpoint-override.json"):
+            with self.subTest(name=name):
+                result = self.invoke("PreToolUse", name=f".anti-slop/{name}")
+                self.assertEqual(result.get("hookSpecificOutput", {}).get("permissionDecision"), "deny")
+
     def test_watch_mode_keeps_checkpoint_advisory(self):
         self.arm("$anti-slop change watch files=snippet.py -- Edit example")
         for _ in range(3):

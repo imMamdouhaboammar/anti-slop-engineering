@@ -38,6 +38,9 @@ CHECKPOINT_STATE_FILE = "checkpoint-state.json"
 CHECKPOINT_AUDIT_FILE = "checkpoint-audit.jsonl"
 CHECKPOINT_OVERRIDE_FILE = "checkpoint-override.json"
 CHECKPOINT_OVERRIDE_HINT = ".anti-slop/checkpoint-override.json"
+CHECKPOINT_MANAGED_PATHS = {
+    f".anti-slop/{name}" for name in (CHECKPOINT_STATE_FILE, CHECKPOINT_AUDIT_FILE, CHECKPOINT_OVERRIDE_FILE)
+}
 
 
 def normalize_event(payload, phase, project):
@@ -170,7 +173,7 @@ def _save_checkpoint_state(state_dir, state):
         Path(temp).unlink(missing_ok=True)
 
 
-def _audit_checkpoint(state_dir, event, session_id, target, **fields):
+def _append_checkpoint_audit(state_dir, event, session_id, target, fields):
     path = state_dir / CHECKPOINT_AUDIT_FILE
     if state_dir.is_symlink() or path.is_symlink():
         raise ValueError("Checkpoint audit log must be local")
@@ -182,6 +185,20 @@ def _audit_checkpoint(state_dir, event, session_id, target, **fields):
         if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
             raise ValueError("Checkpoint audit log must be a regular file")
         stream.write(json.dumps(entry) + "\n")
+
+
+def _audit_checkpoint(state_dir, event, session_id, target, **fields):
+    try:
+        _append_checkpoint_audit(state_dir, event, session_id, target, fields)
+    except (OSError, ValueError):
+        print("Could not write the checkpoint audit record.", file=sys.stderr)
+        return False
+    return True
+
+
+def _clear_checkpoint_budget(state_dir, state, key):
+    del state[key]
+    _save_checkpoint_state(state_dir, state)
 
 
 def _checkpoint_failures(state, key):
@@ -207,11 +224,10 @@ def _record_checkpoint_outcome(project, session_id, target, kind):
         manager = SessionStateManager(state_dir)
         with manager.exclusive_lock(timeout_seconds=CHECKPOINT_LOCK_TIMEOUT):
             state = _load_checkpoint_state(state_dir)
+            if kind == "ok" and key in state:
+                _clear_checkpoint_budget(state_dir, state, key)
+                _audit_checkpoint(state_dir, "cleared", session_id, canonical)
             if kind == "ok":
-                if key in state:
-                    del state[key]
-                    _save_checkpoint_state(state_dir, state)
-                    _audit_checkpoint(state_dir, "cleared", session_id, canonical)
                 return False
             failures = min(_checkpoint_failures(state, key) + 1, CHECKPOINT_ATTEMPT_BUDGET)
             state[key] = {"failures": failures}
@@ -225,57 +241,63 @@ def _record_checkpoint_outcome(project, session_id, target, kind):
         return False
 
 
-def _checkpoint_denial(project, session_id, target):
-    """Return a pre-write denial message when the attempt budget is spent.
+def _consume_checkpoint_override(state_dir, state, key, project, session_id, target):
+    override_path = state_dir / CHECKPOINT_OVERRIDE_FILE
+    try:
+        override = _read_checkpoint_record(override_path)
+    except (OSError, ValueError):
+        return False
+    reason = override.get("reason")
+    if (
+        override.get("session_id") != session_id
+        or _canonical_checkpoint_target(project, override.get("target")) != target
+        or not isinstance(reason, str)
+        or not reason.strip()
+    ):
+        return False
+    if not _audit_checkpoint(state_dir, "override_authorized", session_id, target, reason=reason.strip()):
+        return False
+    override_path.unlink()
+    _clear_checkpoint_budget(state_dir, state, key)
+    _audit_checkpoint(state_dir, "override_applied", session_id, target, reason=reason.strip())
+    return True
 
-    A matching operator override in the state directory is consumed once,
-    audited, and clears the budget. Any state problem degrades to no denial.
-    """
+
+def _checkpoint_denial(project, session_id, target):
     canonical = _canonical_checkpoint_target(project, target)
     if not canonical:
         return None
     state_dir = _checkpoint_state_dir(project)
     key = f"{session_id}\n{canonical}"
     try:
+        failures = _checkpoint_failures(_load_checkpoint_state(state_dir), key)
+    except OSError:
+        return None
+    if failures < CHECKPOINT_ATTEMPT_BUDGET:
+        return None
+
+    denial = (
+        "Checkpoint attempt budget exhausted for this file in this session after "
+        f"{failures} failed post-write syntax checks. This write has not happened. "
+        "Correct the file outside the agent, or record an audited override in "
+        f"{CHECKPOINT_OVERRIDE_HINT}, before retrying."
+    )
+    try:
         manager = SessionStateManager(state_dir)
         with manager.exclusive_lock(timeout_seconds=CHECKPOINT_LOCK_TIMEOUT):
             state = _load_checkpoint_state(state_dir)
-            failures = _checkpoint_failures(state, key)
-            if failures < CHECKPOINT_ATTEMPT_BUDGET:
+            if _checkpoint_failures(state, key) < CHECKPOINT_ATTEMPT_BUDGET:
                 return None
-            override_path = state_dir / CHECKPOINT_OVERRIDE_FILE
-            override = None
-            if override_path.is_file() and not override_path.is_symlink():
-                try:
-                    override = _read_checkpoint_record(override_path)
-                except ValueError:
-                    override = None
-            override_target = (
-                _canonical_checkpoint_target(project, override.get("target"))
-                if isinstance(override, dict) else None
-            )
-            reason = override.get("reason") if isinstance(override, dict) else None
-            if (
-                isinstance(reason, str) and reason.strip()
-                and override.get("session_id") == session_id
-                and override_target == canonical
-            ):
-                override_path.unlink()
-                del state[key]
-                _save_checkpoint_state(state_dir, state)
-                _audit_checkpoint(state_dir, "override_applied", session_id, canonical,
-                                  reason=reason.strip())
+            if _consume_checkpoint_override(state_dir, state, key, project, session_id, canonical):
                 return None
-            _audit_checkpoint(state_dir, "pre_write_denied", session_id, canonical,
-                              failures=failures)
-            return (
-                "Checkpoint attempt budget exhausted for this file in this session after "
-                f"{failures} failed post-write syntax checks. This write has not happened. "
-                "Correct the file outside the agent, or record an audited override in "
-                f"{CHECKPOINT_OVERRIDE_HINT}, before retrying."
-            )
-    except (AttributeError, OSError, ValueError, RuntimeError, TypeError, KeyError):
-        return None
+            if _python_checkpoint_outcome(project, target)[0] == "ok":
+                _clear_checkpoint_budget(state_dir, state, key)
+                _audit_checkpoint(state_dir, "cleared", session_id, canonical)
+                return None
+            _audit_checkpoint(state_dir, "pre_write_denied", session_id, canonical, failures=failures)
+    except (OSError, ValueError, RuntimeError):
+        print("Could not update the exhausted checkpoint budget.", file=sys.stderr)
+    return denial
 
 
 def evaluate_native_event(project, event, phase, session_id=None):
@@ -284,9 +306,15 @@ def evaluate_native_event(project, event, phase, session_id=None):
     if event["operation"] != "write" or policy["reason_code"] != "WITHIN_CONTRACT":
         return translate_policy(policy, phase)
     target = event["target_paths"][0]
-    track_attempts = bool(session_id) and state["contract"]["level"] == "guard"
-    if phase == "PreToolUse" and track_attempts:
-        denial = _checkpoint_denial(project, session_id, target)
+    enforcing = state["contract"]["level"] == "guard"
+    track_attempts = bool(session_id) and enforcing
+    if phase == "PreToolUse" and enforcing:
+        canonical = _canonical_checkpoint_target(project, target)
+        if canonical in CHECKPOINT_MANAGED_PATHS:
+            return translate_policy({
+                "decision": "block", "message": "Checkpoint records require operator access.",
+            }, phase)
+        denial = _checkpoint_denial(project, session_id, target) if track_attempts else None
         if denial:
             return translate_policy({"decision": "block", "message": denial}, phase)
     elif phase == "PostToolUse":
@@ -297,7 +325,7 @@ def evaluate_native_event(project, event, phase, session_id=None):
             message += (
                 f" Checkpoint attempt budget exhausted ({CHECKPOINT_ATTEMPT_BUDGET} failed "
                 "checks). Further writes to this file in this session will be denied until a "
-                "corrected write is recorded or an audited override is filed at "
+                "corrected file compiles or an audited override is filed at "
                 f"{CHECKPOINT_OVERRIDE_HINT}."
             )
         if message:
