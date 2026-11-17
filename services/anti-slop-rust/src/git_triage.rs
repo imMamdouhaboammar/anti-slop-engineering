@@ -1,4 +1,4 @@
-use crate::model::AuditReport;
+use crate::model::{AuditReport, Finding};
 use crate::path_utils::{is_doc_file, is_git_file_header, is_test_file, DiffPaths};
 use crate::shit_interceptor::swallow_finding;
 use oxc::allocator::Allocator;
@@ -53,18 +53,18 @@ pub fn triage_git(base: &str, read_only: bool) -> io::Result<AuditReport> {
 
     let diff = String::from_utf8_lossy(&output.stdout);
     let mut report = crate::triage_diff(&diff, None, read_only);
-    let parsed = parse_changed_sources(&diff);
-    report
-        .findings
-        .retain(|finding| finding.code != "STS-H02" || !parsed.contains_key(&finding.file));
-    report
-        .findings
-        .extend(parsed.into_iter().flat_map(|(path, lines)| {
-            lines
-                .into_iter()
-                .map(move |line| swallow_finding(&path, line))
-        }));
+    refine_catch_findings(&diff, &mut report.findings);
     Ok(AuditReport::new(&report.engine, report.findings))
+}
+
+pub(crate) fn refine_catch_findings(diff: &str, findings: &mut Vec<Finding>) {
+    let parsed = parse_changed_sources(diff);
+    findings.retain(|finding| finding.code != "STS-H02" || !parsed.contains_key(&finding.file));
+    findings.extend(parsed.into_iter().flat_map(|(path, lines)| {
+        lines
+            .into_iter()
+            .map(move |line| swallow_finding(&path, line))
+    }));
 }
 
 fn parse_changed_sources(diff: &str) -> BTreeMap<String, BTreeSet<usize>> {

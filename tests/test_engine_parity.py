@@ -596,6 +596,37 @@ class EngineParityContractTests(unittest.TestCase):
                 findings = json.loads(result.stdout)["findings"]
                 self.assertEqual([(item["code"], item["line"]) for item in findings], expected)
 
+        self._assert_rust_patch_uses_git_context()
+
+    def _assert_rust_patch_uses_git_context(self):
+        prefix = "// existing context\n" * 9
+        tick = chr(96)
+        text_body = f"const note = {tick}\n{prefix}old\n{tick};\n"
+        cases = (
+            ("literal", text_body, text_body.replace("old", "catch (err) {}"), [], False),
+            ("split catch", prefix + "try { run(); } catch { report(); }\n",
+             prefix + "try { run(); }\ncatch {\n}\n", [11], False),
+            ("mismatched object", text_body, text_body.replace("old", "catch (err) {}"), [11], True),
+        )
+        for label, before, after, expected, corrupt in cases:
+            with self.subTest(case=label):
+                path = "src/fixture.ts"
+                repo, env = self._create_repo({path: before})
+                target = repo / path
+                target.write_text(after, encoding="utf-8")
+                patch = self._git(repo, ["diff", "--full-index", "HEAD", "--"], env).stdout
+                if corrupt:
+                    new_blob = self._git(repo, ["hash-object", "--", path], env).stdout.strip()
+                    patch = patch.replace(new_blob, "1" * len(new_blob), 1)
+                target.write_text(before, encoding="utf-8")
+                run = subprocess.run(
+                    [self._require_rust(), "shit-check", "--git-context", "--format", "json"],
+                    cwd=repo, env=env, input=patch, capture_output=True, text=True, check=False,
+                )
+                self.assertEqual(run.returncode, int(bool(expected)), run.stderr or run.stdout)
+                actual = [(f["file"], f["line"]) for f in json.loads(run.stdout)["findings"] if f["code"] == "STS-H02"]
+                self.assertEqual(actual, [(path, line) for line in expected])
+
     def _assert_native_multiline_handler_detection(self):
         recovery = "try { work(); } catch (err) {\n    report(err);\n}\n"
         sources = {

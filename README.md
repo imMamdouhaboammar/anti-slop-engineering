@@ -187,9 +187,14 @@ bunx anti-slop-engineering rust triage
 # Check a specific diff for SHIT violations:
 bunx anti-slop-engineering rust shit-check --diff patch.diff
 
+# Use verified Git context for JavaScript and TypeScript catches:
+git diff --full-index HEAD | bunx anti-slop-engineering rust shit-check --git-context
+
 # Start the optional HTTP service:
 bunx anti-slop-engineering serve-rust --port 9091
 ```
+
+Run the Git-context form from a repository with the patch's base blobs. It uses the full object IDs to verify reconstructed source. Files without verifiable source use the raw patch checks.
 
 ### Go SRE Toil Engine (`services/toil-guard-go`)
 

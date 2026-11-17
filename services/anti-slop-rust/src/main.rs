@@ -24,6 +24,10 @@ enum Commands {
         #[arg(short, long)]
         diff: Option<String>,
 
+        /// Use Git blob evidence from a full-index patch for JavaScript and TypeScript catches
+        #[arg(long)]
+        git_context: bool,
+
         /// Allowed repository-relative paths or directory prefixes (comma-separated)
         #[arg(short, long)]
         allowed: Option<String>,
@@ -101,10 +105,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     match cli.command {
         Commands::ShitCheck {
             diff,
+            git_context,
             allowed,
             read_only,
             format,
-        } => run_shit_check(diff, allowed, read_only, &format)?,
+        } => run_shit_check(diff, git_context, allowed, read_only, &format)?,
 
         Commands::ChangeCheck {
             changeset,
@@ -151,6 +156,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 fn run_shit_check(
     diff: Option<String>,
+    git_context: bool,
     allowed: Option<String>,
     read_only: bool,
     format: &str,
@@ -169,7 +175,11 @@ fn run_shit_check(
         .map(|s| s.split(',').map(|item| item.trim()).collect());
 
     let interceptor = ShitInterceptor::new();
-    let findings = interceptor.audit_diff(&diff_content, allowed_vec.as_deref(), read_only);
+    let findings = if git_context {
+        interceptor.audit_git_patch(&diff_content, allowed_vec.as_deref(), read_only)
+    } else {
+        interceptor.audit_diff(&diff_content, allowed_vec.as_deref(), read_only)
+    };
 
     let report = AuditReport::new("anti-slop-rust-sts", findings);
     finish_with_report(&report, format);
