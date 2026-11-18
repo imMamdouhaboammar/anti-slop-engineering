@@ -128,7 +128,19 @@ func TestEvidenceModeEnforcesByteLimitsAndRawPaths(t *testing.T) {
 func TestEvidenceModeMatchesDefaultOnRealGitProducer(t *testing.T) {
 	producer := os.Getenv("GIT_CHANGESET_TEST_PRODUCER")
 	if producer == "" {
-		t.Skip("set GIT_CHANGESET_TEST_PRODUCER to pinned #144 git_changeset.py")
+		var err error
+		producer, err = filepath.Abs("../../../../scripts/git_changeset.py")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := os.Stat(producer); os.IsNotExist(err) {
+			t.Skip("repository Git change-set producer is unavailable")
+		} else if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := exec.LookPath("python3"); err != nil {
+			t.Skip("python3 is unavailable")
+		}
 	}
 	dir := initTempGitRepo(t)
 	docs := t.TempDir()
