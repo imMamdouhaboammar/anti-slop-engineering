@@ -21,6 +21,7 @@ SEVERITY_GUIDANCE = {
     "SRE-08": "Verify total retry attempts and deadline, and assess fleet-wide impact before escalation.",
     "SRE-09": "Confirm the collection can grow beyond safe bounds. A small, constrained fan-out can be valid.",
     "SRE-12": "Check whether this endpoint promises readiness. A constant liveness response can be intentional.",
+    "TST-03": "Confirm the skip disables a test that would otherwise run; a skipped regression can hide behind green CI. A reviewed rationale is a human disposition the detector cannot see.",
 }
 
 
@@ -61,6 +62,7 @@ RULES = (
     Rule("diff_guard", "SRE_SCALE_UNBOUNDED_CONCURRENCY", "SRE-09", DIFF_SOURCE),
     Rule("sre_guard", "SCALE_UNBOUNDED_CONCURRENCY", "SRE-09", SRE_SOURCE),
     Rule("sre_guard", "SCALE_MISLEADING_HEALTH_CHECK", "SRE-12", SRE_SOURCE),
+    Rule("diff_guard", "SKIPPED_TEST", "TST-03", DIFF_SOURCE),
 )
 BY_CODE = {rule.engine_code: rule for rule in RULES}
 

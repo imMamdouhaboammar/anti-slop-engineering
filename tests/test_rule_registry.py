@@ -20,6 +20,7 @@ class RuleRegistryTests(unittest.TestCase):
             "STS-H02": "OPS-01",
             "SRE-SCALE-SWALLOW": "OPS-01",
             "KISS_DEEP_NESTING": "SRE-01",
+            "SKIPPED_TEST": "TST-03",
         }
         for raw, target in expected.items():
             with self.subTest(raw=raw):
@@ -37,6 +38,7 @@ class RuleRegistryTests(unittest.TestCase):
             "SRE-SCALE-RETRY": ("SRE-08", "services/toil-guard-go/pkg/sre/toil.go"),
             "SRE_SCALE_UNBOUNDED_CONCURRENCY": ("SRE-09", "scripts/diff_guard.py"),
             "SCALE_MISLEADING_HEALTH_CHECK": ("SRE-12", "scripts/sre_guard.py"),
+            "SKIPPED_TEST": ("TST-03", "scripts/diff_guard.py"),
         }
         for raw, expected in cases.items():
             with self.subTest(raw=raw):
@@ -49,6 +51,17 @@ class RuleRegistryTests(unittest.TestCase):
                 detector = next(rule for rule in result["related_rules"] if rule["engine_code"] == raw)
                 self.assertEqual(detector["source"], source)
                 self.assertIn(raw, (ROOT / source).read_text(encoding="utf-8"))
+
+    def test_skipped_test_calibration_reaches_automatic_with_clean_controls(self):
+        detector = "diff_guard:SKIPPED_TEST"
+        receipt = {detector: {"tp": 2, "fp": 0, "tn": 3, "fn": 0}}
+        report = rule_registry.build_coverage(receipt)
+        self.assertEqual(report["fixture_precision"][detector], 1.0)
+        self.assertEqual(report["patterns"]["TST-03"]["status"], "automatic")
+        self.assertEqual(report["patterns"]["TST-03"]["fixtures"], receipt)
+        self.assertEqual(report["detectors"][detector]["catalog_id"], "TST-03")
+        self.assertEqual(report["detectors"][detector]["source"], rule_registry.DIFF_SOURCE)
+        self.assertIn("green CI", report["patterns"]["TST-03"]["severity_guidance"])
 
     def test_health_calibration_reports_false_positive(self):
         detector = "sre_guard:SCALE_MISLEADING_HEALTH_CHECK"

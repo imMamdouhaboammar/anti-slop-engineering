@@ -314,9 +314,10 @@ class EngineParityContractTests(unittest.TestCase):
             self.assertEqual(normalized["catalog_id"], rule.catalog_id)
             self.assertTrue((ROOT / normalized["skill_path"]).is_file())
 
-    def _catalog_fixture_codes(self, fixture_name, source, runs):
-        repo, _ = self._create_repo({"worker.py": "def baseline():\n    return None\n"})
-        (repo / "worker.py").write_text(source, encoding="utf-8")
+    def _catalog_fixture_codes(self, fixture_name, case, runs):
+        path, source = case if isinstance(case, tuple) else ("worker.py", case)
+        repo, _ = self._create_repo({path: "def baseline():\n    return None\n"})
+        (repo / path).write_text(source, encoding="utf-8")
         codes = {}
         for engine, (run, field) in runs.items():
             proc = run(repo)
@@ -347,6 +348,8 @@ class EngineParityContractTests(unittest.TestCase):
             "fanout_clear": "async def send(items, deliver):\n    return [await deliver(item) for item in items]\n",
             "narration_bad": "def reserve(attempt):\n    # Increment attempt\n    return attempt + 1\n",
             "narration_clear": "def reserve(attempt):\n    # Consume the retry budget before dispatch so a crash cannot grant an extra attempt.\n    return attempt + 1\n",
+            "skip_bad": ("test_worker.py", "import pytest\n\n@pytest.mark.skip(reason='broken')\ndef test_value():\n    assert value() == 1\n"),
+            "skip_clear": ("test_worker.py", "def test_value():\n    assert value() == 1\n\ndef test_other():\n    assert other() == 2\n"),
             "health_bad": "def readiness():\n    return 200\n",
             "health_clear": "def readiness():\n    ready = datastore.is_ready()\n    return 200 if ready else 503\n",
             "health_inline_probe": "def readiness():\n    return 200 if datastore.is_ready() else 503\n",
@@ -376,6 +379,7 @@ class EngineParityContractTests(unittest.TestCase):
             "SRE-09": ("fanout_bad", "fanout_clear"),
             "SIM-17": ("narration_bad", "narration_clear"),
             "SRE-12": ("health_bad", "health_clear"),
+            "TST-03": ("skip_bad", "skip_clear"),
         }
         observations = {}
         for rule in rule_registry.RULES:
