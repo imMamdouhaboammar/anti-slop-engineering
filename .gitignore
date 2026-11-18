@@ -121,6 +121,7 @@ services/toil-guard-go/bin/
 /.anti-slop/clean-code.json
 /.anti-slop/ponytail.json
 /.anti-slop/ponytail-debt.jsonl
+/.anti-slop/add-back-ledger.jsonl
 /.anti-slop/commit-sheet.json
 /.anti-slop/settings.json
 /.anti-slop/state.json
