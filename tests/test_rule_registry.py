@@ -20,6 +20,7 @@ class RuleRegistryTests(unittest.TestCase):
             "STS-H02": "OPS-01",
             "SRE-SCALE-SWALLOW": "OPS-01",
             "KISS_DEEP_NESTING": "SRE-01",
+            "SKIPPED_TEST": "TST-03",
         }
         for raw, target in expected.items():
             with self.subTest(raw=raw):
@@ -37,6 +38,7 @@ class RuleRegistryTests(unittest.TestCase):
             "SRE-SCALE-RETRY": ("SRE-08", "services/toil-guard-go/pkg/sre/toil.go"),
             "SRE_SCALE_UNBOUNDED_CONCURRENCY": ("SRE-09", "scripts/diff_guard.py"),
             "SCALE_MISLEADING_HEALTH_CHECK": ("SRE-12", "scripts/sre_guard.py"),
+            "SKIPPED_TEST": ("TST-03", "scripts/diff_guard.py"),
         }
         for raw, expected in cases.items():
             with self.subTest(raw=raw):

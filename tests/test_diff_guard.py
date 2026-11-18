@@ -10,6 +10,7 @@ import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / 'scripts' / 'diff_guard.py'
+FIXTURES_DIR = ROOT / 'tests' / 'fixtures' / 'engine-parity'
 
 
 def git(path, *args):
@@ -110,6 +111,24 @@ class DiffGuardTests(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
         self.assertIn('SKIPPED_TEST', [x['id'] for x in report['findings']])
         self.assertIn('WEAK_ASSERTION', [x['id'] for x in report['findings']])
+
+    def test_skip_pattern_in_non_test_file_is_not_flagged(self):
+        skipped = (FIXTURES_DIR / 'javascript-skip.txt').read_text(encoding='utf-8')
+        (self.repo / 'src' / 'calc.ts').write_text(skipped, encoding='utf-8')
+        git(self.repo, 'add', 'src/calc.ts')
+        result, report = self.check('--fail-on-blocker')
+        self.assertEqual(result.returncode, 0)
+        self.assertNotIn('SKIPPED_TEST', [x['id'] for x in report['findings']])
+
+    def test_removing_a_skip_is_not_flagged(self):
+        skipped = (FIXTURES_DIR / 'pytest-skip.txt').read_text(encoding='utf-8')
+        (self.repo / 'tests' / 'test_calc.py').write_text(skipped)
+        git(self.repo, 'add', '.')
+        git(self.repo, 'commit', '-qm', 'add skipped test')
+        (self.repo / 'tests' / 'test_calc.py').write_text('def test_value():\n    assert value() == 1\n')
+        result, report = self.check('--fail-on-blocker')
+        self.assertEqual(result.returncode, 0)
+        self.assertNotIn('SKIPPED_TEST', [x['id'] for x in report['findings']])
 
     def test_new_tests_are_not_mistaken_for_old_changed_tests(self):
         (self.repo / 'tests' / 'test_new.py').write_text('def test_new():\n    assert 1 == 2\n')

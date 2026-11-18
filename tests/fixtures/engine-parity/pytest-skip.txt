@@ -1,0 +1,5 @@
+import pytest
+
+@pytest.mark.skip(reason="broken")
+def test_value():
+    assert value() == 1
