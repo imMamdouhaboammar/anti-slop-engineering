@@ -321,14 +321,27 @@ class EngineParityContractTests(unittest.TestCase):
         codes = {}
         for engine, (run, field) in runs.items():
             proc = run(repo)
+            self.assertIn(proc.returncode, (0, 1, 2), f"{fixture_name}/{engine}: {proc.stderr}")
+            output = json.loads(proc.stdout)
+            if engine == "diff_guard":
+                summary = output["summary"]
+                self.assertEqual(summary["changed_files"], 1, fixture_name)
+                self.assertGreater(summary["added_lines"], 0, fixture_name)
             with self.subTest(fixture=fixture_name, engine=engine):
-                self.assertIn(proc.returncode, (0, 1, 2), proc.stderr)
-                output = json.loads(proc.stdout)
                 self.assertIsInstance(output["findings"], list)
                 codes[fixture_name, engine] = {finding[field] for finding in output["findings"]}
                 if engine in {"diff_guard", "sre_guard"}:
                     self._assert_catalog_normalization(engine, output, field)
         return codes
+
+    def _add_skip_fixture_observations(self, rule, outputs, outcomes):
+        self.assertIn(rule.engine_code, outputs["skip_js", rule.engine])
+        self.assertNotIn(rule.engine_code, outputs["skip_outside_tests", rule.engine])
+        outcomes["tp"] += 1
+        outcomes["tn"] += 1
+        literal_flagged = rule.engine_code in outputs["skip_literal", rule.engine]
+        outcomes["fp"] += int(literal_flagged)
+        outcomes["tn"] += int(not literal_flagged)
 
     def test_catalog_detector_fixture_receipt(self):
         pytest_skip = (FIXTURES_DIR / "pytest-skip.txt").read_text(encoding="utf-8")
@@ -403,13 +416,7 @@ class EngineParityContractTests(unittest.TestCase):
                     self.assertNotIn(rule.engine_code, outputs["health_inline_probe", rule.engine])
                     outcomes["tn"] += 1
                 if rule.catalog_id == "TST-03":
-                    self.assertIn(rule.engine_code, outputs["skip_js", rule.engine])
-                    self.assertNotIn(rule.engine_code, outputs["skip_outside_tests", rule.engine])
-                    outcomes["tp"] += 1
-                    outcomes["tn"] += 1
-                    literal_flagged = rule.engine_code in outputs["skip_literal", rule.engine]
-                    outcomes["fp"] += int(literal_flagged)
-                    outcomes["tn"] += int(not literal_flagged)
+                    self._add_skip_fixture_observations(rule, outputs, outcomes)
                 observations[rule.evidence_key] = outcomes
 
         receipt = os.environ.get("CATALOG_OBSERVATIONS_OUT")
