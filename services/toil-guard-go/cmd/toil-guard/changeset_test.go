@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -128,10 +129,40 @@ func TestEvidenceModeEnforcesByteLimitsAndRawPaths(t *testing.T) {
 func TestEvidenceModeMatchesDefaultOnRealGitProducer(t *testing.T) {
 	producer := os.Getenv("GIT_CHANGESET_TEST_PRODUCER")
 	if producer == "" {
-		t.Skip("set GIT_CHANGESET_TEST_PRODUCER to pinned #144 git_changeset.py")
+		var err error
+		producer, err = filepath.Abs("../../../../scripts/git_changeset.py")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := os.Stat(producer); os.IsNotExist(err) {
+			t.Skip("repository Git change-set producer is unavailable")
+		} else if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := exec.LookPath("python3"); err != nil {
+			t.Skip("python3 is unavailable")
+		}
 	}
-	dir := initTempGitRepo(t)
+	dir, nested := setupEvidenceGitFixture(t)
 	docs := t.TempDir()
+	for _, snapshot := range []string{"worktree", "index"} {
+		cmd := exec.Command("python3", producer, "--repo", dir, "--base", "HEAD", "--snapshot", snapshot)
+		out, err := cmd.Output()
+		if err != nil {
+			t.Fatalf("produce %s payload: %v", snapshot, err)
+		}
+		if err := os.WriteFile(filepath.Join(docs, snapshot+".json"), out, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	assertEvidenceFixtureSnapshots(t, docs)
+	t.Chdir(nested)
+	assertEvidenceFixtureAudit(t, docs)
+}
+
+func setupEvidenceGitFixture(t *testing.T) (string, string) {
+	t.Helper()
+	dir := initTempGitRepo(t)
 	nested := filepath.Join(dir, "src")
 	if err := os.Mkdir(nested, 0750); err != nil {
 		t.Fatal(err)
@@ -186,19 +217,84 @@ func TestEvidenceModeMatchesDefaultOnRealGitProducer(t *testing.T) {
 		t.Fatal(err)
 	}
 	runGit(t, dir, "add", "link.go")
+	return dir, nested
+}
 
-	for _, snapshot := range []string{"worktree", "index"} {
-		cmd := exec.Command("python3", producer, "--repo", dir, "--base", "HEAD", "--snapshot", snapshot)
-		out, err := cmd.Output()
+func assertEvidenceFixtureSnapshots(t *testing.T, docs string) {
+	t.Helper()
+	type pathRecord struct {
+		Text string `json:"text"`
+	}
+	type hunkRange struct {
+		NewStart int `json:"new_start"`
+		NewCount int `json:"new_count"`
+	}
+	type fileRecord struct {
+		Status  string      `json:"status"`
+		OldPath *pathRecord `json:"old_path"`
+		NewPath *pathRecord `json:"new_path"`
+		Hunks   []hunkRange `json:"hunks"`
+	}
+	for _, tc := range []struct {
+		snapshot, changed, absent string
+		line                      int
+	}{
+		{"worktree", "main.go", "reverted.go", 3},
+		{"index", "reverted.go", "main.go", 2},
+	} {
+		data, err := os.ReadFile(filepath.Join(docs, tc.snapshot+".json"))
 		if err != nil {
-			t.Fatalf("produce %s payload: %v", snapshot, err)
-		}
-		if err := os.WriteFile(filepath.Join(docs, snapshot+".json"), out, 0600); err != nil {
 			t.Fatal(err)
 		}
-	}
-	t.Chdir(nested)
+		var document struct {
+			Files []fileRecord `json:"files"`
+		}
+		if err := json.Unmarshal(data, &document); err != nil {
+			t.Fatalf("parse %s payload: %v", tc.snapshot, err)
+		}
+		recordsAt := func(paths ...string) []fileRecord {
+			var matches []fileRecord
+			for _, record := range document.Files {
+				if (record.OldPath != nil && slices.Contains(paths, record.OldPath.Text)) ||
+					(record.NewPath != nil && slices.Contains(paths, record.NewPath.Text)) {
+					matches = append(matches, record)
+				}
+			}
+			return matches
+		}
 
+		const oldPath, newPath = "src/old worker.go", "src/café worker.go"
+		matches := recordsAt(oldPath, newPath)
+		if len(matches) != 1 {
+			t.Fatalf("%s snapshot has %d records for rename, want 1", tc.snapshot, len(matches))
+		}
+		rename := matches[0]
+		if rename.Status != "R" || rename.OldPath == nil || rename.OldPath.Text != oldPath ||
+			rename.NewPath == nil || rename.NewPath.Text != newPath || rename.Hunks == nil || len(rename.Hunks) != 0 {
+			t.Fatalf("%s snapshot lost the pure rename: %+v", tc.snapshot, rename)
+		}
+
+		changed := recordsAt(tc.changed)
+		if len(changed) != 1 || changed[0].Status != "M" || changed[0].NewPath == nil ||
+			changed[0].NewPath.Text != tc.changed || len(changed[0].Hunks) != 1 ||
+			changed[0].Hunks[0].NewStart != tc.line || changed[0].Hunks[0].NewCount != 1 {
+			t.Fatalf("%s snapshot lost the changed range for %q: %+v", tc.snapshot, tc.changed, changed)
+		}
+		if matches := recordsAt(tc.absent); len(matches) != 0 {
+			t.Fatalf("%s snapshot contains %q: %+v", tc.snapshot, tc.absent, matches)
+		}
+		if tc.snapshot == "index" {
+			const removed = "staged then removed.go"
+			gone := recordsAt(removed)
+			if len(gone) != 1 || gone[0].Status != "A" || gone[0].NewPath == nil || gone[0].NewPath.Text != removed {
+				t.Fatalf("index snapshot lost the removed-source record: %+v", gone)
+			}
+		}
+	}
+}
+
+func assertEvidenceFixtureAudit(t *testing.T, docs string) {
+	t.Helper()
 	var normal, normalized, stderr bytes.Buffer
 	normalCode := executeAudit([]string{"--format", "json"}, &normal, &stderr)
 	if stderr.Len() != 0 {
@@ -212,8 +308,10 @@ func TestEvidenceModeMatchesDefaultOnRealGitProducer(t *testing.T) {
 	}
 	var report struct {
 		Findings []struct {
-			File string `json:"file"`
-			Line int    `json:"line"`
+			File     string `json:"file"`
+			Line     int    `json:"line"`
+			Code     string `json:"code"`
+			Severity string `json:"severity"`
 		} `json:"findings"`
 		SLI struct {
 			TotalFiles int `json:"total_files"`
@@ -224,7 +322,9 @@ func TestEvidenceModeMatchesDefaultOnRealGitProducer(t *testing.T) {
 	}
 	if report.SLI.TotalFiles != 5 || len(report.Findings) != 2 ||
 		report.Findings[0].File != "src/café worker.go" || report.Findings[0].Line != 4 ||
-		report.Findings[1].File != "src/untracked\tfile.py" || report.Findings[1].Line != 2 {
+		report.Findings[0].Code != "SRE-SCALE-SLEEP" || report.Findings[0].Severity != "BLOCKER" ||
+		report.Findings[1].File != "src/untracked\tfile.py" || report.Findings[1].Line != 2 ||
+		report.Findings[1].Code != "SRE-SCALE-SLEEP" || report.Findings[1].Severity != "BLOCKER" {
 		t.Fatalf("unexpected candidate or finding set: %+v", report)
 	}
 }
