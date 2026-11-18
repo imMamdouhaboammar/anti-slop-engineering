@@ -197,6 +197,75 @@ func TestEvidenceModeMatchesDefaultOnRealGitProducer(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	type pathRecord struct {
+		Text string `json:"text"`
+	}
+	type hunkRange struct {
+		NewStart int `json:"new_start"`
+		NewCount int `json:"new_count"`
+	}
+	type fileRecord struct {
+		Status  string      `json:"status"`
+		OldPath *pathRecord `json:"old_path"`
+		NewPath *pathRecord `json:"new_path"`
+		Hunks   []hunkRange `json:"hunks"`
+	}
+	type producerDocument struct {
+		Files []fileRecord `json:"files"`
+	}
+	documents := map[string]producerDocument{}
+	for _, snapshot := range []string{"worktree", "index"} {
+		data, err := os.ReadFile(filepath.Join(docs, snapshot+".json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var document producerDocument
+		if err := json.Unmarshal(data, &document); err != nil {
+			t.Fatalf("parse %s payload: %v", snapshot, err)
+		}
+		documents[snapshot] = document
+	}
+	recordFor := func(snapshot, newPath string) *fileRecord {
+		for i := range documents[snapshot].Files {
+			record := &documents[snapshot].Files[i]
+			if record.NewPath != nil && record.NewPath.Text == newPath {
+				return record
+			}
+		}
+		return nil
+	}
+	// The staged rename crosses a space and a non-ASCII name. Both snapshots
+	// must carry it as one R record preserving the old and new paths, with no
+	// hunks: the rename is pure, so identity travels in the paths alone.
+	for _, snapshot := range []string{"worktree", "index"} {
+		rename := recordFor(snapshot, "src/café worker.go")
+		if rename == nil || rename.Status != "R" || rename.OldPath == nil ||
+			rename.OldPath.Text != "src/old worker.go" || len(rename.Hunks) != 0 {
+			t.Fatalf("%s snapshot lost the staged rename: %+v", snapshot, rename)
+		}
+	}
+	// Snapshot selection: the index record sees the staged edit to
+	// reverted.go (new line 2) that the worktree record no longer sees,
+	// while the worktree record sees the unstaged main.go edit (line 3)
+	// that the index record never sees.
+	staged := recordFor("index", "reverted.go")
+	if staged == nil || staged.Status != "M" || len(staged.Hunks) != 1 ||
+		staged.Hunks[0].NewStart != 2 || staged.Hunks[0].NewCount != 1 ||
+		recordFor("worktree", "reverted.go") != nil {
+		t.Fatalf("index snapshot lost the staged range: %+v", staged)
+	}
+	unstaged := recordFor("worktree", "main.go")
+	if unstaged == nil || unstaged.Status != "M" || len(unstaged.Hunks) != 1 ||
+		unstaged.Hunks[0].NewStart != 3 || unstaged.Hunks[0].NewCount != 1 ||
+		recordFor("index", "main.go") != nil {
+		t.Fatalf("worktree snapshot lost the unstaged range: %+v", unstaged)
+	}
+	// Source-unavailable control: the index record lists a staged file whose
+	// source was removed from the worktree. It stays filename-only evidence:
+	// neither audit mode may fabricate a finding for it (asserted below).
+	if gone := recordFor("index", "staged then removed.go"); gone == nil || gone.Status != "A" {
+		t.Fatalf("index snapshot lost the removed-source record: %+v", gone)
+	}
 	t.Chdir(nested)
 
 	var normal, normalized, stderr bytes.Buffer
@@ -212,8 +281,10 @@ func TestEvidenceModeMatchesDefaultOnRealGitProducer(t *testing.T) {
 	}
 	var report struct {
 		Findings []struct {
-			File string `json:"file"`
-			Line int    `json:"line"`
+			File     string `json:"file"`
+			Line     int    `json:"line"`
+			Code     string `json:"code"`
+			Severity string `json:"severity"`
 		} `json:"findings"`
 		SLI struct {
 			TotalFiles int `json:"total_files"`
@@ -222,9 +293,24 @@ func TestEvidenceModeMatchesDefaultOnRealGitProducer(t *testing.T) {
 	if err := json.Unmarshal(normalized.Bytes(), &report); err != nil {
 		t.Fatal(err)
 	}
+	// Shared rule identity (tests/fixtures/engine-parity/contracts.json):
+	// canonical rule blind_sleep, catalog SRE-07 in scripts/rule_registry.py;
+	// the Go audit emits it as SRE-SCALE-SLEEP with severity BLOCKER. The
+	// byte-equal reports above prove the default and changeset-fed paths
+	// agree; these assertions pin which rule matched, on which path, at
+	// which line, so a dropped or misattributed finding fails here. The
+	// first finding is the renamed file: the sleep survived the rename and
+	// is reported under the new path, never the old one.
 	if report.SLI.TotalFiles != 5 || len(report.Findings) != 2 ||
 		report.Findings[0].File != "src/café worker.go" || report.Findings[0].Line != 4 ||
-		report.Findings[1].File != "src/untracked\tfile.py" || report.Findings[1].Line != 2 {
+		report.Findings[0].Code != "SRE-SCALE-SLEEP" || report.Findings[0].Severity != "BLOCKER" ||
+		report.Findings[1].File != "src/untracked\tfile.py" || report.Findings[1].Line != 2 ||
+		report.Findings[1].Code != "SRE-SCALE-SLEEP" || report.Findings[1].Severity != "BLOCKER" {
 		t.Fatalf("unexpected candidate or finding set: %+v", report)
+	}
+	for _, finding := range report.Findings {
+		if finding.File == "staged then removed.go" {
+			t.Fatalf("finding fabricated for unavailable source: %+v", finding)
+		}
 	}
 }
