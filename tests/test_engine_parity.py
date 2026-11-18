@@ -213,6 +213,32 @@ class EngineParityContractTests(unittest.TestCase):
             self.assertEqual(proc.returncode, exit_code, proc.stderr)
             self.assertIn(rule_id, [entry["id"] for entry in json.loads(proc.stdout)["findings"]])
 
+    def test_python_core_retains_flat_retry_checks_without_native_binaries(self):
+        expected = self.contracts["fixtures"]["flat_retry"]["shared"]
+        repo_dir, _ = self._create_repo({"worker.py": "import time\n"})
+        (repo_dir / "worker.py").write_text(
+            "import time\n\n\ndef fetch(url, transport):\n"
+            "    for attempt in range(3):\n"
+            "        try:\n"
+            "            return transport.get(url)\n"
+            "        except ConnectionError:\n"
+            "            time.sleep(1)\n"
+            "    raise RuntimeError(\"unreachable\")\n",
+            encoding="utf-8",
+        )
+        for guard, exit_code, rule_id in (
+            (DIFF_GUARD, expected["diff_guard_id_exit"], expected["diff_guard_id"]),
+            (SRE_GUARD, expected["sre_guard_id_exit"], expected["sre_guard_id"]),
+        ):
+            strict = "--strict" if guard == SRE_GUARD else "--fail-on-blocker"
+            proc = subprocess.run(
+                [sys.executable, "-S", str(guard), "--repo", str(repo_dir), "--base", "HEAD", "--json", strict],
+                capture_output=True, text=True, check=False,
+                env=dict(os.environ, ANTI_SLOP_DISABLE_NATIVE="1"),
+            )
+            self.assertEqual(proc.returncode, exit_code, proc.stderr)
+            self.assertIn(rule_id, [entry["id"] for entry in json.loads(proc.stdout)["findings"]])
+
     def test_blind_sleep_shared_contract_matches_native_severity(self):
         shared = self.contracts["fixtures"]["blind_sleep"]["shared"]
         repo_dir, _ = self._create_repo({"worker.py": "import time\n"})
@@ -237,6 +263,64 @@ class EngineParityContractTests(unittest.TestCase):
                                      [shared[fixture_key + "_severity"]])
                 else:
                     self.assertEqual(entries, [])
+
+    def test_flat_retry_shared_contract_matches_native_severity(self):
+        shared = self.contracts["fixtures"]["flat_retry"]["shared"]
+        repo_dir, _ = self._create_repo({"worker.py": "import time\n"})
+        source = repo_dir / "worker.py"
+        flat = (
+            "import time\n\n\ndef fetch(url, transport):\n"
+            "    for attempt in range(3):\n"
+            "        try:\n"
+            "            return transport.get(url)\n"
+            "        except ConnectionError:\n"
+            "            time.sleep(1)\n"
+            "    raise RuntimeError(\"unreachable\")\n"
+        )
+        backoff = flat.replace("time.sleep(1)", "time.sleep(jitter(2 ** attempt))")
+        for text, expected in ((flat, True), (backoff, False)):
+            source.write_text(text, encoding="utf-8")
+            runs = [
+                (self._run_diff_guard(repo_dir), "diff_guard_id", "id"),
+                (self._run_sre_guard(repo_dir), "sre_guard_id", "id"),
+            ]
+            if self.go_bin or self.require_native:
+                runs.append((self._run_go_audit(repo_dir), "go_code", "code"))
+            for run, fixture_key, report_key in runs:
+                expected_exit = shared[fixture_key + "_exit"] if expected else 0
+                self.assertEqual(run.returncode, expected_exit, run.stderr)
+                entries = [
+                    entry for entry in json.loads(run.stdout)["findings"]
+                    if entry[report_key] == shared[fixture_key]
+                ]
+                if expected:
+                    self.assertEqual([entry["severity"].lower() for entry in entries],
+                                     [shared[fixture_key + "_severity"]])
+                    self.assertEqual([entry["line"] for entry in entries], [5])
+                else:
+                    self.assertEqual(entries, [])
+
+    def test_flat_retry_ownership_covers_every_registered_producer(self):
+        engine_names = {
+            "diff_guard": "python-diff",
+            "sre_guard": "python-sre",
+            "go": "go-audit",
+            "rust": "rust-triage",
+        }
+        registered = {
+            (engine_names[rule.engine], rule.engine_code)
+            for rule in rule_registry.RULES
+            if rule.catalog_id == "SRE-08"
+        }
+        declared = set()
+        for rule in self.contracts["shared_rules"]:
+            for entry in [rule["owner"], *rule["fallbacks"]]:
+                identity = (entry["engine"], entry["id"])
+                if rule["rule_id"] == "flat_retry":
+                    declared.add(identity)
+                else:
+                    self.assertNotIn(identity, registered)
+        self.assertEqual(declared, registered)
 
     def test_clean_repo_shared_contract(self):
         expected = self.contracts["fixtures"]["clean"]["shared"]

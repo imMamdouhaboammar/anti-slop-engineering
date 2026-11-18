@@ -103,6 +103,30 @@
           "fixture_key": "go_code"
         }
       ]
+    },
+    {
+      "rule_id": "flat_retry",
+      "fixture": "flat_retry",
+      "owner": {
+        "engine": "python-sre",
+        "id": "SCALE_UNBOUNDED_OR_FLAT_RETRY",
+        "severity": "blocker",
+        "fixture_key": "sre_guard_id"
+      },
+      "fallbacks": [
+        {
+          "engine": "python-diff",
+          "id": "SRE_SCALE_FLAT_RETRY",
+          "severity": "review",
+          "fixture_key": "diff_guard_id"
+        },
+        {
+          "engine": "go-audit",
+          "id": "SRE-SCALE-RETRY",
+          "severity": "review",
+          "fixture_key": "go_code"
+        }
+      ]
     }
   ],
   "pairs": {
@@ -198,6 +222,20 @@
         "go_code": "SRE-SCALE-SLEEP",
         "go_code_exit": 1,
         "go_code_severity": "blocker"
+      }
+    },
+    "flat_retry": {
+      "diff": "flat_retry.diff",
+      "shared": {
+        "diff_guard_id": "SRE_SCALE_FLAT_RETRY",
+        "diff_guard_id_exit": 0,
+        "diff_guard_id_severity": "review",
+        "sre_guard_id": "SCALE_UNBOUNDED_OR_FLAT_RETRY",
+        "sre_guard_id_exit": 2,
+        "sre_guard_id_severity": "blocker",
+        "go_code": "SRE-SCALE-RETRY",
+        "go_code_exit": 1,
+        "go_code_severity": "review"
       }
     }
   }
