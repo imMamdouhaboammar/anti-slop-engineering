@@ -1,0 +1,15 @@
+diff --git a/worker.py b/worker.py
+index 6dcc575..de6e9a6 100644
+--- a/worker.py
++++ b/worker.py
+@@ -2,4 +2,9 @@ import time
+ 
+ 
+ def fetch(url, transport):
+-    return transport.get(url)
++    for attempt in range(3):
++        try:
++            return transport.get(url)
++        except ConnectionError:
++            time.sleep(1)
++    raise RuntimeError("unreachable")
