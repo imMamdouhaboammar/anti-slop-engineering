@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -142,8 +143,26 @@ func TestEvidenceModeMatchesDefaultOnRealGitProducer(t *testing.T) {
 			t.Skip("python3 is unavailable")
 		}
 	}
-	dir := initTempGitRepo(t)
+	dir, nested := setupEvidenceGitFixture(t)
 	docs := t.TempDir()
+	for _, snapshot := range []string{"worktree", "index"} {
+		cmd := exec.Command("python3", producer, "--repo", dir, "--base", "HEAD", "--snapshot", snapshot)
+		out, err := cmd.Output()
+		if err != nil {
+			t.Fatalf("produce %s payload: %v", snapshot, err)
+		}
+		if err := os.WriteFile(filepath.Join(docs, snapshot+".json"), out, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	assertEvidenceFixtureSnapshots(t, docs)
+	t.Chdir(nested)
+	assertEvidenceFixtureAudit(t, docs)
+}
+
+func setupEvidenceGitFixture(t *testing.T) (string, string) {
+	t.Helper()
+	dir := initTempGitRepo(t)
 	nested := filepath.Join(dir, "src")
 	if err := os.Mkdir(nested, 0750); err != nil {
 		t.Fatal(err)
@@ -198,17 +217,11 @@ func TestEvidenceModeMatchesDefaultOnRealGitProducer(t *testing.T) {
 		t.Fatal(err)
 	}
 	runGit(t, dir, "add", "link.go")
+	return dir, nested
+}
 
-	for _, snapshot := range []string{"worktree", "index"} {
-		cmd := exec.Command("python3", producer, "--repo", dir, "--base", "HEAD", "--snapshot", snapshot)
-		out, err := cmd.Output()
-		if err != nil {
-			t.Fatalf("produce %s payload: %v", snapshot, err)
-		}
-		if err := os.WriteFile(filepath.Join(docs, snapshot+".json"), out, 0600); err != nil {
-			t.Fatal(err)
-		}
-	}
+func assertEvidenceFixtureSnapshots(t *testing.T, docs string) {
+	t.Helper()
 	type pathRecord struct {
 		Text string `json:"text"`
 	}
@@ -222,64 +235,66 @@ func TestEvidenceModeMatchesDefaultOnRealGitProducer(t *testing.T) {
 		NewPath *pathRecord `json:"new_path"`
 		Hunks   []hunkRange `json:"hunks"`
 	}
-	type producerDocument struct {
-		Files []fileRecord `json:"files"`
-	}
-	documents := map[string]producerDocument{}
-	for _, snapshot := range []string{"worktree", "index"} {
-		data, err := os.ReadFile(filepath.Join(docs, snapshot+".json"))
+	for _, tc := range []struct {
+		snapshot, changed, absent string
+		line                      int
+	}{
+		{"worktree", "main.go", "reverted.go", 3},
+		{"index", "reverted.go", "main.go", 2},
+	} {
+		data, err := os.ReadFile(filepath.Join(docs, tc.snapshot+".json"))
 		if err != nil {
 			t.Fatal(err)
 		}
-		var document producerDocument
-		if err := json.Unmarshal(data, &document); err != nil {
-			t.Fatalf("parse %s payload: %v", snapshot, err)
+		var document struct {
+			Files []fileRecord `json:"files"`
 		}
-		documents[snapshot] = document
-	}
-	recordFor := func(snapshot, newPath string) *fileRecord {
-		for i := range documents[snapshot].Files {
-			record := &documents[snapshot].Files[i]
-			if record.NewPath != nil && record.NewPath.Text == newPath {
-				return record
+		if err := json.Unmarshal(data, &document); err != nil {
+			t.Fatalf("parse %s payload: %v", tc.snapshot, err)
+		}
+		recordsAt := func(paths ...string) []fileRecord {
+			var matches []fileRecord
+			for _, record := range document.Files {
+				if (record.OldPath != nil && slices.Contains(paths, record.OldPath.Text)) ||
+					(record.NewPath != nil && slices.Contains(paths, record.NewPath.Text)) {
+					matches = append(matches, record)
+				}
+			}
+			return matches
+		}
+
+		const oldPath, newPath = "src/old worker.go", "src/café worker.go"
+		matches := recordsAt(oldPath, newPath)
+		if len(matches) != 1 {
+			t.Fatalf("%s snapshot has %d records for rename, want 1", tc.snapshot, len(matches))
+		}
+		rename := matches[0]
+		if rename.Status != "R" || rename.OldPath == nil || rename.OldPath.Text != oldPath ||
+			rename.NewPath == nil || rename.NewPath.Text != newPath || rename.Hunks == nil || len(rename.Hunks) != 0 {
+			t.Fatalf("%s snapshot lost the pure rename: %+v", tc.snapshot, rename)
+		}
+
+		changed := recordsAt(tc.changed)
+		if len(changed) != 1 || changed[0].Status != "M" || changed[0].NewPath == nil ||
+			changed[0].NewPath.Text != tc.changed || len(changed[0].Hunks) != 1 ||
+			changed[0].Hunks[0].NewStart != tc.line || changed[0].Hunks[0].NewCount != 1 {
+			t.Fatalf("%s snapshot lost the changed range for %q: %+v", tc.snapshot, tc.changed, changed)
+		}
+		if matches := recordsAt(tc.absent); len(matches) != 0 {
+			t.Fatalf("%s snapshot contains %q: %+v", tc.snapshot, tc.absent, matches)
+		}
+		if tc.snapshot == "index" {
+			const removed = "staged then removed.go"
+			gone := recordsAt(removed)
+			if len(gone) != 1 || gone[0].Status != "A" || gone[0].NewPath == nil || gone[0].NewPath.Text != removed {
+				t.Fatalf("index snapshot lost the removed-source record: %+v", gone)
 			}
 		}
-		return nil
 	}
-	// The staged rename crosses a space and a non-ASCII name. Both snapshots
-	// must carry it as one R record preserving the old and new paths, with no
-	// hunks: the rename is pure, so identity travels in the paths alone.
-	for _, snapshot := range []string{"worktree", "index"} {
-		rename := recordFor(snapshot, "src/café worker.go")
-		if rename == nil || rename.Status != "R" || rename.OldPath == nil ||
-			rename.OldPath.Text != "src/old worker.go" || len(rename.Hunks) != 0 {
-			t.Fatalf("%s snapshot lost the staged rename: %+v", snapshot, rename)
-		}
-	}
-	// Snapshot selection: the index record sees the staged edit to
-	// reverted.go (new line 2) that the worktree record no longer sees,
-	// while the worktree record sees the unstaged main.go edit (line 3)
-	// that the index record never sees.
-	staged := recordFor("index", "reverted.go")
-	if staged == nil || staged.Status != "M" || len(staged.Hunks) != 1 ||
-		staged.Hunks[0].NewStart != 2 || staged.Hunks[0].NewCount != 1 ||
-		recordFor("worktree", "reverted.go") != nil {
-		t.Fatalf("index snapshot lost the staged range: %+v", staged)
-	}
-	unstaged := recordFor("worktree", "main.go")
-	if unstaged == nil || unstaged.Status != "M" || len(unstaged.Hunks) != 1 ||
-		unstaged.Hunks[0].NewStart != 3 || unstaged.Hunks[0].NewCount != 1 ||
-		recordFor("index", "main.go") != nil {
-		t.Fatalf("worktree snapshot lost the unstaged range: %+v", unstaged)
-	}
-	// Source-unavailable control: the index record lists a staged file whose
-	// source was removed from the worktree. It stays filename-only evidence:
-	// neither audit mode may fabricate a finding for it (asserted below).
-	if gone := recordFor("index", "staged then removed.go"); gone == nil || gone.Status != "A" {
-		t.Fatalf("index snapshot lost the removed-source record: %+v", gone)
-	}
-	t.Chdir(nested)
+}
 
+func assertEvidenceFixtureAudit(t *testing.T, docs string) {
+	t.Helper()
 	var normal, normalized, stderr bytes.Buffer
 	normalCode := executeAudit([]string{"--format", "json"}, &normal, &stderr)
 	if stderr.Len() != 0 {
@@ -305,24 +320,11 @@ func TestEvidenceModeMatchesDefaultOnRealGitProducer(t *testing.T) {
 	if err := json.Unmarshal(normalized.Bytes(), &report); err != nil {
 		t.Fatal(err)
 	}
-	// Shared rule identity (tests/fixtures/engine-parity/contracts.json):
-	// canonical rule blind_sleep, catalog SRE-07 in scripts/rule_registry.py;
-	// the Go audit emits it as SRE-SCALE-SLEEP with severity BLOCKER. The
-	// byte-equal reports above prove the default and changeset-fed paths
-	// agree; these assertions pin which rule matched, on which path, at
-	// which line, so a dropped or misattributed finding fails here. The
-	// first finding is the renamed file: the sleep survived the rename and
-	// is reported under the new path, never the old one.
 	if report.SLI.TotalFiles != 5 || len(report.Findings) != 2 ||
 		report.Findings[0].File != "src/café worker.go" || report.Findings[0].Line != 4 ||
 		report.Findings[0].Code != "SRE-SCALE-SLEEP" || report.Findings[0].Severity != "BLOCKER" ||
 		report.Findings[1].File != "src/untracked\tfile.py" || report.Findings[1].Line != 2 ||
 		report.Findings[1].Code != "SRE-SCALE-SLEEP" || report.Findings[1].Severity != "BLOCKER" {
 		t.Fatalf("unexpected candidate or finding set: %+v", report)
-	}
-	for _, finding := range report.Findings {
-		if finding.File == "staged then removed.go" {
-			t.Fatalf("finding fabricated for unavailable source: %+v", finding)
-		}
 	}
 }
