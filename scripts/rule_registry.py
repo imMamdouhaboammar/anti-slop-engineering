@@ -21,7 +21,7 @@ SEVERITY_GUIDANCE = {
     "SRE-08": "Verify total retry attempts and deadline, and assess fleet-wide impact before escalation.",
     "SRE-09": "Confirm the collection can grow beyond safe bounds. A small, constrained fan-out can be valid.",
     "SRE-12": "Check whether this endpoint promises readiness. A constant liveness response can be intentional.",
-    "TST-03": "Confirm the skip disables a test that would otherwise run; a skipped regression can hide behind green CI. A reviewed rationale is a human disposition the detector cannot see.",
+    "TST-03": "Confirm the match disables a test that would otherwise run. Skip syntax inside a string can also match. Check for a reviewed rationale before disposition.",
 }
 
 

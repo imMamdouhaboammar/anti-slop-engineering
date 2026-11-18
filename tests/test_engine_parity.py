@@ -331,6 +331,8 @@ class EngineParityContractTests(unittest.TestCase):
         return codes
 
     def test_catalog_detector_fixture_receipt(self):
+        pytest_skip = (FIXTURES_DIR / "pytest-skip.txt").read_text(encoding="utf-8")
+        javascript_skip = (FIXTURES_DIR / "javascript-skip.txt").read_text(encoding="utf-8")
         cases = {
             "swallow_bad": "def work(job):\n    try:\n        job.run()\n    except Exception: pass\n",
             "swallow_handled": "def work(job):\n    try:\n        job.run()\n    except Exception as error:\n        raise RuntimeError('job failed') from error\n",
@@ -348,7 +350,10 @@ class EngineParityContractTests(unittest.TestCase):
             "fanout_clear": "async def send(items, deliver):\n    return [await deliver(item) for item in items]\n",
             "narration_bad": "def reserve(attempt):\n    # Increment attempt\n    return attempt + 1\n",
             "narration_clear": "def reserve(attempt):\n    # Consume the retry budget before dispatch so a crash cannot grant an extra attempt.\n    return attempt + 1\n",
-            "skip_bad": ("test_worker.py", "import pytest\n\n@pytest.mark.skip(reason='broken')\ndef test_value():\n    assert value() == 1\n"),
+            "skip_bad": ("test_worker.py", pytest_skip),
+            "skip_js": ("worker.spec.js", javascript_skip),
+            "skip_outside_tests": ("src/worker.js", javascript_skip),
+            "skip_literal": ("test_worker.py", f"example = {javascript_skip.strip()!r}\n"),
             "skip_clear": ("test_worker.py", "def test_value():\n    assert value() == 1\n\ndef test_other():\n    assert other() == 2\n"),
             "health_bad": "def readiness():\n    return 200\n",
             "health_clear": "def readiness():\n    ready = datastore.is_ready()\n    return 200 if ready else 503\n",
@@ -397,6 +402,14 @@ class EngineParityContractTests(unittest.TestCase):
                 if rule.catalog_id == "SRE-12":
                     self.assertNotIn(rule.engine_code, outputs["health_inline_probe", rule.engine])
                     outcomes["tn"] += 1
+                if rule.catalog_id == "TST-03":
+                    self.assertIn(rule.engine_code, outputs["skip_js", rule.engine])
+                    self.assertNotIn(rule.engine_code, outputs["skip_outside_tests", rule.engine])
+                    outcomes["tp"] += 1
+                    outcomes["tn"] += 1
+                    literal_flagged = rule.engine_code in outputs["skip_literal", rule.engine]
+                    outcomes["fp"] += int(literal_flagged)
+                    outcomes["tn"] += int(not literal_flagged)
                 observations[rule.evidence_key] = outcomes
 
         receipt = os.environ.get("CATALOG_OBSERVATIONS_OUT")

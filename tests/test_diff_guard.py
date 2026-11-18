@@ -10,6 +10,7 @@ import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / 'scripts' / 'diff_guard.py'
+FIXTURES_DIR = ROOT / 'tests' / 'fixtures' / 'engine-parity'
 
 
 def git(path, *args):
@@ -112,14 +113,15 @@ class DiffGuardTests(unittest.TestCase):
         self.assertIn('WEAK_ASSERTION', [x['id'] for x in report['findings']])
 
     def test_skip_pattern_in_non_test_file_is_not_flagged(self):
-        (self.repo / 'src' / 'calc.ts').write_text("export const x = 1;\n// it.skip('not a test file', () => {});\n")
+        skipped = (FIXTURES_DIR / 'javascript-skip.txt').read_text(encoding='utf-8')
+        (self.repo / 'src' / 'calc.ts').write_text(skipped, encoding='utf-8')
         git(self.repo, 'add', 'src/calc.ts')
         result, report = self.check('--fail-on-blocker')
         self.assertEqual(result.returncode, 0)
         self.assertNotIn('SKIPPED_TEST', [x['id'] for x in report['findings']])
 
     def test_removing_a_skip_is_not_flagged(self):
-        skipped = 'import pytest\n\n@pytest.mark.skip(reason="broken")\ndef test_value():\n    assert value() == 1\n'
+        skipped = (FIXTURES_DIR / 'pytest-skip.txt').read_text(encoding='utf-8')
         (self.repo / 'tests' / 'test_calc.py').write_text(skipped)
         git(self.repo, 'add', '.')
         git(self.repo, 'commit', '-qm', 'add skipped test')

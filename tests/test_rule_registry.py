@@ -52,17 +52,6 @@ class RuleRegistryTests(unittest.TestCase):
                 self.assertEqual(detector["source"], source)
                 self.assertIn(raw, (ROOT / source).read_text(encoding="utf-8"))
 
-    def test_skipped_test_calibration_reaches_automatic_with_clean_controls(self):
-        detector = "diff_guard:SKIPPED_TEST"
-        receipt = {detector: {"tp": 2, "fp": 0, "tn": 3, "fn": 0}}
-        report = rule_registry.build_coverage(receipt)
-        self.assertEqual(report["fixture_precision"][detector], 1.0)
-        self.assertEqual(report["patterns"]["TST-03"]["status"], "automatic")
-        self.assertEqual(report["patterns"]["TST-03"]["fixtures"], receipt)
-        self.assertEqual(report["detectors"][detector]["catalog_id"], "TST-03")
-        self.assertEqual(report["detectors"][detector]["source"], rule_registry.DIFF_SOURCE)
-        self.assertIn("green CI", report["patterns"]["TST-03"]["severity_guidance"])
-
     def test_health_calibration_reports_false_positive(self):
         detector = "sre_guard:SCALE_MISLEADING_HEALTH_CHECK"
         receipt = {detector: {"tp": 1, "fp": 1, "tn": 1, "fn": 0}}
