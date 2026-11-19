@@ -359,6 +359,144 @@ function writeSelections(targets, scope, skills) {
   return states
 }
 
+const MANAGED_INVENTORY = '.anti-slop-managed.json'
+
+function readManagedInventory(directory) {
+  const file = path.join(directory, MANAGED_INVENTORY)
+  if (!fs.existsSync(file)) return null
+  if (fs.lstatSync(file).isSymbolicLink()) throw new Error(`Refusing symbolic link in installer path: ${file}`)
+  let state
+  try {
+    state = JSON.parse(fs.readFileSync(file, 'utf8'))
+  } catch {
+    throw new Error(`Invalid managed inventory: ${file}`)
+  }
+  if (state?.format !== 1 || typeof state.files !== 'object' || state.files === null || Array.isArray(state.files)) {
+    throw new Error(`Invalid managed inventory: ${file}`)
+  }
+  return state.files
+}
+
+function listInstalledFiles(directory) {
+  const found = []
+  const walk = (current) => {
+    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+      const full = path.join(current, entry.name)
+      const relative = path.relative(directory, full).split(path.sep).join('/')
+      if (entry.isSymbolicLink()) found.push({ relative, symlink: true })
+      else if (entry.isDirectory()) walk(full)
+      else if (entry.isFile()) found.push({ relative, symlink: false })
+    }
+  }
+  walk(directory)
+  return found
+}
+
+function fileDigest(file) {
+  return createHash('sha256').update(fs.readFileSync(file)).digest('hex')
+}
+
+function planSkillRemoval(target, skill) {
+  const plan = { path: target.path, agents: target.agents.map((agent) => agent.id), status: 'not-installed', files: [], conflicts: [] }
+  const selection = readSelection(target)
+  if (!selection || !selection.skills.includes(skill)) return plan
+  const directory = path.join(target.path, skill)
+  assertSafeFilePath(directory)
+  if (!fs.existsSync(directory)) {
+    plan.status = 'removable'
+    return plan
+  }
+  if (fs.lstatSync(directory).isSymbolicLink()) {
+    throw new Error(`Refusing symbolic link in installer path: ${directory}`)
+  }
+  const inventory = readManagedInventory(directory)
+  const source = skillSourceDir()
+  for (const { relative, symlink } of listInstalledFiles(directory)) {
+    if (relative === MANAGED_INVENTORY) {
+      plan.files.push(relative)
+      continue
+    }
+    let expected = inventory?.[relative] ?? null
+    if (!expected && source) {
+      const bundled = path.join(sourceForSkill(skill, source), relative)
+      if (fs.existsSync(bundled) && !fs.lstatSync(bundled).isSymbolicLink() && fs.lstatSync(bundled).isFile()) {
+        expected = fileDigest(bundled)
+      }
+    }
+    if (!symlink && expected && fileDigest(path.join(directory, relative)) === expected) plan.files.push(relative)
+    else plan.conflicts.push(relative)
+  }
+  plan.files.sort()
+  plan.conflicts.sort()
+  plan.status = plan.conflicts.length ? 'conflict' : 'removable'
+  return plan
+}
+
+function writeSelectionRemoval(target, skill) {
+  const previous = readSelection(target)
+  if (!previous || !previous.skills.includes(skill)) return null
+  const state = { format: previous.format, version: previous.version, scope: previous.scope,
+    agents: previous.agents, skills: previous.skills.filter((id) => id !== skill) }
+  const file = path.join(target.path, SELECTION_FILE)
+  const temporary = `${file}.${process.pid}.${randomUUID()}.tmp`
+  try {
+    fs.writeFileSync(temporary, JSON.stringify(state, null, 2) + '\n', { flag: 'wx' })
+    fs.renameSync(temporary, file)
+  } finally {
+    if (fs.existsSync(temporary)) fs.unlinkSync(temporary)
+  }
+  return { file, ...state }
+}
+
+function removeSkill({ skill, targets, scope, dryRun }) {
+  const plans = targets.map((target) => planSkillRemoval(target, skill))
+  if (dryRun) {
+    for (const plan of plans) if (plan.status === 'removable') plan.status = 'preview'
+    return { plans, selections: [], pointers: [] }
+  }
+  const selections = []
+  let changed = false
+  plans.forEach((plan, index) => {
+    if (plan.status !== 'removable') return
+    const directory = path.join(targets[index].path, skill)
+    if (fs.existsSync(directory)) fs.rmSync(directory, { recursive: true })
+    const state = writeSelectionRemoval(targets[index], skill)
+    if (state) selections.push(state)
+    plan.status = 'removed'
+    changed = true
+  })
+  let pointers = []
+  if (changed && scope === 'project') {
+    const remaining = [...new Set(targets.flatMap((target) => readSelection(target)?.skills || []))]
+    pointers = updatePointers({ targets, skills: remaining })
+  }
+  return { plans, selections, pointers }
+}
+
+function runRemoval({ skill, scope, agents, dryRun, jsonMode }) {
+  if (!/^[a-z0-9][a-z0-9-]*$/.test(skill) || !listAvailableSkills().includes(skill)) {
+    throw new Error(`Unknown or invalid plugin: ${skill}`)
+  }
+  if (skill === CORE_SKILL) {
+    throw new Error(`The required core skill (${CORE_SKILL}) cannot be removed`)
+  }
+  const targets = resolveTargets(scope, agents)
+  const { plans, selections, pointers } = removeSkill({ skill, targets, scope, dryRun })
+  const blocked = plans.some((plan) => plan.status === 'conflict')
+  if (jsonMode) {
+    console.log(JSON.stringify({ remove: skill, scope, agents, dryRun, targets: plans, selections, pointers }, null, 2))
+  } else {
+    for (const plan of plans) {
+      if (plan.status === 'preview') console.log(`  Would remove ${skill} from ${plan.path}: ${plan.files.length} managed file(s)`)
+      if (plan.status === 'removed') console.log(`  Removed ${skill} from ${plan.path}: ${plan.files.length} managed file(s)`)
+      if (plan.status === 'not-installed') console.log(`  ${skill} is not installed in ${plan.path}`)
+      if (plan.status === 'conflict') console.log(`  ⚠ Removal blocked in ${plan.path}: modified files: ${plan.conflicts.join(', ')}`)
+    }
+    if (pointers.length > 0) console.log(`  Instruction pointers written: ${pointers.join(', ')}`)
+  }
+  return blocked ? 1 : 0
+}
+
 function pointerBlock(skills, skillPaths) {
   return [
     POINTER_START,
@@ -726,6 +864,7 @@ Options:
   --preset <preset>   Preset: 'full', 'minimal', 'ci', 'backend', 'frontend', 'lead', or domain pack
   --skills <skills>   Optional skill IDs: 'all', 'core', or comma-separated names
   --plugins <names>   Alias for --skills; core is always included
+  --remove <skill>    Remove one installed optional skill (core cannot be removed); use --dry-run to preview
   --all               Select every available optional skill
   --overwrite         Refresh managed files, preserving local edits and conflicts
   --dry-run           Simulate installation without writing files
@@ -789,6 +928,14 @@ Options:
   const validAgents = new Set(AGENTS.map((agent) => agent.id))
   for (const agent of selectedAgents) {
     if (!validAgents.has(agent)) throw new Error(`Unknown or invalid agent: ${agent}`)
+  }
+
+  const removeArg = optionValue(args, ['remove'])
+  if (removeArg !== null) {
+    if (hookPreview) throw new Error('--remove cannot be combined with a hook preview')
+    if (selectionOnly) throw new Error('--remove cannot be combined with --selection-only')
+    if (skillsArg || presetArg) throw new Error('--remove cannot be combined with --skills or --preset')
+    return runRemoval({ skill: removeArg, scope: scopeArg, agents: selectedAgents, dryRun, jsonMode })
   }
 
   const availableSkills = listAvailableSkills()
