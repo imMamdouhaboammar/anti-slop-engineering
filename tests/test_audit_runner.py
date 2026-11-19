@@ -682,3 +682,184 @@ class AuditRunnerTests(unittest.TestCase):
 
     def test_invalid_engine_never_succeeds_in_non_strict_mode(self):
         self.assertEqual(audit_runner.run_engine_command("absent-engine", ["no-op"], strict=False), 2)
+
+
+class CatalogDuplicateSuppressionTests(unittest.TestCase):
+    """#71: owner-aware suppression of cross-guard catalog duplicates."""
+
+    def _finding(self, guard, rule, catalog_id, severity, file="worker.py", line=5):
+        return {
+            "guard": guard,
+            "rule": rule,
+            "catalog_id": catalog_id,
+            "skill": "anti-slop-engineering",
+            "skill_path": "skills/anti-slop-engineering/SKILL.md",
+            "mapped": bool(catalog_id),
+            "severity": severity,
+            "file": file,
+            "line": line,
+            "message": "m",
+            "snippet": "s",
+            "remediation": "r",
+        }
+
+    def test_owner_wins_when_fallback_precedes_it(self):
+        fallback = self._finding("diff_guard", "SRE_SCALE_FLAT_RETRY", "SRE-08", "HIGH")
+        owner = self._finding("sre_guard", "SCALE_UNBOUNDED_OR_FLAT_RETRY", "SRE-08", "BLOCKER")
+        result = audit_runner._suppress_catalog_duplicates([fallback, owner])
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["guard"], "sre_guard")
+        self.assertEqual(result[0]["severity"], "BLOCKER")
+        self.assertEqual(
+            result[0]["suppressed_duplicates"],
+            [{"guard": "diff_guard", "rule": "SRE_SCALE_FLAT_RETRY", "severity": "HIGH"}],
+        )
+
+    def test_owner_wins_when_owner_precedes_fallback(self):
+        owner = self._finding("sre_guard", "SCALE_UNBOUNDED_OR_FLAT_RETRY", "SRE-08", "BLOCKER")
+        fallback = self._finding("diff_guard", "SRE_SCALE_FLAT_RETRY", "SRE-08", "HIGH")
+        result = audit_runner._suppress_catalog_duplicates([owner, fallback])
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["rule"], "SCALE_UNBOUNDED_OR_FLAT_RETRY")
+        self.assertEqual(len(result[0]["suppressed_duplicates"]), 1)
+
+    def test_blind_sleep_pair_collapses_to_owner(self):
+        fallback = self._finding(
+            "diff_guard", "SRE_SCALE_SLEEP_BAND_AID", "SRE-07", "HIGH", line=9)
+        owner = self._finding("sre_guard", "SCALE_SLEEP_BAND_AID", "SRE-07", "HIGH", line=9)
+        result = audit_runner._suppress_catalog_duplicates([fallback, owner])
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["guard"], "sre_guard")
+
+    def test_group_without_owner_keeps_first_and_records_rest(self):
+        first = self._finding("diff_guard", "SRE_SCALE_FLAT_RETRY", "SRE-08", "HIGH")
+        second = self._finding("go", "SRE-SCALE-RETRY", "SRE-08", "REVIEW")
+        result = audit_runner._suppress_catalog_duplicates([first, second])
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["guard"], "diff_guard")
+        self.assertEqual(
+            result[0]["suppressed_duplicates"],
+            [{"guard": "go", "rule": "SRE-SCALE-RETRY", "severity": "REVIEW"}],
+        )
+
+    def test_unmapped_and_distinct_findings_pass_through(self):
+        unmapped = self._finding("diff_guard", "SOME_OTHER_RULE", None, "HIGH")
+        header = self._finding("sre_guard", "SCALE_UNBOUNDED_OR_FLAT_RETRY", "SRE-08", "BLOCKER")
+        other_line = self._finding(
+            "diff_guard", "SRE_SCALE_FLAT_RETRY", "SRE-08", "HIGH", line=9)
+        other_catalog = self._finding(
+            "diff_guard", "SRE_SCALE_SLEEP_BAND_AID", "SRE-07", "HIGH")
+        findings = [unmapped, header, other_line, other_catalog]
+        result = audit_runner._suppress_catalog_duplicates(findings)
+        self.assertEqual(result, findings)
+        for entry in result:
+            self.assertNotIn("suppressed_duplicates", entry)
+
+    def test_zero_line_findings_are_not_grouped(self):
+        first = self._finding("diff_guard", "SRE_SCALE_FLAT_RETRY", "SRE-08", "HIGH", line=0)
+        second = self._finding(
+            "sre_guard", "SCALE_UNBOUNDED_OR_FLAT_RETRY", "SRE-08", "BLOCKER", line=0)
+        result = audit_runner._suppress_catalog_duplicates([first, second])
+        self.assertEqual(len(result), 2)
+
+    def _combined_audit(self, base_text, new_text):
+        with tempfile.TemporaryDirectory() as root:
+            def git(*args):
+                subprocess.run(["git", *args], cwd=root, check=True, capture_output=True)
+
+            git("init", "-q")
+            git("config", "user.email", "fixture@example.test")
+            git("config", "user.name", "Fixture")
+            worker = Path(root, "worker.py")
+            worker.write_text(base_text, encoding="utf-8")
+            git("add", "-A")
+            git("commit", "-qm", "base")
+            worker.write_text(new_text, encoding="utf-8")
+            git("add", "-A")
+            env = {
+                key: value for key, value in os.environ.items()
+                if key not in ("TOIL_GUARD_BIN", "ANTI_SLOP_RUST_BIN")
+            }
+            proc = subprocess.run(
+                [sys.executable, str(SCRIPTS_DIR / "audit_runner.py"),
+                 "audit", "--base", "HEAD", "--json"],
+                cwd=root, capture_output=True, text=True, env=env, timeout=300,
+            )
+            return proc.returncode, json.loads(proc.stdout)
+
+    def test_combined_audit_suppresses_flat_retry_duplicate(self):
+        base = "import time\n\n\ndef fetch(url, transport):\n    return transport.get(url)\n"
+        flat = (
+            "import time\n\n\n"
+            "def fetch(url, transport):\n"
+            "    for attempt in range(3):\n"
+            "        try:\n"
+            "            return transport.get(url)\n"
+            "        except ConnectionError:\n"
+            "            time.sleep(1)\n"
+            "    raise RuntimeError(\"unreachable\")\n"
+        )
+        exit_code, report = self._combined_audit(base, flat)
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(report["status"], "BLOCKED")
+        self.assertEqual(report["blockers_count"], 1)
+        retries = [f for f in report["findings"] if f.get("catalog_id") == "SRE-08"]
+        self.assertEqual(len(retries), 1)
+        self.assertEqual(retries[0]["guard"], "sre_guard")
+        self.assertEqual(retries[0]["severity"], "BLOCKER")
+        self.assertEqual(retries[0]["line"], 5)
+        self.assertEqual(
+            retries[0]["suppressed_duplicates"],
+            [{"guard": "diff_guard", "rule": "SRE_SCALE_FLAT_RETRY", "severity": "HIGH"}],
+        )
+        sleeps = [f for f in report["findings"] if f.get("catalog_id") == "SRE-07"]
+        self.assertEqual(len(sleeps), 1)
+        self.assertEqual(sleeps[0]["guard"], "sre_guard")
+        self.assertEqual(sleeps[0]["line"], 9)
+
+    def test_combined_audit_suppresses_while_counter_duplicate(self):
+        base = "import time\n\n\ndef fetch(url, transport):\n    return transport.get(url)\n"
+        while_counter = (
+            "import time\n\n\n"
+            "def fetch(url, transport):\n"
+            "    attempts = 0\n"
+            "    while attempts < 3:\n"
+            "        try:\n"
+            "            return transport.get(url)\n"
+            "        except ConnectionError:\n"
+            "            attempts += 1\n"
+            "            time.sleep(1)\n"
+            "    raise RuntimeError(\"unreachable\")\n"
+        )
+        exit_code, report = self._combined_audit(base, while_counter)
+        self.assertEqual(exit_code, 1)
+        retries = [f for f in report["findings"] if f.get("catalog_id") == "SRE-08"]
+        self.assertEqual(len(retries), 1)
+        self.assertEqual(retries[0]["guard"], "sre_guard")
+        self.assertEqual(retries[0]["severity"], "BLOCKER")
+        self.assertEqual(retries[0]["line"], 6)
+
+    def test_combined_audit_jitter_control_has_no_retry_findings(self):
+        base = (
+            "import random\nimport time\n\n\n"
+            "def fetch(url, transport):\n    return transport.get(url)\n"
+        )
+        jitter = (
+            "import random\nimport time\n\n\n"
+            "def fetch(url, transport):\n"
+            "    delay = 1.0\n"
+            "    for attempt in range(3):\n"
+            "        try:\n"
+            "            return transport.get(url)\n"
+            "        except ConnectionError:\n"
+            "            jitter = random.uniform(0, delay)\n"
+            "            time.sleep(delay + jitter)\n"
+            "            delay *= 2\n"
+            "    raise RuntimeError(\"unreachable\")\n"
+        )
+        _, report = self._combined_audit(base, jitter)
+        flagged = [
+            f for f in report["findings"] if f.get("catalog_id") in ("SRE-07", "SRE-08")
+        ]
+        self.assertEqual(flagged, [])
+        self.assertEqual(report["blockers_count"], 0)
