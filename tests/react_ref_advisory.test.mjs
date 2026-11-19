@@ -92,6 +92,9 @@ test("conflicting render evidence stays inconclusive or a compatibility exceptio
   assert.equal(reviewLegacyRender(domEvidence, renderUsage, ["18.3.1", "19.0.0"]).status, "compatibility_exception");
   assert.equal(reviewLegacyRender(domEvidence, renderUsage, []).status, "inconclusive");
   assert.equal(reviewLegacyRender({ ...domEvidence, resolved: "18.3.1" }, renderUsage, compatibility).status, "inconclusive");
+  assert.equal(reviewLegacyRender({ ...domEvidence, installed: { ...domEvidence.installed, version: "18.3.1" } }, renderUsage, compatibility).status, "inconclusive");
+  assert.equal(reviewLegacyRender({ ...domEvidence, resolved: "20.0.0", installed: { ...domEvidence.installed, version: "18.3.1" } }, renderUsage, compatibility).status, "inconclusive");
+  assert.equal(reviewLegacyRender({ ...domEvidence, resolved: "20.0.0" }, renderUsage, compatibility).status, "inconclusive");
   assert.equal(reviewLegacyRender({ ...domEvidence, installed: { status: "installed", name: "react-dom", version: "20.0.0" }, resolved: "20.0.0" }, renderUsage, ["20.0.0"]).status, "inconclusive");
   assert.equal(reviewLegacyRender(domEvidence, { ...renderUsage, module: "react-dom/client" }, compatibility).status, "not_applicable");
   assert.equal(reviewLegacyRender(domEvidence, { ...renderUsage, export: "createRoot" }, compatibility).status, "not_applicable");

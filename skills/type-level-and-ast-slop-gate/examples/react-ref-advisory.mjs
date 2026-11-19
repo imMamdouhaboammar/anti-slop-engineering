@@ -51,7 +51,14 @@ export function reviewLegacyRender(lock, usage, supportedVersions) {
       (typeof installed.version !== "string" || !exactStableRelease.test(installed.version))) {
     return { status: "inconclusive", reason: "Installed React DOM version evidence from the lock receipt is required" };
   }
-  if (Bun.semver.order(installed.version, "19.0.0") < 0) {
+  const lockPre19 = Bun.semver.order(lock.resolved, "19.0.0") < 0;
+  const installedPre19 = Bun.semver.order(installed.version, "19.0.0") < 0;
+  if (lockPre19 !== installedPre19 ||
+      Bun.semver.order(lock.resolved, "20.0.0") >= 0 ||
+      Bun.semver.order(installed.version, "20.0.0") >= 0) {
+    return { status: "inconclusive", reason: "The React 19 documentation is the verified scope" };
+  }
+  if (installedPre19) {
     return { status: "not_applicable", version: installed.version };
   }
   if (!Array.isArray(supportedVersions) || !supportedVersions.length ||
