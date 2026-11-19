@@ -126,23 +126,28 @@ func TestEvidenceModeEnforcesByteLimitsAndRawPaths(t *testing.T) {
 	}
 }
 
-func TestEvidenceModeMatchesDefaultOnRealGitProducer(t *testing.T) {
-	producer := os.Getenv("GIT_CHANGESET_TEST_PRODUCER")
-	if producer == "" {
-		var err error
-		producer, err = filepath.Abs("../../../../scripts/git_changeset.py")
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, err := os.Stat(producer); os.IsNotExist(err) {
-			t.Skip("repository Git change-set producer is unavailable")
-		} else if err != nil {
-			t.Fatal(err)
-		}
-		if _, err := exec.LookPath("python3"); err != nil {
-			t.Skip("python3 is unavailable")
-		}
+func realChangesetProducer(t *testing.T) string {
+	t.Helper()
+	if producer := os.Getenv("GIT_CHANGESET_TEST_PRODUCER"); producer != "" {
+		return producer
 	}
+	producer, err := filepath.Abs("../../../../scripts/git_changeset.py")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(producer); os.IsNotExist(err) {
+		t.Skip("repository Git change-set producer is unavailable")
+	} else if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := exec.LookPath("python3"); err != nil {
+		t.Skip("python3 is unavailable")
+	}
+	return producer
+}
+
+func TestEvidenceModeMatchesDefaultOnRealGitProducer(t *testing.T) {
+	producer := realChangesetProducer(t)
 	dir, nested := setupEvidenceGitFixture(t)
 	docs := t.TempDir()
 	for _, snapshot := range []string{"worktree", "index"} {
@@ -326,5 +331,141 @@ func assertEvidenceFixtureAudit(t *testing.T, docs string) {
 		report.Findings[1].File != "src/untracked\tfile.py" || report.Findings[1].Line != 2 ||
 		report.Findings[1].Code != "SRE-SCALE-SLEEP" || report.Findings[1].Severity != "BLOCKER" {
 		t.Fatalf("unexpected candidate or finding set: %+v", report)
+	}
+}
+
+func TestEvidenceModeMatchesDefaultOnTypeChange(t *testing.T) {
+	producer := realChangesetProducer(t)
+	dir := initTempGitRepo(t)
+	write := func(path string, body []byte) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, path), body, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("target.txt", []byte("payload\n"))
+	if err := os.Symlink("target.txt", filepath.Join(dir, "link.py")); err != nil {
+		t.Fatal(err)
+	}
+	write("victim.py", []byte("x = 1\ny = 2\nz = 3\n"))
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "commit", "-m", "track type-change fixture")
+	if err := os.Remove(filepath.Join(dir, "link.py")); err != nil {
+		t.Fatal(err)
+	}
+	write("link.py", []byte("import time\n\n\ndef nap():\n    time.sleep(5)\n    return 2\n"))
+	if err := os.Remove(filepath.Join(dir, "victim.py")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("target.txt", filepath.Join(dir, "victim.py")); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, dir, "add", "-A")
+
+	docs := t.TempDir()
+	for _, snapshot := range []string{"worktree", "index"} {
+		cmd := exec.Command("python3", producer, "--repo", dir, "--base", "HEAD", "--snapshot", snapshot)
+		out, err := cmd.Output()
+		if err != nil {
+			t.Fatalf("produce %s payload: %v", snapshot, err)
+		}
+		if err := os.WriteFile(filepath.Join(docs, snapshot+".json"), out, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	assertTypeChangeSnapshots(t, docs)
+	t.Chdir(dir)
+	assertTypeChangeAudit(t, docs)
+}
+
+func assertTypeChangeSnapshots(t *testing.T, docs string) {
+	t.Helper()
+	type pathRecord struct {
+		Text string `json:"text"`
+	}
+	type hunkRange struct {
+		OldStart int `json:"old_start"`
+		OldCount int `json:"old_count"`
+		NewStart int `json:"new_start"`
+		NewCount int `json:"new_count"`
+	}
+	type fileRecord struct {
+		Status  string      `json:"status"`
+		OldPath *pathRecord `json:"old_path"`
+		NewPath *pathRecord `json:"new_path"`
+		OldMode string      `json:"old_mode"`
+		NewMode string      `json:"new_mode"`
+		Hunks   []hunkRange `json:"hunks"`
+	}
+	for _, snapshot := range []string{"worktree", "index"} {
+		data, err := os.ReadFile(filepath.Join(docs, snapshot+".json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var document struct {
+			Files []fileRecord `json:"files"`
+		}
+		if err := json.Unmarshal(data, &document); err != nil {
+			t.Fatalf("parse %s payload: %v", snapshot, err)
+		}
+		recordAt := func(path string) fileRecord {
+			t.Helper()
+			var matches []fileRecord
+			for _, record := range document.Files {
+				if record.NewPath != nil && record.NewPath.Text == path {
+					matches = append(matches, record)
+				}
+			}
+			if len(matches) != 1 {
+				t.Fatalf("%s snapshot has %d records for %q, want 1", snapshot, len(matches), path)
+			}
+			return matches[0]
+		}
+		link := recordAt("link.py")
+		if link.Status != "T" || link.OldPath == nil || link.OldPath.Text != "link.py" ||
+			link.OldMode != "120000" || link.NewMode != "100644" ||
+			!slices.Equal(link.Hunks, []hunkRange{{1, 1, 0, 0}, {0, 0, 1, 6}}) {
+			t.Fatalf("%s snapshot lost the symlink-to-file type change: %+v", snapshot, link)
+		}
+		victim := recordAt("victim.py")
+		if victim.Status != "T" || victim.OldPath == nil || victim.OldPath.Text != "victim.py" ||
+			victim.OldMode != "100644" || victim.NewMode != "120000" ||
+			!slices.Equal(victim.Hunks, []hunkRange{{1, 3, 0, 0}, {0, 0, 1, 1}}) {
+			t.Fatalf("%s snapshot lost the file-to-symlink type change: %+v", snapshot, victim)
+		}
+	}
+}
+
+func assertTypeChangeAudit(t *testing.T, docs string) {
+	t.Helper()
+	var normal, normalized, stderr bytes.Buffer
+	normalCode := executeAudit([]string{"--format", "json"}, &normal, &stderr)
+	if stderr.Len() != 0 {
+		t.Fatal(&stderr)
+	}
+	normalizedCode := executeAudit([]string{"--format", "json", "--changeset", filepath.Join(docs, "worktree.json"),
+		"--index-changeset", filepath.Join(docs, "index.json")}, &normalized, &stderr)
+	if normalCode != 1 || normalizedCode != normalCode || stderr.Len() != 0 || !bytes.Equal(normal.Bytes(), normalized.Bytes()) {
+		t.Fatalf("default and normalized audits differ: normal=%d/%s normalized=%d/%s stderr=%s",
+			normalCode, &normal, normalizedCode, &normalized, &stderr)
+	}
+	var report struct {
+		Findings []struct {
+			File     string `json:"file"`
+			Line     int    `json:"line"`
+			Code     string `json:"code"`
+			Severity string `json:"severity"`
+		} `json:"findings"`
+		SLI struct {
+			TotalFiles int `json:"total_files"`
+		} `json:"sli"`
+	}
+	if err := json.Unmarshal(normalized.Bytes(), &report); err != nil {
+		t.Fatal(err)
+	}
+	if report.SLI.TotalFiles != 1 || len(report.Findings) != 1 ||
+		report.Findings[0].File != "link.py" || report.Findings[0].Line != 5 ||
+		report.Findings[0].Code != "SRE-SCALE-SLEEP" || report.Findings[0].Severity != "BLOCKER" {
+		t.Fatalf("unexpected type-change finding set: %+v", report)
 	}
 }
