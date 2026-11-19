@@ -81,7 +81,7 @@ test("React DOM 18 and missing installed evidence never trigger render advice", 
     installed: { status: "installed", name: "react-dom", version: "18.3.1" },
   };
   assert.equal(reviewLegacyRender(eighteen, renderUsage, ["18.3.1"]).status, "not_applicable");
-  const { installed, ...noInstalled } = domEvidence;
+  const { installed: _installed, ...noInstalled } = domEvidence;
   assert.equal(reviewLegacyRender(noInstalled, renderUsage, compatibility).status, "inconclusive");
   assert.equal(reviewLegacyRender({ ...domEvidence, installed: { status: "missing" } }, renderUsage, compatibility).status, "inconclusive");
   assert.equal(reviewLegacyRender({ ...domEvidence, installed: { status: "installed", name: "react", version: "19.0.0" } }, renderUsage, compatibility).status, "inconclusive");
