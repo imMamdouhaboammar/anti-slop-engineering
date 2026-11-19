@@ -445,6 +445,27 @@ test('Removal: the required core skill cannot be removed', () => {
   assert.match(result.stderr, /core/i)
 })
 
+test('Removal: a symlinked managed inventory fails without following its target', () => {
+  const project = fs.mkdtempSync(path.join(os.tmpdir(), 'anti-slop-remove-link-'))
+  const run = (args) => spawnSync(process.execPath, [installer, ...args], {
+    cwd: project, encoding: 'utf8', env: { ...process.env, HOME: project, CI: 'true' }, timeout: 15000,
+  })
+  try {
+    assert.equal(run(['--agent=codex', '--skills=tagore-guard', '--json']).status, 0)
+    const inventory = path.join(project, '.codex', 'skills', 'tagore-guard', '.anti-slop-managed.json')
+    const victim = path.join(project, 'private.json')
+    fs.writeFileSync(victim, '{"private":true}\n')
+    fs.unlinkSync(inventory)
+    fs.symlinkSync(victim, inventory)
+    const result = run(['--agent=codex', '--remove', 'tagore-guard', '--json'])
+    assert.notEqual(result.status, 0)
+    assert.match(result.stderr, /symbolic link/i)
+    assert.equal(fs.readFileSync(victim, 'utf8'), '{"private":true}\n')
+  } finally {
+    fs.rmSync(project, { recursive: true, force: true })
+  }
+})
+
 test('Removal: an unknown skill is rejected', () => {
   const result = inDisposableProject(['--agent=codex', '--remove', 'no-such-skill', '--json'])
   assert.notEqual(result.status, 0)

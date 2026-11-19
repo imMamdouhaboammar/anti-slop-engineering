@@ -363,11 +363,17 @@ const MANAGED_INVENTORY = '.anti-slop-managed.json'
 
 function readManagedInventory(directory) {
   const file = path.join(directory, MANAGED_INVENTORY)
-  if (!fs.existsSync(file)) return null
-  if (fs.lstatSync(file).isSymbolicLink()) throw new Error(`Refusing symbolic link in installer path: ${file}`)
+  assertSafeFilePath(file)
+  let raw
+  try {
+    raw = fs.readFileSync(file, 'utf8')
+  } catch (err) {
+    if (err && err.code === 'ENOENT') return null
+    throw err
+  }
   let state
   try {
-    state = JSON.parse(fs.readFileSync(file, 'utf8'))
+    state = JSON.parse(raw)
   } catch {
     throw new Error(`Invalid managed inventory: ${file}`)
   }
@@ -405,9 +411,6 @@ function planSkillRemoval(target, skill) {
   if (!fs.existsSync(directory)) {
     plan.status = 'removable'
     return plan
-  }
-  if (fs.lstatSync(directory).isSymbolicLink()) {
-    throw new Error(`Refusing symbolic link in installer path: ${directory}`)
   }
   const inventory = readManagedInventory(directory)
   const source = skillSourceDir()
