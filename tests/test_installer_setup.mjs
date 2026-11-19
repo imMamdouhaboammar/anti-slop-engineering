@@ -558,3 +558,102 @@ for (const [agent, settings, tool] of additionalHookPreviews) {
     })
   })
 }
+
+function runCodexPreview(dir, options) {
+  return spawnSync(process.execPath, [cli, 'setup', '--agent=codex', '--skills=core', '--codex-hooks', '--dry-run', '--json', ...options], {
+    cwd: dir, encoding: 'utf8', env: { ...process.env, HOME: dir, CI: 'true' }, timeout: 12000,
+  })
+}
+
+test('Enforcement: Codex preview reports a supported advisory mode', { skip: process.platform === 'win32' }, () => {
+  inClaudeWorkspace((dir) => {
+    const result = runCodexPreview(dir, ['--enforcement=advisory'])
+    assert.equal(result.status, 0, result.stderr)
+    const { hookPlan } = JSON.parse(result.stdout)
+    assert.equal(hookPlan.enforcement.requested, 'advisory')
+    assert.equal(hookPlan.enforcement.effective, 'advisory')
+    assert.equal(hookPlan.enforcement.supported, true)
+    assert.match(hookPlan.enforcement.capability, /feedback/i)
+    assert.equal(hookPlan.settings, path.join(fs.realpathSync(dir), '.codex', 'hooks.json'))
+    assert.equal(hookPlan.requires_host_hook_trust, true)
+    assert.deepEqual(fs.readdirSync(dir), [])
+    const plain = JSON.parse(runCodexPreview(dir, []).stdout).hookPlan
+    assert.equal(plain.enforcement.requested, null)
+    assert.equal(plain.enforcement.supported, true)
+    assert.deepEqual(fs.readdirSync(dir), [])
+  })
+})
+
+test('Enforcement: Codex preview reports strict as explicitly unsupported', { skip: process.platform === 'win32' }, () => {
+  inClaudeWorkspace((dir) => {
+    const result = runCodexPreview(dir, ['--enforcement=strict'])
+    assert.equal(result.status, 0, result.stderr)
+    const { hookPlan } = JSON.parse(result.stdout)
+    assert.equal(hookPlan.enforcement.requested, 'strict')
+    assert.equal(hookPlan.enforcement.supported, false)
+    assert.equal(hookPlan.enforcement.effective, null)
+    assert.match(hookPlan.enforcement.reason, /strict failure blocking/)
+    assert.deepEqual(fs.readdirSync(dir), [])
+  })
+})
+
+test('Enforcement: Codex preview reports git-boundary as unsupported for the adapter', { skip: process.platform === 'win32' }, () => {
+  inClaudeWorkspace((dir) => {
+    const result = runCodexPreview(dir, ['--enforcement=git-boundary'])
+    assert.equal(result.status, 0, result.stderr)
+    const { hookPlan } = JSON.parse(result.stdout)
+    assert.equal(hookPlan.enforcement.requested, 'git-boundary')
+    assert.equal(hookPlan.enforcement.supported, false)
+    assert.equal(hookPlan.enforcement.effective, null)
+    assert.deepEqual(fs.readdirSync(dir), [])
+  })
+})
+
+test('Enforcement: skills-only targets no hook files', { skip: process.platform === 'win32' }, () => {
+  inClaudeWorkspace((dir) => {
+    const result = runCodexPreview(dir, ['--enforcement=skills-only'])
+    assert.equal(result.status, 0, result.stderr)
+    const { hookPlan } = JSON.parse(result.stdout)
+    assert.equal(hookPlan.status, 'skills_only')
+    assert.equal(hookPlan.enforcement.requested, 'skills-only')
+    assert.equal(hookPlan.enforcement.effective, 'skills-only')
+    assert.equal(hookPlan.enforcement.supported, true)
+    assert.deepEqual(hookPlan.tools, [])
+    assert.equal(hookPlan.requires_host_hook_trust, false)
+    assert.deepEqual(fs.readdirSync(dir), [])
+  })
+})
+
+test('Enforcement: previews preserve an existing user hooks configuration', { skip: process.platform === 'win32' }, () => {
+  inClaudeWorkspace((dir) => {
+    fs.mkdirSync(path.join(dir, '.codex'))
+    const settings = path.join(dir, '.codex', 'hooks.json')
+    const content = '{"hooks":{"PreToolUse":[{"hooks":[{"type":"command","command":"echo user-hook"}]}]}}\n'
+    fs.writeFileSync(settings, content)
+    for (const mode of ['advisory', 'strict']) {
+      const result = runCodexPreview(dir, ['--enforcement=' + mode])
+      assert.equal(result.status, 0, result.stderr)
+      const { hookPlan } = JSON.parse(result.stdout)
+      assert.equal(hookPlan.enforcement.requested, mode)
+      assert.equal(fs.readFileSync(settings, 'utf8'), content)
+    }
+  })
+})
+
+test('Enforcement: the flag is rejected without a preview, for other adapters, or with an unknown mode', { skip: process.platform === 'win32' }, () => {
+  inClaudeWorkspace((dir) => {
+    const run = (args) => spawnSync(process.execPath, [cli, 'setup', ...args], {
+      cwd: dir, encoding: 'utf8', env: { ...process.env, HOME: dir, CI: 'true' }, timeout: 12000,
+    })
+    const noPreview = run(['--agent=codex', '--skills=core', '--enforcement=advisory', '--dry-run', '--json'])
+    assert.notEqual(noPreview.status, 0)
+    assert.match(noPreview.stderr, /--enforcement/)
+    const unknown = runCodexPreview(dir, ['--enforcement=banana'])
+    assert.notEqual(unknown.status, 0)
+    assert.match(unknown.stderr, /Unknown enforcement mode/)
+    const gemini = run(['--agent=gemini', '--skills=core', '--gemini-hooks', '--dry-run', '--json', '--enforcement=advisory'])
+    assert.notEqual(gemini.status, 0)
+    assert.match(gemini.stderr, /only for the Codex/)
+    assert.deepEqual(fs.readdirSync(dir), [])
+  })
+})
