@@ -91,7 +91,9 @@ pipx install git+https://github.com/imMamdouhaboammar/anti-slop-engineering.git
 
 ### Diff Guard — pre-commit and PR triage
 
-Runs on any git diff in under a second. No network access. No config files required.
+Scans the Git diff locally without network access or a config file.
+
+Run `python3 scripts/benchmark_static_guards.py --samples 3` from a source checkout to measure Diff Guard and SRE Guard on generated Git fixtures. At revision `4876dae` on macOS arm64 with Python 3.14.6 and Git 2.55.0, Diff Guard's median was 110 ms for 3 files and 9 added lines, and 321 ms for 100 files and 10,000 added lines. The command reports timing and scanned-file counts for each workload.
 
 | Code | Severity | Pattern detected |
 |---|---|---|
@@ -441,7 +443,7 @@ bunx anti-slop-engineering apple-craft audit path/to/record.json --json
 Prevents evidence fabrication, quadratic reductions, eager array allocations, and test-oracle erosion in TypeScript and JavaScript. Runs across two complementary tiers:
 
 ```bash
-# Tier 1: Zero-dependency pre-commit diff scan (<100ms):
+# Pre-commit diff scan:
 bunx anti-slop-engineering ast --base HEAD
 
 # Direct file or directory sweep:
