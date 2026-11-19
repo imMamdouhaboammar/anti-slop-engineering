@@ -146,9 +146,8 @@ func realChangesetProducer(t *testing.T) string {
 	return producer
 }
 
-func TestEvidenceModeMatchesDefaultOnRealGitProducer(t *testing.T) {
-	producer := realChangesetProducer(t)
-	dir, nested := setupEvidenceGitFixture(t)
+func writeChangesetSnapshots(t *testing.T, producer, dir string) string {
+	t.Helper()
 	docs := t.TempDir()
 	for _, snapshot := range []string{"worktree", "index"} {
 		cmd := exec.Command("python3", producer, "--repo", dir, "--base", "HEAD", "--snapshot", snapshot)
@@ -160,6 +159,13 @@ func TestEvidenceModeMatchesDefaultOnRealGitProducer(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	return docs
+}
+
+func TestEvidenceModeMatchesDefaultOnRealGitProducer(t *testing.T) {
+	producer := realChangesetProducer(t)
+	dir, nested := setupEvidenceGitFixture(t)
+	docs := writeChangesetSnapshots(t, producer, dir)
 	assertEvidenceFixtureSnapshots(t, docs)
 	t.Chdir(nested)
 	assertEvidenceFixtureAudit(t, docs)
@@ -362,17 +368,7 @@ func TestEvidenceModeMatchesDefaultOnTypeChange(t *testing.T) {
 	}
 	runGit(t, dir, "add", "-A")
 
-	docs := t.TempDir()
-	for _, snapshot := range []string{"worktree", "index"} {
-		cmd := exec.Command("python3", producer, "--repo", dir, "--base", "HEAD", "--snapshot", snapshot)
-		out, err := cmd.Output()
-		if err != nil {
-			t.Fatalf("produce %s payload: %v", snapshot, err)
-		}
-		if err := os.WriteFile(filepath.Join(docs, snapshot+".json"), out, 0600); err != nil {
-			t.Fatal(err)
-		}
-	}
+	docs := writeChangesetSnapshots(t, producer, dir)
 	assertTypeChangeSnapshots(t, docs)
 	t.Chdir(dir)
 	assertTypeChangeAudit(t, docs)
