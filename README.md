@@ -640,7 +640,7 @@ The agent skill wires Anti-Slop Engineering into your AI coding agent's context.
 npx skills add imMamdouhaboammar/anti-slop-engineering
 ```
 
-Package installation does not automatically download skills or build native executables. Run `bunx anti-slop-engineering setup` in a terminal to choose **Core only**, **Select plugins**, or **Install everything** before confirming. The core skill is always included; optional selections are the skill directories in this distribution, not separately loaded guard executables. In CI or piped input, setup defaults to core only; use `--skills=all` or `--plugins=decision-guard,root-fix-gate` to choose explicitly. Existing managed files are updated without overwriting local modifications, and `update` keeps your previously installed skill selection.
+Package installation does not automatically download skills or build native executables. Run `bunx anti-slop-engineering setup` in a terminal to choose **Core only**, **Select plugins**, or **Install everything** before confirming. The core skill is always included; optional selections are the skill directories in this distribution, not separately loaded guard executables. In CI or piped input, setup defaults to core only; use `--skills=all` or `--plugins=decision-guard,root-fix-gate` to choose explicitly. Existing managed files are updated without overwriting local modifications, and `update` keeps your previously installed skill selection. To remove an installed optional skill, use `--remove <skill>` (use `--dry-run` to preview deleted files).
 
 To use the installed skill selection for optional review checks, pass the manifest from the actual agent destination:
 

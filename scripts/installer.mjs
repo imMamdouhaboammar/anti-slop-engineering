@@ -371,7 +371,7 @@ function readManagedInventory(directory) {
   } catch {
     throw new Error(`Invalid managed inventory: ${file}`)
   }
-  if (state?.format !== 1 || typeof state.files !== 'object' || state.files === null || Array.isArray(state.files)) {
+  if (state?.format !== 1 || Object.prototype.toString.call(state.files) !== '[object Object]') {
     throw new Error(`Invalid managed inventory: ${file}`)
   }
   return state.files
