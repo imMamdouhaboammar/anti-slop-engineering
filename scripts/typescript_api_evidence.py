@@ -22,6 +22,8 @@ PACKAGE_PATTERN = re.compile(r"(@[a-z0-9][a-z0-9._-]*/)?[a-z0-9][a-z0-9._-]*\Z")
 def package_version(workspace, package):
     manifest = workspace / "node_modules" / Path(package) / "package.json"
     metadata = json.loads(read_bounded(manifest))
+    if not isinstance(metadata, dict):
+        raise TypeError("Installed package metadata is not a JSON object")
     version = metadata.get("version")
     if metadata.get("name") != package or not isinstance(version, str) or not version:
         raise ValueError("Installed package metadata does not identify the requested package")
@@ -49,6 +51,8 @@ def installed_api(workspace_arg, package, symbol, node, compiler, version):
     try:
         evidence = json.loads(ran["output"])
     except ValueError:
+        return {**result, "status": "inconclusive", "reason": "The selected compiler returned an unreadable result"}
+    if not isinstance(evidence, dict):
         return {**result, "status": "inconclusive", "reason": "The selected compiler returned an unreadable result"}
     if evidence.get("compiler_version") != version:
         return {**result, "status": "inconclusive",
