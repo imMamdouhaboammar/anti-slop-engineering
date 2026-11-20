@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.11.0] - 2026-11-20
+
+### Added
+
+- Remove an optional skill with a dry-run preview and a recoverable copy of the installed files. Shared instructions retain references for agents that still use the skill (#237).
+- Codex hook previews report whether the requested enforcement is supported or depends on the active session (#238).
+- Python API evidence links a consumer import to its installed declaration. Bun evidence reports installed package identity and version alongside the locked release (#240, #241).
+- React DOM render advice uses installed React DOM 19 evidence and the supported-release matrix (#242).
+
+### Fixed
+
+- Combined audits retain the registered owner's severity and fallback-only findings. Python's ownership of SRE-01 is registered and tested (#235, #244, #246).
+- React and React DOM advice use the evidence for the relevant package. The forwardRef check validates the installed React 19 release when the receipt includes installed metadata (#245, #247).
+
 ## [1.10.0] - 2026-11-17
 
 ### Added
