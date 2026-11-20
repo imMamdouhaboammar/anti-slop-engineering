@@ -115,6 +115,16 @@ Read [React 19 ref-as-prop semantics](https://react.dev/blog/2024/12/05/react-19
 
 The same example also reviews the legacy `render` export of `react-dom`, removed in React DOM 19. The reviewed usage record uses `{"module":"react-dom","export":"render","kind":"call","supportedVersions":["19.0.0","19.1.0"]}`, and the receipt is the Bun lock evidence for `react-dom` including its `installed` block: the advisory requires the installed package to establish an exact stable React DOM 19, because the code runs against the installed package, not the lockfile alone. Missing installed evidence stays inconclusive. A support matrix that still covers React DOM 18 returns a compatibility exception instead of advice. The advisory cites the [React 19 upgrade guide](https://react.dev/blog/2024/04/25/react-19-upgrade-guide#removed-reactdomrender) and proposes `createRoot` from `react-dom/client`, keeping the returned root for teardown.
 
+## Redundant dependency review
+
+The [uuid v4 advisory example](examples/uuid-v4-advisory.mjs) reviews one redundant-dependency candidate: a project that depends on `uuid` only to generate version 4 UUIDs. It accepts the Bun lock evidence receipt for `uuid` and a reviewed usage record carrying the actual import and call sites, plus the project's supported runtimes with exact versions.
+
+```bash
+bun skills/type-level-and-ast-slop-gate/examples/uuid-v4-advisory.mjs uuid-lock-evidence.json reviewed-usage.json
+```
+
+The usage record uses `{"module":"uuid","imports":[{"export":"v4","file":"src/id.ts","line":1}],"calls":[{"export":"v4","file":"src/id.ts","line":7}],"runtimes":[{"name":"node","version":"20.11.0"}]}`. The advisory fires only when every recorded import and call site names `v4` alone and every supported runtime is inside the verified `crypto.randomUUID` scope (Node 19+, Bun 1+, Deno 1+); it cites the [Node crypto documentation](https://nodejs.org/api/crypto.html#cryptorandomuuidoptions), whose `randomUUID()` returns the same RFC 4122 version 4 string. Any other uuid export in the evidence (v1, v5, `parse`, and so on) keeps the dependency applicable. Missing import, call-site, or runtime evidence stays inconclusive, and a supported runtime below the verified floor returns a compatibility exception instead of advice. The result is advisory only; it never blocks on the package name alone.
+
 ## Automated source evidence with Oxlint
 
 Enable `anti-slop/react-forward-ref-evidence` as `"warn"` in the project's Oxlint config after [installing the plugin](../install-anti-slop/SKILL.md). It resolves the actual lexical React import for named, default, or namespace bindings. The observation applies to a direct call around an inline function or arrow. Shadowed bindings, compatibility shims, and wrappers passed by reference need separate evidence.
