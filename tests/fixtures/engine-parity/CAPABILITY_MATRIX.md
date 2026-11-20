@@ -11,7 +11,7 @@
 
 [Tested capability and rule fixture](contracts.json)
 
-The fixture identifies one canonical owner for the observed error-swallow, blind-sleep, flat-retry, and deep-nesting rules, and records alternate implementations with their actual IDs and severities. Different decisions are preserved by parity tests during migration. New shared-rule records must link to a fixture, declare one owner, and register each engine and emitted identifier once. Overlaps without independent evidence remain listed as current behavior in this matrix.
+The fixture identifies one canonical owner for the observed error-swallow, blind-sleep, flat-retry, deep-nesting, and unbounded-concurrency rules, and records alternate implementations with their actual IDs and severities. Different decisions are preserved by parity tests during migration. New shared-rule records must link to a fixture, declare one owner, and register each engine and emitted identifier once. Overlaps without independent evidence remain listed as current behavior in this matrix.
 
 ## `anti-slop-rust triage` ↔ `scripts/diff_guard.py`
 
@@ -58,7 +58,7 @@ Canonical owner: python-sre (`SCALE_UNBOUNDED_OR_FLAT_RETRY`, blocker). Fallback
 - Go flags a counted `for attempt in range(N)` header with no sleep at all when no `backoff` or `jitter` keyword appears within six lines; the Python guards require a fixed sleep inside the loop.
 - Go flags exponential backoff written without the words `backoff` or `jitter` (for example `time.sleep(2 ** attempt)`); the Python guards treat a non-literal sleep argument as backoff-shaped and stay silent.
 - The Python guards flag `while attempts <= N` counter loops with a fixed sleep; Go has no while-loop form and reports only the sleep itself (SRE-07).
-- The unified audit suppresses the fallback entry when both Python guards report SRE-08 at the same file and line: the owner's entry is kept with its blocker severity and the suppressed fallback is recorded on it (`suppressed_duplicates`). The same owner-aware suppression applies to the error-swallow (OPS-01) and blind-sleep (SRE-07) pairs; findings at distinct locations and unmapped findings are never merged.
+- The unified audit suppresses the fallback entry when both Python guards report SRE-08 at the same file and line: the owner's entry is kept with its blocker severity and the suppressed fallback is recorded on it (`suppressed_duplicates`). The same owner-aware suppression applies to the error-swallow (OPS-01), blind-sleep (SRE-07), and unbounded-concurrency (SRE-09) pairs; findings at distinct locations and unmapped findings are never merged.
 
 ## Recorded SRE-09 differences
 
