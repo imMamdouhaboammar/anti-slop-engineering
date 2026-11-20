@@ -96,7 +96,7 @@ function usageFromOxlintReport(report, installedPackage) {
       (installedPackage === "react-dom" || !codes.has(OXLINT_RULE_CODE))) {
     return { module: "react-dom", export: "render", kind: "call" };
   }
-  if (codes.has(OXLINT_RULE_CODE)) {
+  if (installedPackage !== "react-dom" && codes.has(OXLINT_RULE_CODE)) {
     return { module: "react", export: "forwardRef", kind: "function-component" };
   }
   return undefined;
