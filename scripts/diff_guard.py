@@ -18,7 +18,7 @@ from scripts.diff_lifecycle import load_hooks, run_hook
 from scripts.git_changeset import collect_changes, repository_root
 from scripts.retry_heuristics import INLINE_FLAT_RETRY, flat_retry_lines
 
-__version__ = '1.10.0'
+__version__ = '1.11.0'
 
 
 PATTERNS = [
