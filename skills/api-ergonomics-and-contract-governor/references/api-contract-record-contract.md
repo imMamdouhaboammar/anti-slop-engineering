@@ -170,6 +170,20 @@ The `compiler` object records the actual Python interpreter and either a success
 
 Exit status 0 requires both a completed syntax check and declaration evidence. Status 1 is a compiler diagnostic. Status 2 means the requested evidence was unavailable or inconclusive. No dependencies are installed, no registry is queried, and neither source file is executed.
 
+### Installed TypeScript package evidence
+
+Run the read-only adapter from a checkout or package. Select the precise workspace whose `node_modules` holds the installed package, and a trusted installed Node and TypeScript compiler.
+
+```sh
+python3 -I -S scripts/typescript_api_evidence.py \
+  --workspace /path/to/workspace --package example-package --symbol published \
+  --node /path/to/trusted/node --tsc-js /path/to/trusted/typescript/lib/tsc.js
+```
+
+The `compiler` object records the selected TypeScript installation: its package metadata is verified against `lib/tsc.js` before anything runs, and the version the compiler API reports must match that metadata. The adapter reads the installed package's own `package.json` for the resolved version, then asks the compiler — through an in-memory probe import resolved against the workspace, never written to disk — whether the package's module exports the symbol. Nothing is installed, no registry is queried, no lifecycle script runs, and no package code is executed; the child process runs with a clean environment and bounded time and output.
+
+`installed_api.status: declared` means the compiler resolved the export to a declaration inside the selected workspace; the receipt carries `declaration_span` (the declaration file's workspace-relative path and range) and `provenance` (the workspace and declaration file). `not_declared` means the module resolved and the export is absent. An unresolvable package, metadata that does not identify the requested package, or a declaration outside the workspace yields `inconclusive`. An unavailable workspace or an unverifiable compiler yields `not_checked` — never a pass. Exit status 0 requires `declared`; every other outcome exits 2.
+
 ### Optional TypeScript compiler fixture
 
 ```sh
