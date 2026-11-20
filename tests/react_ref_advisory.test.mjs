@@ -239,6 +239,11 @@ test("Oxlint resolves genuine React DOM render calls and leaves shadowed or clie
   assert.equal(JSON.parse(result.stdout.toString()).rule, "REACT19_REACT_DOM_RENDER_REMOVED");
 
 
+  writeFileSync(report, JSON.stringify({ diagnostics: [{ code: "anti-slop(react-forward-ref-evidence)" }] }));
+  result = run();
+  assert.equal(result.exitCode, 0, result.stderr.toString());
+  assert.equal(JSON.parse(result.stdout.toString()).status, "not_applicable");
+
   writeFileSync(report, JSON.stringify({ diagnostics: [{ code: "unrelated(react-dom-render-evidence)" }] }));
   result = run();
   assert.equal(result.exitCode, 0, result.stderr.toString());
