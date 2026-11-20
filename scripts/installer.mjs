@@ -897,6 +897,13 @@ export async function promptForSkills(modules, targets, input = process.stdin, o
       output.write(`\nInstallation plan:\n  Required: ${CORE_SKILL}\n`)
       output.write(`  Optional: ${skills.filter((skill) => skill !== CORE_SKILL).join(', ') || '(none)'}\n`)
       activeTargets.forEach((target) => output.write(`  Target: ${target.path}\n`))
+      if (setup.enforcement && activeScope === 'project' && activeAgents.includes('codex')) {
+        const hookPlan = previewAgentHooks('codex', activeScope, activeAgents, setup.enforcement)
+        output.write(`  Codex hook settings: ${hookPlan.settings}\n`)
+        if (hookPlan.requires) output.write(`  Requires: ${hookPlan.requires}\n`)
+        output.write(`  Enforcement (${hookPlan.enforcement.requested}): ${hookPlan.enforcement.capability}\n`)
+        if (hookPlan.enforcement.reason) output.write(`  Reason: ${hookPlan.enforcement.reason}\n`)
+      }
       const operations = installSkills({ skills, targets: activeTargets, overwrite: true, dryRun: true })
       const counts = ['installed', 'updated', 'preserved', 'skipped', 'conflicted']
         .map((kind) => `${kind}: ${operations.reduce((total, entry) => total + (entry[kind]?.length || 0), 0)}`)
@@ -1016,7 +1023,7 @@ Options:
   --claude-hooks      With --dry-run, preview local Claude hooks from this checkout
   --codex-hooks       With --dry-run, preview local Codex hooks from this checkout
   --gemini-hooks      With --dry-run, preview local Gemini hooks from this checkout
-  --enforcement <mode> With --codex-hooks --dry-run: requested hook enforcement (strict, advisory, git-boundary, skills-only)
+  --enforcement <mode> With --codex-hooks --dry-run, or shown in the interactive plan: requested hook enforcement (strict, advisory, git-boundary, skills-only)
   --json              Output JSON result
   --no-interactive    Skip terminal selection (defaults to core only)
   --help, -h          Show this help menu
@@ -1029,9 +1036,6 @@ Options:
   if (hookPreviews.length > 1) throw new Error('Select one adapter for the hook preview')
   const [hookPreview] = hookPreviews
   const enforcementArg = optionValue(args, ['enforcement'])
-  if (enforcementArg && !hookPreviews.length) {
-    throw new Error('--enforcement requires a hook preview (for example --codex-hooks with --dry-run)')
-  }
   if (hookPreview && (!args.includes('--dry-run') || args.includes('--selection-only') || isUpdate)) {
     const label = hookPreview === 'claude' ? 'Claude' : hookPreviewAdapters[hookPreview][0]
     throw new Error('--' + hookPreview + '-hooks previews setup only; use --dry-run and the standalone ' + label + ' adapter to apply')
@@ -1108,6 +1112,9 @@ Options:
   const promptOutput = selectionOnly ? process.stderr : process.stdout
   const canPrompt = !dryRun && !jsonMode && !process.env.CI && !args.includes('--no-interactive')
     && skillsArg == null && presetArg == null && promptOutput.isTTY
+  if (enforcementArg && !hookPreview && !canPrompt) {
+    throw new Error('--enforcement requires a hook preview (for example --codex-hooks with --dry-run)')
+  }
   let terminalInput
   if (canPrompt && !process.stdin.isTTY && process.platform !== 'win32') {
     const ttyPath = process.env.ANTI_SLOP_TTY_PATH || '/dev/tty'
@@ -1130,7 +1137,7 @@ Options:
   if (interactive) {
     try {
       const response = await promptForSkills(listAvailableModules(), targets, interactiveInput, promptOutput,
-        { scope: resolvedScope, agents: selectedAgents, allowTargetChange: !selectionOnly })
+        { scope: resolvedScope, agents: selectedAgents, allowTargetChange: !selectionOnly, enforcement: enforcementArg })
       if (response == null) {
         console.error('Setup cancelled; no installation files were changed')
         return 130
