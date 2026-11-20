@@ -44,13 +44,25 @@ test("unverified call signature evidence requests a call-signature review", () =
   const result = reviewUuidV4(lock, unverified, runtimes);
   assert.equal(result.status, "advisory");
   assert.match(result.suggestion, /Review recorded uuid v4 call signatures/);
+
+  const optionsFalseOnly = {
+    ...usage,
+    calls: [{ export: "v4", file: "src/id.ts", line: 7, hasOptions: false }],
+  };
+  const resultOptionsFalse = reviewUuidV4(lock, optionsFalseOnly, runtimes);
+  assert.equal(resultOptionsFalse.status, "advisory");
+  assert.match(resultOptionsFalse.suggestion, /Review recorded uuid v4 call signatures/);
 });
 
-test("calls using options or buffer outputs keep the dependency applicable", () => {
+test("calls using options, arguments, or buffer outputs keep the dependency applicable", () => {
   const withOptions = { ...usage, calls: [{ export: "v4", file: "src/id.ts", line: 7, hasOptions: true }] };
   assert.equal(reviewUuidV4(lock, withOptions, runtimes).status, "not_applicable");
   const withBuffer = { ...usage, calls: [{ export: "v4", file: "src/id.ts", line: 7, buffer: true }] };
   assert.equal(reviewUuidV4(lock, withBuffer, runtimes).status, "not_applicable");
+  const withPosArgs = { ...usage, calls: [{ export: "v4", file: "src/id.ts", line: 7, args: 1 }] };
+  assert.equal(reviewUuidV4(lock, withPosArgs, runtimes).status, "not_applicable");
+  const withArgsArray = { ...usage, calls: [{ export: "v4", file: "src/id.ts", line: 7, args: ["seed"] }] };
+  assert.equal(reviewUuidV4(lock, withArgsArray, runtimes).status, "not_applicable");
 });
 
 test("any other uuid API in the evidence keeps the dependency applicable", () => {

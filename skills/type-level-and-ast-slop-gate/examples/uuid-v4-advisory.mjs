@@ -36,7 +36,13 @@ export function reviewUuidV4(lock, usage, runtimes) {
   if ([...imported, ...called].some((name) => name !== "v4")) {
     return { status: "not_applicable" };
   }
-  if (usage.calls.some((call) => call && (call.hasOptions === true || call.hasArgs === true || call.buffer === true || (Array.isArray(call.args) && call.args.length > 0)))) {
+  if (usage.calls.some((call) => call && (
+    call.hasOptions === true ||
+    call.hasArgs === true ||
+    call.buffer === true ||
+    (typeof call.args === "number" && call.args > 0) ||
+    (Array.isArray(call.args) && call.args.length > 0)
+  ))) {
     return { status: "not_applicable" };
   }
   if (lock?.status !== "locked" || typeof lock.resolved !== "string" || !exactStableRelease.test(lock.resolved)) {
@@ -58,7 +64,12 @@ export function reviewUuidV4(lock, usage, runtimes) {
   if (runtimes.some((runtime) => compareSemver(runtime.version, RANDOM_UUID_FLOORS[runtime.name]) < 0)) {
     return { status: "compatibility_exception", version: lock.resolved, source: SOURCE };
   }
-  const confirmedNoArgs = usage.calls.every((call) => call && (call.signature === "no_args" || call.hasOptions === false || call.hasArgs === false || call.args === 0));
+  const confirmedNoArgs = usage.calls.every((call) => call && (
+    call.signature === "no_args" ||
+    call.hasArgs === false ||
+    call.args === 0 ||
+    (Array.isArray(call.args) && call.args.length === 0)
+  ));
   const suggestion = confirmedNoArgs
     ? "Every recorded import and call site only generates version 4 UUIDs using the no-argument string form. Replace the uuid import with randomUUID from node:crypto (the global crypto.randomUUID in Bun, Deno, and browsers), which returns the same RFC 4122 version 4 string, then remove the uuid dependency."
     : "Review recorded uuid v4 call signatures: replace calls using the no-argument string-returning form with randomUUID from node:crypto (or global crypto.randomUUID in Bun, Deno, and browsers), while calls passing custom options or buffer outputs still require uuid.";
