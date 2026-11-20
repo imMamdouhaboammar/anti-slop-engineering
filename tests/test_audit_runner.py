@@ -857,7 +857,9 @@ class CatalogDuplicateSuppressionTests(unittest.TestCase):
             "            delay *= 2\n"
             "    raise RuntimeError(\"unreachable\")\n"
         )
-        _, report = self._combined_audit(base, jitter)
+        exit_code, report = self._combined_audit(base, jitter)
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(report["status"], "PASS")
         flagged = [
             f for f in report["findings"] if f.get("catalog_id") in ("SRE-07", "SRE-08")
         ]
