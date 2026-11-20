@@ -192,3 +192,106 @@ fn oversized_file_rejects_even_a_valid_json_prefix() {
     assert!(out.stdout.is_empty());
     assert!(String::from_utf8_lossy(&out.stderr).contains("64 MiB"));
 }
+
+fn collect_quoted_binary_fixture() -> String {
+    let producer = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../scripts");
+    let script = r#"
+import json
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+sys.path.insert(0, sys.argv[1])
+from git_changeset import collect_changes
+
+with tempfile.TemporaryDirectory() as temp:
+    root = Path(temp)
+    def git(*args):
+        subprocess.run(["git", "-C", temp, *args], check=True, stdout=subprocess.DEVNULL)
+    git("init", "-q")
+    git("config", "user.name", "Change Fixture")
+    git("config", "user.email", "fixture@example.invalid")
+    (root / "src").mkdir()
+    (root / "assets").mkdir()
+    cafe = root / "src" / "café données.py"
+    cafe.write_text("import time\n\n\ndef café():\n    return 1\n", encoding="utf-8")
+    (root / "assets" / "blob.bin").write_bytes(b"\x00\x01\x02binary-v1")
+    (root / "src" / "control.py").write_text("def control():\n    return 1\n", encoding="utf-8")
+    git("add", ".")
+    git("commit", "-qm", "base")
+    cafe.write_text("import time\n\n\ndef café():\n    time.sleep(5)\n    return 1\n", encoding="utf-8")
+    (root / "assets" / "blob.bin").write_bytes(b"\x00\x09\x08binary-v2")
+    (root / "src" / "control.py").write_text("def control():\n    return 1\n    # edited\n", encoding="utf-8")
+    print(json.dumps(collect_changes(root, "HEAD", "worktree")))
+"#;
+    let out = Command::new("python3")
+        .arg("-c")
+        .arg(script)
+        .arg(producer)
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    String::from_utf8(out.stdout).unwrap()
+}
+
+#[test]
+fn quoted_binary_and_control_records_reach_the_rust_check() {
+    let source = collect_quoted_binary_fixture();
+    let changes: serde_json::Value = serde_json::from_str(&source).unwrap();
+    let record = |path: &str| {
+        changes["files"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|file| file["new_path"]["text"] == path)
+            .unwrap_or_else(|| panic!("producer lost the record for {path}"))
+            .clone()
+    };
+    let quoted = record("src/café données.py");
+    assert_eq!(quoted["status"], "M");
+    assert_eq!(quoted["binary"], false);
+    assert_eq!(quoted["added"], 1);
+    assert_eq!(quoted["deleted"], 0);
+    assert_eq!(
+        quoted["hunks"],
+        serde_json::json!([{"old_start": 4, "old_count": 0, "new_start": 5, "new_count": 1}])
+    );
+    let blob = record("assets/blob.bin");
+    assert_eq!(blob["status"], "M");
+    assert_eq!(blob["binary"], true);
+    assert!(blob["added"].is_null() && blob["deleted"].is_null());
+    assert!(blob["hunks"].as_array().unwrap().is_empty());
+    let control = record("src/control.py");
+    assert_eq!(control["status"], "M");
+    assert_eq!(
+        control["hunks"],
+        serde_json::json!([{"old_start": 2, "old_count": 0, "new_start": 3, "new_count": 1}])
+    );
+
+    let out = check(&source, &["--read-only"]);
+    let findings = report(&out, 1).findings;
+    let mut paths: Vec<_> = findings.iter().map(|f| f.file.as_str()).collect();
+    paths.sort_unstable();
+    assert_eq!(
+        paths,
+        ["assets/blob.bin", "src/café données.py", "src/control.py"]
+    );
+    assert!(findings.iter().all(|f| f.code == "STS-I01" && f.line == 1));
+}
+
+#[test]
+fn binary_records_with_fabricated_hunks_are_rejected() {
+    let input = r#"{"version":1,"snapshot":"worktree","base":"1111111111111111111111111111111111111111","target":null,"files":[{"status":"M","old_path":{"text":"assets/blob.bin","raw_hex":null},"new_path":{"text":"assets/blob.bin","raw_hex":null},"old_mode":"100644","new_mode":"100644","score":null,"added":null,"deleted":null,"binary":true,"hunks":[{"old_start":1,"old_count":1,"new_start":1,"new_count":1}]}],"untracked":[]}"#;
+    let out = check(input, &["--read-only"]);
+    assert!(!out.status.success());
+    assert!(out.stdout.is_empty());
+    assert!(
+        String::from_utf8_lossy(&out.stderr).contains("file counts"),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
