@@ -689,10 +689,53 @@ const hookPreviewAdapters = {
     'Gemini workspace trust, enabled hooks, and a durable adapter checkout'],
 }
 
-function previewAgentHooks(agent, scope, agents) {
+const ENFORCEMENT_MODES = ['strict', 'advisory', 'git-boundary', 'skills-only']
+
+const hookEnforcement = {
+  codex: {
+    advisory: { effective: null, supported: false, capability: 'PostToolUse feedback for apply_patch actions', reason: 'The adapter cannot enforce an advisory-only installation. Use an armed review watch session for feedback without denial' },
+    strict: { effective: null, supported: false, capability: 'PreToolUse denial for apply_patch actions the adapter can evaluate', reason: 'The Codex adapter does not claim strict failure blocking: hook launch failures, timeouts, and skipped or untrusted hooks are host-dependent. Enforce strict denial with the audit command or CI at the repository boundary instead' },
+    'git-boundary': { effective: null, supported: false, capability: 'The Codex adapter configures agent tool hooks only', reason: 'Git-boundary enforcement is provided by the audit command and CI, not by this adapter' },
+    'skills-only': { effective: 'skills-only', supported: true, capability: 'No agent hooks are configured; skills and explicit repository checks only' },
+  },
+}
+
+function enforcementPlan(agent, mode) {
+  if (!mode) {
+    return {
+      requested: null, effective: null, supported: true,
+      capability: 'No enforcement mode requested; the adapter registers its hook stages and the armed session contract decides whether a matched action is denied or only receives feedback',
+    }
+  }
+  const entry = hookEnforcement[agent][mode]
+  const plan = { requested: mode, effective: entry.effective, supported: entry.supported, capability: entry.capability }
+  if (entry.reason) plan.reason = entry.reason
+  return plan
+}
+
+function previewAgentHooks(agent, scope, agents, enforcement = null) {
   const [label, docs, stages, requires] = hookPreviewAdapters[agent]
   if (scope !== 'project' || !agents.includes(agent)) {
     throw new Error(label + ' hook preview requires project scope and the ' + label + ' agent')
+  }
+  if (enforcement) {
+    if (!ENFORCEMENT_MODES.includes(enforcement)) {
+      throw new Error('Unknown enforcement mode: ' + enforcement + ' (expected one of: ' + ENFORCEMENT_MODES.join(', ') + ')')
+    }
+    if (!hookEnforcement[agent]) {
+      throw new Error('Enforcement modes are currently supported only for the Codex hook preview')
+    }
+  }
+  if (enforcement === 'skills-only') {
+    return {
+      status: 'skills_only',
+      settings: path.join(fs.realpathSync(process.cwd()), '.' + agent, 'hooks.json'),
+      tools: [],
+      requires_host_hook_trust: false,
+      stages: [],
+      requires: null,
+      enforcement: enforcementPlan(agent, enforcement),
+    }
   }
   if (process.platform === 'win32' || !fs.existsSync(path.join(rootDir, '.git'))) {
     throw new Error(label + ' hook preview requires a durable POSIX checkout; see ' + docs)
@@ -704,7 +747,7 @@ function previewAgentHooks(agent, scope, agents) {
   if (preview.error || preview.status !== 0) {
     throw new Error(preview.stderr?.trim() || preview.error?.message || label + ' hook preview failed')
   }
-  return { ...JSON.parse(preview.stdout), stages, requires }
+  return { ...JSON.parse(preview.stdout), stages, requires, enforcement: enforcementPlan(agent, enforcement) }
 }
 
 export async function runInstallerCLI(args = process.argv.slice(2)) {
@@ -732,6 +775,7 @@ Options:
   --claude-hooks      With --dry-run, preview local Claude hooks from this checkout
   --codex-hooks       With --dry-run, preview local Codex hooks from this checkout
   --gemini-hooks      With --dry-run, preview local Gemini hooks from this checkout
+  --enforcement <mode> With --codex-hooks --dry-run: requested hook enforcement (strict, advisory, git-boundary, skills-only)
   --json              Output JSON result
   --no-interactive    Skip terminal selection (defaults to core only)
   --help, -h          Show this help menu
@@ -743,6 +787,10 @@ Options:
   const hookPreviews = Object.keys(hookPreviewAdapters).filter((agent) => args.includes('--' + agent + '-hooks'))
   if (hookPreviews.length > 1) throw new Error('Select one adapter for the hook preview')
   const [hookPreview] = hookPreviews
+  const enforcementArg = optionValue(args, ['enforcement'])
+  if (enforcementArg && !hookPreviews.length) {
+    throw new Error('--enforcement requires a hook preview (for example --codex-hooks with --dry-run)')
+  }
   if (hookPreview && (!args.includes('--dry-run') || args.includes('--selection-only') || isUpdate)) {
     const label = hookPreview === 'claude' ? 'Claude' : hookPreviewAdapters[hookPreview][0]
     throw new Error('--' + hookPreview + '-hooks previews setup only; use --dry-run and the standalone ' + label + ' adapter to apply')
@@ -859,7 +907,7 @@ Options:
   if (dryRun) {
     const operations = installSkills({ skills: selectedSkills, targets, overwrite, dryRun: true })
     const plan = { scope: resolvedScope, agents: selectedAgents, skills: selectedSkills, targets: targets.map((t) => t.path), operations }
-    if (hookPreview) plan.hookPlan = previewAgentHooks(hookPreview, resolvedScope, selectedAgents)
+    if (hookPreview) plan.hookPlan = previewAgentHooks(hookPreview, resolvedScope, selectedAgents, enforcementArg)
     if (jsonMode) console.log(JSON.stringify(plan, null, 2))
     else console.log('Dry-run installation plan:', plan)
     return 0
