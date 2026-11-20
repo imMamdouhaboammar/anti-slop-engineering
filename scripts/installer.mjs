@@ -693,7 +693,7 @@ const ENFORCEMENT_MODES = ['strict', 'advisory', 'git-boundary', 'skills-only']
 
 const hookEnforcement = {
   codex: {
-    advisory: { effective: 'advisory', supported: true, capability: 'PostToolUse feedback for apply_patch actions; matched actions are never denied' },
+    advisory: { effective: null, supported: false, capability: 'PostToolUse feedback for apply_patch actions', reason: 'The adapter cannot enforce an advisory-only installation. Use an armed review watch session for feedback without denial' },
     strict: { effective: null, supported: false, capability: 'PreToolUse denial for apply_patch actions the adapter can evaluate', reason: 'The Codex adapter does not claim strict failure blocking: hook launch failures, timeouts, and skipped or untrusted hooks are host-dependent. Enforce strict denial with the audit command or CI at the repository boundary instead' },
     'git-boundary': { effective: null, supported: false, capability: 'The Codex adapter configures agent tool hooks only', reason: 'Git-boundary enforcement is provided by the audit command and CI, not by this adapter' },
     'skills-only': { effective: 'skills-only', supported: true, capability: 'No agent hooks are configured; skills and explicit repository checks only' },

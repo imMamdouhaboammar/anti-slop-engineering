@@ -565,15 +565,15 @@ function runCodexPreview(dir, options) {
   })
 }
 
-test('Enforcement: Codex preview reports a supported advisory mode', { skip: process.platform === 'win32' }, () => {
+test('Enforcement: Codex preview identifies the session prerequisite for advisory mode', { skip: process.platform === 'win32' }, () => {
   inClaudeWorkspace((dir) => {
     const result = runCodexPreview(dir, ['--enforcement=advisory'])
     assert.equal(result.status, 0, result.stderr)
     const { hookPlan } = JSON.parse(result.stdout)
     assert.equal(hookPlan.enforcement.requested, 'advisory')
-    assert.equal(hookPlan.enforcement.effective, 'advisory')
-    assert.equal(hookPlan.enforcement.supported, true)
-    assert.match(hookPlan.enforcement.capability, /feedback/i)
+    assert.equal(hookPlan.enforcement.effective, null)
+    assert.equal(hookPlan.enforcement.supported, false)
+    assert.match(hookPlan.enforcement.reason, /review watch/)
     assert.equal(hookPlan.settings, path.join(fs.realpathSync(dir), '.codex', 'hooks.json'))
     assert.equal(hookPlan.requires_host_hook_trust, true)
     assert.deepEqual(fs.readdirSync(dir), [])
