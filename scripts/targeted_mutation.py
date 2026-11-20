@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
-"""Mutate changed Python conditions or Boolean returns and run a trusted unittest file in disposable copies."""
+"""Mutate changed Python conditions or Boolean returns and run a trusted unittest file in disposable copies.
+
+A test file whose own line declares `# targeted-mutation: external-action` is
+excluded before any execution: neither the baseline nor any mutant runs, and
+the report records the exclusion outside the score denominator.
+"""
 
 import argparse
 import ast
@@ -27,6 +32,14 @@ MAX_MUTANTS = 4
 TEST_TIMEOUT = 10
 NEGATE_CONDITION = "negate_condition"
 FLIP_BOOLEAN_RETURN = "flip_boolean_return"
+EXTERNAL_ACTION_MARKER = "# targeted-mutation: external-action"
+
+
+def external_action_line(test_source):
+    for number, line in enumerate(test_source.decode("utf-8").splitlines(), start=1):
+        if line.strip() == EXTERNAL_ACTION_MARKER:
+            return number
+    return None
 
 
 def changed_expressions(source, function_name, hunks, operator):
@@ -125,9 +138,14 @@ def run_targeted_mutation(root, source_file, function_name, test_file, base, see
         "status": "no_mutants" if not candidates else "inconclusive",
         "source": source_file, "function": function_name, "test": test_file, "seed": seed,
         "base": changes["base"], "eligible": len(candidates), "baseline": "not_run",
-        "results": [], "score": {"killed": 0, "evaluated": 0},
+        "results": [], "score": {"killed": 0, "evaluated": 0}, "exclusion": None,
     }
     if not candidates:
+        return report
+    marker_line = external_action_line(test_source)
+    if marker_line is not None:
+        report["status"] = "excluded"
+        report["exclusion"] = {"marker": "external-action", "line": marker_line}
         return report
 
     with tempfile.TemporaryDirectory(prefix="anti-slop-targeted-mutation-") as work:

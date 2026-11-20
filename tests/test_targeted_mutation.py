@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -110,6 +111,42 @@ class TargetedMutationTests(unittest.TestCase):
         self.assertEqual({row["line"]: row["observation"] for row in report["results"]},
                          {2: "timed_out", 4: "passed"})
         self.assertEqual(report["score"], {"killed": 0, "evaluated": 1})
+        self.assertEqual(self.git("diff", "HEAD"), before)
+        self.assertEqual(self.git("status", "--porcelain"), before_status)
+
+    def test_external_action_marker_excludes_run_before_any_execution(self):
+        sentinel = self.repo / "external-action-sentinel.txt"
+        self.test_file.write_text(
+            "import os\nimport unittest\nfrom pathlib import Path\nfrom scripts.selector import select\n\n"
+            "# targeted-mutation: external-action\n\n"
+            "class SelectorTests(unittest.TestCase):\n"
+            "    def test_case(self):\n"
+            "        Path(os.environ['TARGETED_MUTATION_SENTINEL']).write_text('ran', encoding='utf-8')\n"
+            "        self.assertEqual(select(True, False), 4)\n\n"
+            "if __name__ == '__main__':\n    unittest.main()\n", encoding="utf-8",
+        )
+        os.environ["TARGETED_MUTATION_SENTINEL"] = str(sentinel)
+        self.addCleanup(os.environ.pop, "TARGETED_MUTATION_SENTINEL")
+        control = subprocess.run(
+            [sys.executable, str(self.test_file)],
+            cwd=self.repo, capture_output=True, text=True, check=False, timeout=30,
+            env={**os.environ, "PYTHONPATH": str(self.repo)},
+        )
+        self.assertEqual(control.returncode, 0, control.stderr)
+        self.assertTrue(sentinel.exists())
+        sentinel.unlink()
+        before = self.git("diff", "HEAD")
+        before_status = self.git("status", "--porcelain")
+        result, report = self.run_mutation()
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(report["status"], "excluded")
+        self.assertEqual(report["exclusion"], {"marker": "external-action", "line": 6})
+        self.assertEqual(report["baseline"], "not_run")
+        self.assertEqual(report["eligible"], 2)
+        self.assertEqual(report["results"], [])
+        self.assertEqual(report["score"], {"killed": 0, "evaluated": 0})
+        self.assertFalse(sentinel.exists())
+        self.assertEqual(self.run_mutation()[1], report)
         self.assertEqual(self.git("diff", "HEAD"), before)
         self.assertEqual(self.git("status", "--porcelain"), before_status)
 
