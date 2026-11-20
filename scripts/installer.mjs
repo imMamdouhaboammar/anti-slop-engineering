@@ -361,12 +361,22 @@ function writeSelections(targets, scope, skills) {
 
 const MANAGED_INVENTORY = '.anti-slop-managed.json'
 
+function readRemovalFile(file) {
+  const fd = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK)
+  try {
+    if (!fs.fstatSync(fd).isFile()) throw new Error(`Expected a regular skill file: ${file}`)
+    return fs.readFileSync(fd)
+  } finally {
+    fs.closeSync(fd)
+  }
+}
+
 function readManagedInventory(directory) {
   const file = path.join(directory, MANAGED_INVENTORY)
   assertSafeFilePath(file)
   let raw
   try {
-    raw = fs.readFileSync(file, 'utf8')
+    raw = readRemovalFile(file).toString('utf8')
   } catch (err) {
     if (err && err.code === 'ENOENT') return null
     throw err
@@ -386,53 +396,96 @@ function readManagedInventory(directory) {
 function listInstalledFiles(directory) {
   const found = []
   const walk = (current) => {
-    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+    const entries = fs.readdirSync(current, { withFileTypes: true })
+    for (const entry of entries) {
       const full = path.join(current, entry.name)
       const relative = path.relative(directory, full).split(path.sep).join('/')
-      if (entry.isSymbolicLink()) found.push({ relative, symlink: true })
-      else if (entry.isDirectory()) walk(full)
-      else if (entry.isFile()) found.push({ relative, symlink: false })
+      if (entry.isDirectory() && walk(full)) continue
+      found.push({ relative, regular: entry.isFile() })
     }
+    return entries.length > 0
   }
   walk(directory)
   return found
 }
 
 function fileDigest(file) {
-  return createHash('sha256').update(fs.readFileSync(file)).digest('hex')
+  return createHash('sha256').update(readRemovalFile(file)).digest('hex')
+}
+
+function inspectSkillRemoval(directory, skill) {
+  const snapshot = []
+  const conflicts = []
+  assertSafeFilePath(directory)
+  if (!fs.existsSync(directory)) return { snapshot: null, conflicts }
+  const inventory = readManagedInventory(directory)
+  const source = skillSourceDir()
+  const entries = listInstalledFiles(directory).sort((a, b) => a.relative.localeCompare(b.relative))
+  for (const { relative, regular } of entries) {
+    if (!regular) {
+      conflicts.push(relative)
+      continue
+    }
+    let expected = inventory?.[relative] ?? null
+    if (!expected && source && relative !== MANAGED_INVENTORY) {
+      const bundled = path.join(sourceForSkill(skill, source), relative)
+      const stats = fs.lstatSync(bundled, { throwIfNoEntry: false })
+      if (stats?.isFile()) expected = fileDigest(bundled)
+    }
+    if (!expected && relative !== MANAGED_INVENTORY) {
+      conflicts.push(relative)
+      continue
+    }
+    const digest = fileDigest(path.join(directory, relative))
+    if (relative === MANAGED_INVENTORY || digest === expected) snapshot.push([relative, digest])
+    else conflicts.push(relative)
+  }
+  return { snapshot, conflicts }
 }
 
 function planSkillRemoval(target, skill) {
   const plan = { path: target.path, agents: target.agents.map((agent) => agent.id), status: 'not-installed', files: [], conflicts: [] }
   const selection = readSelection(target)
-  if (!selection || !selection.skills.includes(skill)) return plan
-  const directory = path.join(target.path, skill)
+  if (!selection || !selection.skills.includes(skill)) return { plan, snapshot: null }
+  const { snapshot, conflicts } = inspectSkillRemoval(path.join(target.path, skill), skill)
+  plan.files = snapshot?.map(([relative]) => relative) ?? []
+  plan.conflicts = conflicts
+  plan.status = conflicts.length ? 'conflict' : 'removable'
+  return { plan, snapshot }
+}
+
+function restoreArchivedSkill(backup, directory) {
+  if (fs.lstatSync(directory, { throwIfNoEntry: false })) {
+    throw new Error(`Destination was recreated: ${directory}`)
+  }
+  fs.renameSync(backup, directory)
+  fs.rmdirSync(path.dirname(backup))
+}
+
+function archiveRemovedSkill(directory, skill, snapshot) {
+  const parent = path.dirname(path.dirname(directory))
   assertSafeFilePath(directory)
-  if (!fs.existsSync(directory)) {
-    plan.status = 'removable'
-    return plan
-  }
-  const inventory = readManagedInventory(directory)
-  const source = skillSourceDir()
-  for (const { relative, symlink } of listInstalledFiles(directory)) {
-    if (relative === MANAGED_INVENTORY) {
-      plan.files.push(relative)
-      continue
+  const backupRoot = fs.mkdtempSync(path.join(parent, '.anti-slop-removed-'))
+  const backup = path.join(backupRoot, skill)
+  try {
+    fs.renameSync(directory, backup)
+    const current = inspectSkillRemoval(backup, skill)
+    if (current.conflicts.length || JSON.stringify(current.snapshot) !== JSON.stringify(snapshot)) {
+      throw new Error(`Installed files changed during removal: ${directory}`)
     }
-    let expected = inventory?.[relative] ?? null
-    if (!expected && source) {
-      const bundled = path.join(sourceForSkill(skill, source), relative)
-      if (fs.existsSync(bundled) && !fs.lstatSync(bundled).isSymbolicLink() && fs.lstatSync(bundled).isFile()) {
-        expected = fileDigest(bundled)
+    return backup
+  } catch (error) {
+    if (fs.lstatSync(backup, { throwIfNoEntry: false })) {
+      try {
+        restoreArchivedSkill(backup, directory)
+      } catch (restoreError) {
+        throw new Error(`${error.message}. Files retained at ${backup}: ${restoreError.message}`)
       }
+      throw error
     }
-    if (!symlink && expected && fileDigest(path.join(directory, relative)) === expected) plan.files.push(relative)
-    else plan.conflicts.push(relative)
+    fs.rmdirSync(backupRoot)
+    throw error
   }
-  plan.files.sort()
-  plan.conflicts.sort()
-  plan.status = plan.conflicts.length ? 'conflict' : 'removable'
-  return plan
 }
 
 function writeSelectionRemoval(target, skill) {
@@ -452,26 +505,68 @@ function writeSelectionRemoval(target, skill) {
 }
 
 function removeSkill({ skill, targets, scope, dryRun }) {
-  const plans = targets.map((target) => planSkillRemoval(target, skill))
+  const planned = targets.map((target) => planSkillRemoval(target, skill))
+  const plans = planned.map(({ plan }) => plan)
   if (dryRun) {
     for (const plan of plans) if (plan.status === 'removable') plan.status = 'preview'
     return { plans, selections: [], pointers: [] }
   }
+  if (plans.some((plan) => plan.status === 'conflict')) {
+    for (const plan of plans) if (plan.status === 'removable') plan.status = 'blocked'
+    return { plans, selections: [], pointers: [] }
+  }
+  const changes = planned.filter(({ plan }) => plan.status === 'removable')
+  const pointerTargets = []
+  if (scope === 'project' && changes.length) {
+    const entries = new Set(targets.flatMap((target) => target.agents.map((agent) => agent.entry)))
+    for (const name of entries) {
+      const entry = path.join(process.cwd(), name)
+      assertSafeFilePath(entry)
+      const stats = fs.lstatSync(entry, { throwIfNoEntry: false })
+      if (stats && !stats.isFile()) throw new Error(`Invalid instruction file: ${entry}`)
+    }
+    for (const target of resolveTargets('project')) {
+      const agents = target.agents.filter((agent) => entries.has(agent.entry))
+      if (agents.length && readSelection(target)) pointerTargets.push({ ...target, agents })
+    }
+  }
+  try {
+    for (const { plan, snapshot } of changes) {
+      const directory = path.join(plan.path, skill)
+      if (snapshot !== null) plan.backup = archiveRemovedSkill(directory, skill, snapshot)
+      else if (fs.lstatSync(directory, { throwIfNoEntry: false })) {
+        throw new Error(`Installed files changed during removal: ${directory}`)
+      }
+    }
+  } catch (error) {
+    const retained = []
+    for (const { plan } of changes.reverse()) {
+      if (!plan.backup) continue
+      try {
+        restoreArchivedSkill(plan.backup, path.join(plan.path, skill))
+      } catch {
+        retained.push(plan.backup)
+      }
+    }
+    if (retained.length) throw new Error(`${error.message}. Files retained at ${retained.join(', ')}`)
+    throw error
+  }
   const selections = []
-  let changed = false
-  plans.forEach((plan, index) => {
-    if (plan.status !== 'removable') return
-    const directory = path.join(targets[index].path, skill)
-    if (fs.existsSync(directory)) fs.rmSync(directory, { recursive: true })
-    const state = writeSelectionRemoval(targets[index], skill)
-    if (state) selections.push(state)
-    plan.status = 'removed'
-    changed = true
-  })
   let pointers = []
-  if (changed && scope === 'project') {
-    const remaining = [...new Set(targets.flatMap((target) => readSelection(target)?.skills || []))]
-    pointers = updatePointers({ targets, skills: remaining })
+  try {
+    for (const { plan } of changes) {
+      const state = writeSelectionRemoval(plan, skill)
+      if (state) selections.push(state)
+      plan.status = 'removed'
+    }
+    if (pointerTargets.length) {
+      const remaining = [...new Set(pointerTargets.flatMap((target) => readSelection(target)?.skills || []))]
+      pointers = updatePointers({ targets: pointerTargets, skills: remaining })
+    }
+  } catch (error) {
+    const backups = changes.flatMap(({ plan }) => plan.backup ? [plan.backup] : [])
+    if (backups.length) throw new Error(`${error.message}. Files retained at ${backups.join(', ')}`)
+    throw error
   }
   return { plans, selections, pointers }
 }
@@ -491,8 +586,12 @@ function runRemoval({ skill, scope, agents, dryRun, jsonMode }) {
   } else {
     for (const plan of plans) {
       if (plan.status === 'preview') console.log(`  Would remove ${skill} from ${plan.path}: ${plan.files.length} managed file(s)`)
-      if (plan.status === 'removed') console.log(`  Removed ${skill} from ${plan.path}: ${plan.files.length} managed file(s)`)
+      if (plan.status === 'removed') {
+        console.log(`  Removed ${skill} from ${plan.path}: ${plan.files.length} managed file(s)`)
+        if (plan.backup) console.log(`  Backup: ${plan.backup}`)
+      }
       if (plan.status === 'not-installed') console.log(`  ${skill} is not installed in ${plan.path}`)
+      if (plan.status === 'blocked') console.log(`  Kept ${skill} in ${plan.path} because another target has conflicts`)
       if (plan.status === 'conflict') console.log(`  ⚠ Removal blocked in ${plan.path}: modified files: ${plan.conflicts.join(', ')}`)
     }
     if (pointers.length > 0) console.log(`  Instruction pointers written: ${pointers.join(', ')}`)

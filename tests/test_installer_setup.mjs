@@ -380,6 +380,8 @@ test('Removal: applying removal reconciles disk, manifest and generated block', 
     assert.equal(result.status, 0, result.stderr)
     const report = JSON.parse(result.stdout)
     assert.equal(report.targets[0].status, 'removed')
+    assert.equal(path.basename(report.targets[0].backup), 'tagore-guard')
+    assert.ok(fs.existsSync(path.join(report.targets[0].backup, 'SKILL.md')))
     assert.ok(report.targets[0].files.includes('SKILL.md'))
     const skillRoot = path.join(project, '.codex', 'skills')
     assert.equal(fs.existsSync(path.join(skillRoot, 'tagore-guard')), false)
@@ -716,3 +718,74 @@ for (const [agent, settings, tool] of additionalHookPreviews) {
     })
   })
 }
+
+test('Removal preserves an unowned empty directory in the skill tree', () => {
+  inClaudeWorkspace((dir) => {
+    const run = (args) => runClaudePreview(dir, ['--agent=codex', '--json', ...args])
+    assert.equal(run(['--skills=tagore-guard']).status, 0)
+    const skill = path.join(dir, '.codex', 'skills', 'tagore-guard')
+    fs.mkdirSync(path.join(skill, 'personal-notes'))
+    const result = run(['--remove', 'tagore-guard'])
+    assert.equal(result.status, 1, result.stderr)
+    assert.deepEqual(JSON.parse(result.stdout).targets[0].conflicts, ['personal-notes'])
+    assert.ok(fs.existsSync(path.join(skill, 'personal-notes')))
+    assert.ok(fs.existsSync(path.join(skill, 'SKILL.md')))
+  })
+})
+
+test('Removal checks the instruction destination before changing the installed skill', () => {
+  inClaudeWorkspace((dir) => {
+    const run = (args) => runClaudePreview(dir, ['--agent=codex', '--json', ...args])
+    assert.equal(run(['--skills=tagore-guard']).status, 0)
+    const entry = path.join(dir, 'AGENTS.md')
+    const root = path.join(dir, '.codex', 'skills')
+    const manifest = path.join(root, '.anti-slop-selection.json')
+    const before = fs.readFileSync(manifest, 'utf8')
+    fs.unlinkSync(entry)
+    fs.mkdirSync(entry)
+    assert.notEqual(run(['--remove', 'tagore-guard']).status, 0)
+    assert.ok(fs.existsSync(path.join(root, 'tagore-guard', 'SKILL.md')))
+    assert.equal(fs.readFileSync(manifest, 'utf8'), before)
+  })
+})
+
+test('Removal preserves a file added during the handoff of the installed skill', () => {
+  inClaudeWorkspace((dir) => {
+    const common = ['--agent=codex', '--json']
+    assert.equal(runClaudePreview(dir, [...common, '--skills=tagore-guard']).status, 0)
+    const skill = path.join(dir, '.codex', 'skills', 'tagore-guard')
+    const injection = path.join(dir, 'write-during-removal.mjs')
+    fs.writeFileSync(injection, `
+      import fs from 'node:fs';
+      const target = ${JSON.stringify(skill)};
+      for (const action of ['rmSync', 'renameSync']) {
+        const original = fs[action];
+        fs[action] = (source, ...args) => {
+          if (typeof source === 'string' && source.endsWith('/.codex/skills/tagore-guard')) {
+            fs.writeFileSync(target + '/concurrent-notes.txt', 'keep this');
+          }
+          return original(source, ...args);
+        };
+      }
+    `)
+    const result = spawnSync(process.execPath, ['--import', injection, installer, ...common, '--remove', 'tagore-guard'], {
+      cwd: dir, encoding: 'utf8', env: { ...process.env, HOME: dir, CI: 'true' }, timeout: 15000,
+    })
+    assert.notEqual(result.status, 0, result.stderr)
+    assert.equal(fs.readFileSync(path.join(skill, 'concurrent-notes.txt'), 'utf8'), 'keep this')
+    assert.ok(fs.existsSync(path.join(skill, 'SKILL.md')))
+    assert.match(fs.readFileSync(path.join(dir, 'AGENTS.md'), 'utf8'), /tagore-guard/)
+  })
+})
+
+test('Removal keeps shared instructions for a different installed agent', () => {
+  inClaudeWorkspace((dir) => {
+    const setup = runClaudePreview(dir, ['--agent=cursor,codex', '--json', '--skills=tagore-guard'])
+    assert.equal(setup.status, 0, setup.stderr)
+    const result = runClaudePreview(dir, ['--agent=cursor', '--json', '--remove', 'tagore-guard'])
+    assert.equal(result.status, 0, result.stderr)
+    assert.ok(fs.existsSync(path.join(dir, '.codex', 'skills', 'tagore-guard', 'SKILL.md')))
+    const pointers = fs.readFileSync(path.join(dir, 'AGENTS.md'), 'utf8')
+    assert.ok(pointers.includes('.codex/skills/tagore-guard/SKILL.md'), pointers)
+  })
+})
