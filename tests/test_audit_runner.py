@@ -731,16 +731,16 @@ class CatalogDuplicateSuppressionTests(unittest.TestCase):
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0]["guard"], "sre_guard")
 
-    def test_group_without_owner_keeps_first_and_records_rest(self):
+    def test_fallback_only_group_retains_a_later_blocker(self):
         first = self._finding("diff_guard", "SRE_SCALE_FLAT_RETRY", "SRE-08", "HIGH")
-        second = self._finding("go", "SRE-SCALE-RETRY", "SRE-08", "REVIEW")
+        second = self._finding("go", "SRE-SCALE-RETRY", "SRE-08", "BLOCKER")
         result = audit_runner._suppress_catalog_duplicates([first, second])
-        self.assertEqual(len(result), 1)
-        self.assertEqual(result[0]["guard"], "diff_guard")
-        self.assertEqual(
-            result[0]["suppressed_duplicates"],
-            [{"guard": "go", "rule": "SRE-SCALE-RETRY", "severity": "REVIEW"}],
-        )
+        self.assertEqual(result, [first, second])
+
+    def test_same_guard_findings_are_retained(self):
+        owner = self._finding("sre_guard", "SCALE_UNBOUNDED_OR_FLAT_RETRY", "SRE-08", "BLOCKER")
+        other = {**owner, "message": "Separate evidence for the same line"}
+        self.assertEqual(audit_runner._suppress_catalog_duplicates([owner, other]), [owner, other])
 
     def test_unmapped_and_distinct_findings_pass_through(self):
         unmapped = self._finding("diff_guard", "SOME_OTHER_RULE", None, "HIGH")

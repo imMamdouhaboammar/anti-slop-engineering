@@ -1208,15 +1208,15 @@ def read_installed_skills(manifest: Path) -> set[str]:
 
 def _catalog_keeper(
     findings: List[Dict[str, Any]], indexes: List[int], catalog_id: str,
-) -> int:
-    """Index of the group entry to keep: the registered owner's, else the first."""
+) -> Optional[int]:
+    """Return the registered owner’s index when it reported this location."""
     owner = catalog_owner(catalog_id)
     if owner is not None:
         for index in indexes:
             entry = findings[index]
             if entry.get("guard") == owner.engine and entry.get("rule") == owner.engine_code:
                 return index
-    return indexes[0]
+    return None
 
 
 def _suppress_catalog_duplicates(
@@ -1226,9 +1226,8 @@ def _suppress_catalog_duplicates(
 
     Two guards can report the same catalog rule at the same file and line
     (a registered owner and one of its fallbacks). Keep the owner's entry,
-    with its severity, and record each suppressed entry on it; a group
-    without the owner keeps its first entry. Unmapped findings and
-    findings at distinct locations always pass through.
+    with its severity, and record each suppressed entry on it. Preserve
+    fallback-only groups, same-guard findings, and distinct locations.
     """
     groups: Dict[Tuple[str, str, int], List[int]] = {}
     for index, finding in enumerate(findings):
@@ -1247,8 +1246,10 @@ def _suppress_catalog_duplicates(
         if len(indexes) < 2:
             continue
         keeper = _catalog_keeper(findings, indexes, catalog_id)
+        if keeper is None:
+            continue
         for index in indexes:
-            if index == keeper:
+            if findings[index].get("guard") == findings[keeper].get("guard"):
                 continue
             dropped.add(index)
             entry = findings[index]
