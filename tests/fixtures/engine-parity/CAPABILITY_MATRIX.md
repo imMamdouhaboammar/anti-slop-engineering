@@ -11,7 +11,7 @@
 
 [Tested capability and rule fixture](contracts.json)
 
-The fixture identifies one canonical owner for the observed error-swallow, blind-sleep and flat-retry rules, and records alternate implementations with their actual IDs and severities. Different decisions are preserved by parity tests during migration. New shared-rule records must link to a fixture, declare one owner, and register each engine and emitted identifier once. Overlaps without independent evidence remain listed as current behavior in this matrix.
+The fixture identifies one canonical owner for the observed error-swallow, blind-sleep, flat-retry, and deep-nesting rules, and records alternate implementations with their actual IDs and severities. Different decisions are preserved by parity tests during migration. New shared-rule records must link to a fixture, declare one owner, and register each engine and emitted identifier once. Overlaps without independent evidence remain listed as current behavior in this matrix.
 
 ## `anti-slop-rust triage` ↔ `scripts/diff_guard.py`
 
@@ -37,10 +37,19 @@ The fixture identifies one canonical owner for the observed error-swallow, blind
 | Swallowed exception (`except Exception: pass`, `catch (e) {}`) | Emits `SRE-SCALE-SWALLOW` (`BLOCKER`), `sli.status == "BLOCKED"`, exits `1` | Emits `SCALE_TOIL_ERROR_SWALLOW` (`blocker`), `--strict` exits `2` | Shared (exit code `1` vs `2` differs intentionally) |
 | Blind sleep (`time.sleep(5)` / `time.Sleep(...)`) | Emits `SRE-SCALE-SLEEP` (`BLOCKER`), exits `1` | Emits `SCALE_TOIL_SLEEP_BAND_AID` (`review`) | Shared detection (severity differs intentionally) |
 | Flat retry (counted loop with a fixed sleep) | Emits `SRE-SCALE-RETRY` (`REVIEW`) at the loop header | Emits `SCALE_UNBOUNDED_OR_FLAT_RETRY` (`blocker`), `--strict` exits `2` | Shared detection (severity differs intentionally) |
+| Deep nesting (indentation depth 5+) | Emits `SRE-KISS-NESTING` (`BLOCKER`), exits `1` | Emits `KISS_DEEP_NESTING` (`review`) | Shared detection (severity differs intentionally) |
 | Deletion-only diff | Exits `0`, `sli.status == "PASSED"` | Exits `0`, `summary.total_findings == 0` | Shared |
 | Renamed, whitespace, & non-ASCII filenames | Handled without crash | Handled without crash | Shared |
 | SLI error budget (`error_budget_left`), `serve` HTTP daemon, `stream` | Enforced | Not implemented | Native-only (Go) |
 | `SCALE_MISLEADING_HEALTH_CHECK`, `in_active_diff` hunk annotation, active-diff `--strict` scoping | Not implemented | Enforced | Fallback-only (Python) |
+
+## Recorded SRE-01 differences
+
+Canonical owner: python-sre (`KISS_DEEP_NESTING`, review). Fallback: go-audit (`SRE-KISS-NESTING`, blocker). Both report the canonical fixture (`deep_nesting.diff`) at the same lines. Preserved differences, measured on disposable fixtures for this migration:
+
+- Severity: the Python owner reports deep nesting as review evidence, per the catalog guidance for SRE-01 (escalate only for a demonstrated impact beyond readability); the Go audit escalates the identical lines to blocker. The divergence is recorded, not reconciled — changing either engine's severity is a separate decision.
+- Detection agrees on the boundary: indentation depth 5 and deeper is flagged by both engines at the same lines; depth 4, shallow guard clauses, and multiline call continuations are flagged by neither.
+- python-diff has no SRE-01 producer, so the unified audit never sees a cross-guard duplicate for this rule.
 
 ## Recorded SRE-08 differences
 
@@ -49,4 +58,4 @@ Canonical owner: python-sre (`SCALE_UNBOUNDED_OR_FLAT_RETRY`, blocker). Fallback
 - Go flags a counted `for attempt in range(N)` header with no sleep at all when no `backoff` or `jitter` keyword appears within six lines; the Python guards require a fixed sleep inside the loop.
 - Go flags exponential backoff written without the words `backoff` or `jitter` (for example `time.sleep(2 ** attempt)`); the Python guards treat a non-literal sleep argument as backoff-shaped and stay silent.
 - The Python guards flag `while attempts <= N` counter loops with a fixed sleep; Go has no while-loop form and reports only the sleep itself (SRE-07).
-- The unified audit surfaces both Python guards' findings under the single catalog identity SRE-08 at the same file and line; per-guard entries are preserved, as with the error-swallow and blind-sleep migrations.
+- The unified audit suppresses the fallback entry when both Python guards report SRE-08 at the same file and line: the owner's entry is kept with its blocker severity and the suppressed fallback is recorded on it (`suppressed_duplicates`). The same owner-aware suppression applies to the error-swallow (OPS-01) and blind-sleep (SRE-07) pairs; findings at distinct locations and unmapped findings are never merged.

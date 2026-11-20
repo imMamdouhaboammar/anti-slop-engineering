@@ -1,0 +1,5 @@
+import aiohttp
+
+
+async def fetch(url):
+    return await aiohttp.get(url, verify_ssl=False)

@@ -1,0 +1,14 @@
+diff --git a/worker.py b/worker.py
+index 9aa19f0..413ce24 100644
+--- a/worker.py
++++ b/worker.py
+@@ -1,2 +1,7 @@
+-def helper(x):
+-    return x
++def deeply_nested(a, b, c, d, e):
++    if a:
++        for item in b:
++            while c:
++                with d:
++                    if e:
++                        return item

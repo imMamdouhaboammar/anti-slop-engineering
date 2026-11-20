@@ -14,6 +14,7 @@ REGISTRY_VERSION = 1
 OUTCOMES = ("tp", "fp", "tn", "fn")
 SEVERITY_GUIDANCE = {
     "OPS-01": "Escalate when evidence shows the swallowed error hides a required operation or trust-boundary failure.",
+    "SEC-12": "Confirm the switch-off reaches a real TLS or auth path before requesting a fix. The token also matches inside warning strings and comments.",
     "SIM-17": "Keep comments that explain a constraint, failure mode, or rationale the code cannot express. Treat narration findings as review only.",
     "SRE-01": "Treat nesting as review evidence. Escalate only for a demonstrated impact beyond readability.",
     "SRE-05": "Confirm the branch is unreachable or the placeholder is speculative before requesting removal.",
@@ -32,6 +33,7 @@ class Rule:
     catalog_id: str
     source: str
     skill: str = "anti-slop-engineering"
+    owner: bool = False
 
     @property
     def evidence_key(self):
@@ -44,27 +46,36 @@ GO_TOIL_SOURCE = "services/toil-guard-go/pkg/sre/toil.go"
 
 RULES = (
     Rule("diff_guard", "ERROR_SWALLOW_CANDIDATE", "OPS-01", DIFF_SOURCE),
-    Rule("sre_guard", "SCALE_TOIL_ERROR_SWALLOW", "OPS-01", SRE_SOURCE),
+    Rule("sre_guard", "SCALE_TOIL_ERROR_SWALLOW", "OPS-01", SRE_SOURCE, owner=True),
     Rule("rust", "STS-H02", "OPS-01", "services/anti-slop-rust/src/shit_interceptor.rs"),
     Rule("go", "SRE-SCALE-SWALLOW", "OPS-01", GO_TOIL_SOURCE),
     Rule("diff_guard", "TRIVIAL_COMMENT_NARRATION", "SIM-17", DIFF_SOURCE),
-    Rule("sre_guard", "KISS_DEEP_NESTING", "SRE-01", SRE_SOURCE),
+    Rule("sre_guard", "KISS_DEEP_NESTING", "SRE-01", SRE_SOURCE, owner=True),
     Rule("go", "SRE-KISS-NESTING", "SRE-01", "services/toil-guard-go/pkg/sre/complexity.go"),
     Rule("diff_guard", "SRE_YAGNI_DEAD_FLAG", "SRE-05", DIFF_SOURCE),
     Rule("sre_guard", "YAGNI_DEAD_SPECULATIVE_FLAG", "SRE-05", SRE_SOURCE),
     Rule("go", "SRE-YAGNI-SPECULATIVE", "SRE-05", GO_TOIL_SOURCE),
     Rule("diff_guard", "SRE_SCALE_SLEEP_BAND_AID", "SRE-07", DIFF_SOURCE),
-    Rule("sre_guard", "SCALE_SLEEP_BAND_AID", "SRE-07", SRE_SOURCE),
+    Rule("sre_guard", "SCALE_SLEEP_BAND_AID", "SRE-07", SRE_SOURCE, owner=True),
     Rule("go", "SRE-SCALE-SLEEP", "SRE-07", GO_TOIL_SOURCE),
     Rule("diff_guard", "SRE_SCALE_FLAT_RETRY", "SRE-08", DIFF_SOURCE),
-    Rule("sre_guard", "SCALE_UNBOUNDED_OR_FLAT_RETRY", "SRE-08", SRE_SOURCE),
+    Rule("sre_guard", "SCALE_UNBOUNDED_OR_FLAT_RETRY", "SRE-08", SRE_SOURCE, owner=True),
     Rule("go", "SRE-SCALE-RETRY", "SRE-08", GO_TOIL_SOURCE),
     Rule("diff_guard", "SRE_SCALE_UNBOUNDED_CONCURRENCY", "SRE-09", DIFF_SOURCE),
     Rule("sre_guard", "SCALE_UNBOUNDED_CONCURRENCY", "SRE-09", SRE_SOURCE),
     Rule("sre_guard", "SCALE_MISLEADING_HEALTH_CHECK", "SRE-12", SRE_SOURCE),
     Rule("diff_guard", "SKIPPED_TEST", "TST-03", DIFF_SOURCE),
+    Rule("diff_guard", "SECURITY_BYPASS_CANDIDATE", "SEC-12", DIFF_SOURCE),
 )
 BY_CODE = {rule.engine_code: rule for rule in RULES}
+
+
+def catalog_owner(catalog_id):
+    """The registered owner rule for a catalog id, per the parity contracts."""
+    for rule in RULES:
+        if rule.catalog_id == catalog_id and rule.owner:
+            return rule
+    return None
 
 
 def iter_catalog(path=CATALOG_PATH):

@@ -300,6 +300,50 @@ class EngineParityContractTests(unittest.TestCase):
                 else:
                     self.assertEqual(entries, [])
 
+    def test_deep_nesting_shared_contract_matches_native_severity(self):
+        shared = self.contracts["fixtures"]["deep_nesting"]["shared"]
+        repo_dir, _ = self._create_repo({"worker.py": "def helper(x):\n    return x\n"})
+        source = repo_dir / "worker.py"
+        deep = (
+            "def deeply_nested(a, b, c, d, e):\n"
+            "    if a:\n"
+            "        for item in b:\n"
+            "            while c:\n"
+            "                with d:\n"
+            "                    if e:\n"
+            "                        return item\n"
+        )
+        four = (
+            "def four_levels(a, b, c, d):\n"
+            "    if a:\n"
+            "        for item in b:\n"
+            "            while c:\n"
+            "                return d\n"
+        )
+        for text, expected in ((deep, True), (four, False)):
+            source.write_text(text, encoding="utf-8")
+            runs = [(self._run_sre_guard(repo_dir), "sre_guard_id", "id")]
+            if self.go_bin or self.require_native:
+                runs.append((self._run_go_audit(repo_dir), "go_code", "code"))
+            lines = {}
+            for run, fixture_key, report_key in runs:
+                expected_exit = shared[fixture_key + "_exit"] if expected else 0
+                self.assertEqual(run.returncode, expected_exit, run.stderr)
+                entries = [
+                    entry for entry in json.loads(run.stdout)["findings"]
+                    if entry[report_key] == shared[fixture_key]
+                ]
+                if expected:
+                    self.assertEqual([entry["severity"].lower() for entry in entries],
+                                     [shared[fixture_key + "_severity"]] * len(entries))
+                    lines[fixture_key] = [entry["line"] for entry in entries]
+                else:
+                    self.assertEqual(entries, [])
+            if expected:
+                self.assertEqual(lines["sre_guard_id"], [6, 7])
+                if "go_code" in lines:
+                    self.assertEqual(lines["go_code"], lines["sre_guard_id"])
+
     def test_flat_retry_ownership_covers_every_registered_producer(self):
         engine_names = {
             "diff_guard": "python-diff",
@@ -321,6 +365,43 @@ class EngineParityContractTests(unittest.TestCase):
                 else:
                     self.assertNotIn(identity, registered)
         self.assertEqual(declared, registered)
+
+    def test_deep_nesting_ownership_covers_every_registered_producer(self):
+        engine_names = {
+            "diff_guard": "python-diff",
+            "sre_guard": "python-sre",
+            "go": "go-audit",
+            "rust": "rust-triage",
+        }
+        registered = {
+            (engine_names[rule.engine], rule.engine_code)
+            for rule in rule_registry.RULES
+            if rule.catalog_id == "SRE-01"
+        }
+        declared = set()
+        for rule in self.contracts["shared_rules"]:
+            for entry in [rule["owner"], *rule["fallbacks"]]:
+                identity = (entry["engine"], entry["id"])
+                if rule["rule_id"] == "deep_nesting":
+                    declared.add(identity)
+                else:
+                    self.assertNotIn(identity, registered)
+        self.assertEqual(declared, registered)
+
+    def test_registry_owner_matches_contracts_owner_for_shared_rules(self):
+        engine_names = {
+            "diff_guard": "python-diff",
+            "sre_guard": "python-sre",
+            "go": "go-audit",
+            "rust": "rust-triage",
+        }
+        for rule in self.contracts["shared_rules"]:
+            owner = rule["owner"]
+            registered = rule_registry.BY_CODE[owner["id"]]
+            catalog_owner = rule_registry.catalog_owner(registered.catalog_id)
+            self.assertIsNotNone(catalog_owner, rule["rule_id"])
+            self.assertEqual(catalog_owner.engine_code, owner["id"])
+            self.assertEqual(engine_names[catalog_owner.engine], owner["engine"])
 
     def test_clean_repo_shared_contract(self):
         expected = self.contracts["fixtures"]["clean"]["shared"]
@@ -427,9 +508,29 @@ class EngineParityContractTests(unittest.TestCase):
         outcomes["fp"] += int(literal_flagged)
         outcomes["tn"] += int(not literal_flagged)
 
+    def _add_security_fixture_observations(self, rule, outputs, outcomes):
+        for extra in ("bypass_js", "bypass_cli", "bypass_attr", "bypass_disable_auth"):
+            self.assertIn(rule.engine_code, outputs[extra, rule.engine])
+            outcomes["tp"] += 1
+        for extra in ("bypass_ca_path", "bypass_verify_ssl", "bypass_docs"):
+            self.assertNotIn(rule.engine_code, outputs[extra, rule.engine])
+            outcomes["tn"] += 1
+        for extra in ("bypass_literal", "bypass_comment"):
+            flagged = rule.engine_code in outputs[extra, rule.engine]
+            outcomes["fp"] += int(flagged)
+            outcomes["tn"] += int(not flagged)
+
     def test_catalog_detector_fixture_receipt(self):
         pytest_skip = (FIXTURES_DIR / "pytest-skip.txt").read_text(encoding="utf-8")
         javascript_skip = (FIXTURES_DIR / "javascript-skip.txt").read_text(encoding="utf-8")
+        security = {
+            name: (FIXTURES_DIR / f"security-{name}.txt").read_text(encoding="utf-8")
+            for name in (
+                "bypass-python", "bypass-js", "bypass-cli", "bypass-attr",
+                "bypass-disable-auth", "verify-enabled", "verify-ca-path",
+                "verify-ssl-name", "bypass-docs", "bypass-literal", "bypass-comment",
+            )
+        }
         cases = {
             "swallow_bad": "def work(job):\n    try:\n        job.run()\n    except Exception: pass\n",
             "swallow_handled": "def work(job):\n    try:\n        job.run()\n    except Exception as error:\n        raise RuntimeError('job failed') from error\n",
@@ -452,6 +553,17 @@ class EngineParityContractTests(unittest.TestCase):
             "skip_outside_tests": ("src/worker.js", javascript_skip),
             "skip_literal": ("test_worker.py", f"example = {javascript_skip.strip()!r}\n"),
             "skip_clear": ("test_worker.py", "def test_value():\n    assert value() == 1\n\ndef test_other():\n    assert other() == 2\n"),
+            "bypass_bad": ("worker.py", security["bypass-python"]),
+            "bypass_js": ("worker.js", security["bypass-js"]),
+            "bypass_cli": ("worker.py", security["bypass-cli"]),
+            "bypass_attr": ("worker.py", security["bypass-attr"]),
+            "bypass_disable_auth": ("worker.py", security["bypass-disable-auth"]),
+            "bypass_clear": ("worker.py", security["verify-enabled"]),
+            "bypass_ca_path": ("worker.py", security["verify-ca-path"]),
+            "bypass_verify_ssl": ("worker.py", security["verify-ssl-name"]),
+            "bypass_docs": ("guide.md", security["bypass-docs"]),
+            "bypass_literal": ("worker.py", security["bypass-literal"]),
+            "bypass_comment": ("worker.py", security["bypass-comment"]),
             "health_bad": "def readiness():\n    return 200\n",
             "health_clear": "def readiness():\n    ready = datastore.is_ready()\n    return 200 if ready else 503\n",
             "health_inline_probe": "def readiness():\n    return 200 if datastore.is_ready() else 503\n",
@@ -482,6 +594,7 @@ class EngineParityContractTests(unittest.TestCase):
             "SIM-17": ("narration_bad", "narration_clear"),
             "SRE-12": ("health_bad", "health_clear"),
             "TST-03": ("skip_bad", "skip_clear"),
+            "SEC-12": ("bypass_bad", "bypass_clear"),
         }
         observations = {}
         for rule in rule_registry.RULES:
@@ -501,6 +614,8 @@ class EngineParityContractTests(unittest.TestCase):
                     outcomes["tn"] += 1
                 if rule.catalog_id == "TST-03":
                     self._add_skip_fixture_observations(rule, outputs, outcomes)
+                if rule.catalog_id == "SEC-12":
+                    self._add_security_fixture_observations(rule, outputs, outcomes)
                 observations[rule.evidence_key] = outcomes
 
         receipt = os.environ.get("CATALOG_OBSERVATIONS_OUT")
