@@ -167,15 +167,19 @@ def search_catalog(query, limit):
 
 
 def build_coverage(observations):
-    counts = dict.fromkeys(("automatic", "manual-review", "out-of-scope", "planned"), 0)
+    counts = dict.fromkeys(("automatic", "manual-review", "unobserved"), 0)
     patterns = {}
     for entry in iter_catalog():
         catalog_id = entry["catalog_id"]
         rules = [rule for rule in RULES if rule.catalog_id == catalog_id]
         fixtures = {rule.evidence_key: observations[rule.evidence_key] for rule in rules
                     if rule.evidence_key in observations}
-        verified = any(result["tp"] and (result["tn"] + result["fp"]) for result in fixtures.values())
-        status = "automatic" if verified else "manual-review"
+        if not fixtures:
+            status = "unobserved"
+        elif any(result["tp"] and (result["tn"] + result["fp"]) for result in fixtures.values()):
+            status = "automatic"
+        else:
+            status = "manual-review"
         counts[status] += 1
         patterns[catalog_id] = {
             "status": status,
@@ -187,6 +191,7 @@ def build_coverage(observations):
         "registry_version": REGISTRY_VERSION,
         "total_patterns": len(patterns),
         "counts": counts,
+        "categories_without_evidence": ["out-of-scope", "planned"],
         "patterns": patterns,
         "detectors": {
             rule.evidence_key: {"catalog_id": rule.catalog_id, "source": rule.source}
@@ -197,6 +202,9 @@ def build_coverage(observations):
             key: result["tp"] / (result["tp"] + result["fp"])
             if (result["tp"] + result["fp"]) and (result["tn"] + result["fp"]) else None
             for key, result in observations.items()
+        },
+        "fixture_denominators": {
+            key: result["tp"] + result["fp"] for key, result in observations.items()
         },
     }
 
