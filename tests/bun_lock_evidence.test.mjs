@@ -173,3 +173,17 @@ test("CLI receipt reports a missing installation without changing the lock verdi
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("CLI distinguishes unreadable installed metadata from a missing manifest", () => {
+  const dir = writeProject("2.0.4");
+  try {
+    const manifestPath = join(dir, "node_modules", "@demo", "library", "package.json");
+    rmSync(manifestPath);
+    mkdirSync(manifestPath);
+    const output = Bun.spawnSync([process.execPath, script.pathname, dir, "@demo/library"]);
+    expect(output.exitCode).toBe(0);
+    expect(JSON.parse(output.stdout.toString()).installed).toEqual({ status: "unreadable" });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

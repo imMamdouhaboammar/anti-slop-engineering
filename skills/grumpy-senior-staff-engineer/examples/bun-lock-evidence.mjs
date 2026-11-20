@@ -209,13 +209,15 @@ if (import.meta.main) {
     } catch {
       evidence = { status: "unreadable" };
     }
-    let installedText = null;
-    try {
-      installedText = await readFile(join(root, "node_modules", packageName, "package.json"), "utf8");
-    } catch {
-      installedText = null;
+    let installed = { status: "unsupported" };
+    if (validNpmName(packageName)) {
+      try {
+        const installedText = await readFile(join(root, "node_modules", packageName, "package.json"), "utf8");
+        installed = inspectInstalledPackage(installedText, packageName);
+      } catch (error) {
+        installed = { status: error?.code === "ENOENT" ? "missing" : "unreadable" };
+      }
     }
-    const installed = inspectInstalledPackage(installedText, packageName);
     if (mode === "--public-npm") {
       const registry = await readPublicNpmEvidence(packageName, evidence);
       console.log(JSON.stringify({ ...evidence, registry: { ...registry, observed_at: new Date().toISOString() }, installed }));
