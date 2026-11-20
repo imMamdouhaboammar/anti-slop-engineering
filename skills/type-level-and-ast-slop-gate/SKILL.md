@@ -113,9 +113,13 @@ The receipt uses `{"status":"locked","resolved":"19.0.0","release":"stable"}` fo
 
 Read [React 19 ref-as-prop semantics](https://react.dev/blog/2024/12/05/react-19#ref-as-a-prop) and the [React v19.0.0 implementation](https://github.com/facebook/react/blob/7aa5dda3b3e4c2baa905a59b922ae7ec14734b24/packages/react/src/jsx/ReactJSXElement.js). Preserve the public ref type, callback-ref cleanup, and actual forwarding target during migration.
 
+The same example also reviews the legacy `render` export of `react-dom`, removed in React DOM 19. The reviewed usage record uses `{"module":"react-dom","export":"render","kind":"call","supportedVersions":["19.0.0","19.1.0"]}`, and the receipt is the Bun lock evidence for `react-dom` including its `installed` block: the advisory requires the installed package to establish an exact stable React DOM 19, because the code runs against the installed package, not the lockfile alone. Missing installed evidence stays inconclusive. A support matrix that still covers React DOM 18 returns a compatibility exception instead of advice. The advisory cites the [React 19 upgrade guide](https://react.dev/blog/2024/04/25/react-19-upgrade-guide#removed-reactdomrender) and proposes `createRoot` from `react-dom/client`, keeping the returned root for teardown.
+
 ## Automated source evidence with Oxlint
 
 Enable `anti-slop/react-forward-ref-evidence` as `"warn"` in the project's Oxlint config after [installing the plugin](../install-anti-slop/SKILL.md). It resolves the actual lexical React import for named, default, or namespace bindings. The observation applies to a direct call around an inline function or arrow. Shadowed bindings, compatibility shims, and wrappers passed by reference need separate evidence.
+
+Enable `anti-slop/react-dom-render-evidence` the same way for the legacy render review. It resolves the actual lexical `react-dom` import for named, aliased, default, or namespace bindings and reports calls to the legacy `render` export. Bindings from `react-dom/client`, shadowed `render` parameters or locals, and references that are never called are not observations.
 
 ```bash
 bunx oxlint --format=json src/MyInput.tsx > react-source.json
