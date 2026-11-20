@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.12.0] - 2026-11-20
+
+### Added
+
+- Redundant-dependency advisory for UUID v4 recommending `crypto.randomUUID` for confirmed no-argument calls on verified modern runtimes (Node 19+, Bun 1+, Deno 1.11+), requesting call signature reviews when evidence is unconfirmed, and preserving `uuid` for options or buffer arguments (#256, #257).
+- Cache freshness contract for Bun and npm registry evidence with TTL support and stale evidence demarcation (#255).
+- TypeScript package export verification using a selected compiler (#254).
+- Mutation boundary test runner excluding test files declaring external actions (#253).
+- Codex hook enforcement capabilities in the interactive setup plan (#252).
+- Anti-pattern catalog coverage taxonomy distinguishing unobserved catalog entries from measured fixture failures (#251).
+
+### Fixed
+
+- Register `python-sre` as canonical owner of SRE-09 with `python-diff` fallback (#250).
+- Pin quoted-path, binary, and control records across polyglot Go and Rust consumers (#249).
+- Isolate the `HOME` environment variable during installer test assertions to prevent host and OS framework caches from polluting clean workspace checks (#258).
+
 ## [1.11.0] - 2026-11-20
 
 ### Added
