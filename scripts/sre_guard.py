@@ -30,7 +30,7 @@ from scripts.git_changeset import collect_changes, repository_root
 from scripts.retry_heuristics import INLINE_FLAT_RETRY, flat_retry_lines
 from scripts.source_trivia import source_trivia
 
-__version__ = '1.11.0'
+__version__ = '1.12.0'
 
 STATIC_HEALTH_CHECK_ACTION = (
     'SCALE violation: Static health check detected without dependency probe. '

@@ -8,7 +8,7 @@
   "customerSupportURL": "https://github.com/imMamdouhaboammar/anti-slop-engineering/blob/main/SUPPORT.md",
   "privacyPolicyURL": "https://github.com/imMamdouhaboammar/anti-slop-engineering/blob/main/PRIVACY.md",
   "termsOfServiceURL": "https://github.com/imMamdouhaboammar/anti-slop-engineering/blob/main/TERMS.md",
-  "version": "1.11.0",
+  "version": "1.12.0",
   "packageName": "anti-slop-engineering",
   "capabilities": [
     "Anti-slop diff triage",
