@@ -127,6 +127,24 @@
           "fixture_key": "go_code"
         }
       ]
+    },
+    {
+      "rule_id": "deep_nesting",
+      "fixture": "deep_nesting",
+      "owner": {
+        "engine": "python-sre",
+        "id": "KISS_DEEP_NESTING",
+        "severity": "review",
+        "fixture_key": "sre_guard_id"
+      },
+      "fallbacks": [
+        {
+          "engine": "go-audit",
+          "id": "SRE-KISS-NESTING",
+          "severity": "blocker",
+          "fixture_key": "go_code"
+        }
+      ]
     }
   ],
   "pairs": {
@@ -236,6 +254,17 @@
         "go_code": "SRE-SCALE-RETRY",
         "go_code_exit": 1,
         "go_code_severity": "review"
+      }
+    },
+    "deep_nesting": {
+      "diff": "deep_nesting.diff",
+      "shared": {
+        "sre_guard_id": "KISS_DEEP_NESTING",
+        "sre_guard_id_exit": 0,
+        "sre_guard_id_severity": "review",
+        "go_code": "SRE-KISS-NESTING",
+        "go_code_exit": 1,
+        "go_code_severity": "blocker"
       }
     }
   }

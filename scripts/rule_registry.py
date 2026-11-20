@@ -50,7 +50,7 @@ RULES = (
     Rule("rust", "STS-H02", "OPS-01", "services/anti-slop-rust/src/shit_interceptor.rs"),
     Rule("go", "SRE-SCALE-SWALLOW", "OPS-01", GO_TOIL_SOURCE),
     Rule("diff_guard", "TRIVIAL_COMMENT_NARRATION", "SIM-17", DIFF_SOURCE),
-    Rule("sre_guard", "KISS_DEEP_NESTING", "SRE-01", SRE_SOURCE),
+    Rule("sre_guard", "KISS_DEEP_NESTING", "SRE-01", SRE_SOURCE, owner=True),
     Rule("go", "SRE-KISS-NESTING", "SRE-01", "services/toil-guard-go/pkg/sre/complexity.go"),
     Rule("diff_guard", "SRE_YAGNI_DEAD_FLAG", "SRE-05", DIFF_SOURCE),
     Rule("sre_guard", "YAGNI_DEAD_SPECULATIVE_FLAG", "SRE-05", SRE_SOURCE),
