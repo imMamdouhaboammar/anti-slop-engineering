@@ -3,7 +3,16 @@ import { readFile } from "node:fs/promises";
 
 const SOURCE = "https://nodejs.org/api/crypto.html#cryptorandomuuidoptions";
 const exactStableRelease = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/;
-const RANDOM_UUID_FLOORS = { node: "19.0.0", bun: "1.0.0", deno: "1.0.0" };
+const RANDOM_UUID_FLOORS = { node: "19.0.0", bun: "1.0.0", deno: "1.11.0" };
+
+function compareSemver(a, b) {
+  if (typeof Bun !== "undefined" && Bun?.semver?.order) {
+    return Bun.semver.order(a, b);
+  }
+  const [ma, na, pa] = a.split(".").map(Number);
+  const [mb, nb, pb] = b.split(".").map(Number);
+  return ma !== mb ? ma - mb : na !== nb ? na - nb : pa - pb;
+}
 
 function evidenceExports(entries) {
   if (!Array.isArray(entries) || !entries.length) {
@@ -27,6 +36,9 @@ export function reviewUuidV4(lock, usage, runtimes) {
   if ([...imported, ...called].some((name) => name !== "v4")) {
     return { status: "not_applicable" };
   }
+  if (usage.calls.some((call) => call && (call.hasOptions === true || call.hasArgs === true || call.buffer === true || (Array.isArray(call.args) && call.args.length > 0)))) {
+    return { status: "not_applicable" };
+  }
   if (lock?.status !== "locked" || typeof lock.resolved !== "string" || !exactStableRelease.test(lock.resolved)) {
     return { status: "inconclusive", reason: "uuid's exact stable locked version is required" };
   }
@@ -40,19 +52,23 @@ export function reviewUuidV4(lock, usage, runtimes) {
         typeof runtime.version === "string" && exactStableRelease.test(runtime.version))) {
     return { status: "inconclusive", reason: "Supply the reviewed supported runtimes with exact versions" };
   }
-  if (runtimes.some((runtime) => !(runtime.name in RANDOM_UUID_FLOORS))) {
+  if (runtimes.some((runtime) => !Object.hasOwn(RANDOM_UUID_FLOORS, runtime.name))) {
     return { status: "inconclusive", reason: "A supported runtime is outside the verified randomUUID scope" };
   }
-  if (runtimes.some((runtime) => Bun.semver.order(runtime.version, RANDOM_UUID_FLOORS[runtime.name]) < 0)) {
+  if (runtimes.some((runtime) => compareSemver(runtime.version, RANDOM_UUID_FLOORS[runtime.name]) < 0)) {
     return { status: "compatibility_exception", version: lock.resolved, source: SOURCE };
   }
+  const confirmedNoArgs = usage.calls.every((call) => call && (call.signature === "no_args" || call.hasOptions === false || call.hasArgs === false || call.args === 0));
+  const suggestion = confirmedNoArgs
+    ? "Every recorded import and call site only generates version 4 UUIDs using the no-argument string form. Replace the uuid import with randomUUID from node:crypto (the global crypto.randomUUID in Bun, Deno, and browsers), which returns the same RFC 4122 version 4 string, then remove the uuid dependency."
+    : "Review recorded uuid v4 call signatures: replace calls using the no-argument string-returning form with randomUUID from node:crypto (or global crypto.randomUUID in Bun, Deno, and browsers), while calls passing custom options or buffer outputs still require uuid.";
   return {
     status: "advisory",
     severity: "review",
     rule: "UUID_V4_RUNTIME_RANDOMUUID",
     version: lock.resolved,
     source: SOURCE,
-    suggestion: "Every recorded import and call site only generates version 4 UUIDs. Replace the uuid import with randomUUID from node:crypto (the global crypto.randomUUID in Bun, Deno, and browsers), which returns the same RFC 4122 version 4 string, then remove the uuid dependency.",
+    suggestion,
   };
 }
 
