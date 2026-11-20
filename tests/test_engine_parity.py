@@ -339,9 +339,10 @@ class EngineParityContractTests(unittest.TestCase):
                     lines[fixture_key] = [entry["line"] for entry in entries]
                 else:
                     self.assertEqual(entries, [])
-            if expected and len(lines) == 2:
+            if expected:
                 self.assertEqual(lines["sre_guard_id"], [6, 7])
-                self.assertEqual(lines["go_code"], lines["sre_guard_id"])
+                if "go_code" in lines:
+                    self.assertEqual(lines["go_code"], lines["sre_guard_id"])
 
     def test_flat_retry_ownership_covers_every_registered_producer(self):
         engine_names = {
