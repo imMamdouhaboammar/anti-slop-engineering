@@ -62,7 +62,7 @@ RULES = (
     Rule("sre_guard", "SCALE_UNBOUNDED_OR_FLAT_RETRY", "SRE-08", SRE_SOURCE, owner=True),
     Rule("go", "SRE-SCALE-RETRY", "SRE-08", GO_TOIL_SOURCE),
     Rule("diff_guard", "SRE_SCALE_UNBOUNDED_CONCURRENCY", "SRE-09", DIFF_SOURCE),
-    Rule("sre_guard", "SCALE_UNBOUNDED_CONCURRENCY", "SRE-09", SRE_SOURCE),
+    Rule("sre_guard", "SCALE_UNBOUNDED_CONCURRENCY", "SRE-09", SRE_SOURCE, owner=True),
     Rule("sre_guard", "SCALE_MISLEADING_HEALTH_CHECK", "SRE-12", SRE_SOURCE),
     Rule("diff_guard", "SKIPPED_TEST", "TST-03", DIFF_SOURCE),
     Rule("diff_guard", "SECURITY_BYPASS_CANDIDATE", "SEC-12", DIFF_SOURCE),
