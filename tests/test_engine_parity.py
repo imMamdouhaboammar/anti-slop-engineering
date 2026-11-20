@@ -300,6 +300,49 @@ class EngineParityContractTests(unittest.TestCase):
                 else:
                     self.assertEqual(entries, [])
 
+    def test_deep_nesting_shared_contract_matches_native_severity(self):
+        shared = self.contracts["fixtures"]["deep_nesting"]["shared"]
+        repo_dir, _ = self._create_repo({"worker.py": "def helper(x):\n    return x\n"})
+        source = repo_dir / "worker.py"
+        deep = (
+            "def deeply_nested(a, b, c, d, e):\n"
+            "    if a:\n"
+            "        for item in b:\n"
+            "            while c:\n"
+            "                with d:\n"
+            "                    if e:\n"
+            "                        return item\n"
+        )
+        four = (
+            "def four_levels(a, b, c, d):\n"
+            "    if a:\n"
+            "        for item in b:\n"
+            "            while c:\n"
+            "                return d\n"
+        )
+        for text, expected in ((deep, True), (four, False)):
+            source.write_text(text, encoding="utf-8")
+            runs = [(self._run_sre_guard(repo_dir), "sre_guard_id", "id")]
+            if self.go_bin or self.require_native:
+                runs.append((self._run_go_audit(repo_dir), "go_code", "code"))
+            lines = {}
+            for run, fixture_key, report_key in runs:
+                expected_exit = shared[fixture_key + "_exit"] if expected else 0
+                self.assertEqual(run.returncode, expected_exit, run.stderr)
+                entries = [
+                    entry for entry in json.loads(run.stdout)["findings"]
+                    if entry[report_key] == shared[fixture_key]
+                ]
+                if expected:
+                    self.assertEqual([entry["severity"].lower() for entry in entries],
+                                     [shared[fixture_key + "_severity"]] * len(entries))
+                    lines[fixture_key] = [entry["line"] for entry in entries]
+                else:
+                    self.assertEqual(entries, [])
+            if expected and len(lines) == 2:
+                self.assertEqual(lines["sre_guard_id"], [6, 7])
+                self.assertEqual(lines["go_code"], lines["sre_guard_id"])
+
     def test_flat_retry_ownership_covers_every_registered_producer(self):
         engine_names = {
             "diff_guard": "python-diff",
@@ -317,6 +360,28 @@ class EngineParityContractTests(unittest.TestCase):
             for entry in [rule["owner"], *rule["fallbacks"]]:
                 identity = (entry["engine"], entry["id"])
                 if rule["rule_id"] == "flat_retry":
+                    declared.add(identity)
+                else:
+                    self.assertNotIn(identity, registered)
+        self.assertEqual(declared, registered)
+
+    def test_deep_nesting_ownership_covers_every_registered_producer(self):
+        engine_names = {
+            "diff_guard": "python-diff",
+            "sre_guard": "python-sre",
+            "go": "go-audit",
+            "rust": "rust-triage",
+        }
+        registered = {
+            (engine_names[rule.engine], rule.engine_code)
+            for rule in rule_registry.RULES
+            if rule.catalog_id == "SRE-01"
+        }
+        declared = set()
+        for rule in self.contracts["shared_rules"]:
+            for entry in [rule["owner"], *rule["fallbacks"]]:
+                identity = (entry["engine"], entry["id"])
+                if rule["rule_id"] == "deep_nesting":
                     declared.add(identity)
                 else:
                     self.assertNotIn(identity, registered)

@@ -37,10 +37,19 @@ The fixture identifies one canonical owner for the observed error-swallow, blind
 | Swallowed exception (`except Exception: pass`, `catch (e) {}`) | Emits `SRE-SCALE-SWALLOW` (`BLOCKER`), `sli.status == "BLOCKED"`, exits `1` | Emits `SCALE_TOIL_ERROR_SWALLOW` (`blocker`), `--strict` exits `2` | Shared (exit code `1` vs `2` differs intentionally) |
 | Blind sleep (`time.sleep(5)` / `time.Sleep(...)`) | Emits `SRE-SCALE-SLEEP` (`BLOCKER`), exits `1` | Emits `SCALE_TOIL_SLEEP_BAND_AID` (`review`) | Shared detection (severity differs intentionally) |
 | Flat retry (counted loop with a fixed sleep) | Emits `SRE-SCALE-RETRY` (`REVIEW`) at the loop header | Emits `SCALE_UNBOUNDED_OR_FLAT_RETRY` (`blocker`), `--strict` exits `2` | Shared detection (severity differs intentionally) |
+| Deep nesting (indentation depth 5+) | Emits `SRE-KISS-NESTING` (`BLOCKER`), exits `1` | Emits `KISS_DEEP_NESTING` (`review`) | Shared detection (severity differs intentionally) |
 | Deletion-only diff | Exits `0`, `sli.status == "PASSED"` | Exits `0`, `summary.total_findings == 0` | Shared |
 | Renamed, whitespace, & non-ASCII filenames | Handled without crash | Handled without crash | Shared |
 | SLI error budget (`error_budget_left`), `serve` HTTP daemon, `stream` | Enforced | Not implemented | Native-only (Go) |
 | `SCALE_MISLEADING_HEALTH_CHECK`, `in_active_diff` hunk annotation, active-diff `--strict` scoping | Not implemented | Enforced | Fallback-only (Python) |
+
+## Recorded SRE-01 differences
+
+Canonical owner: python-sre (`KISS_DEEP_NESTING`, review). Fallback: go-audit (`SRE-KISS-NESTING`, blocker). Both report the canonical fixture (`deep_nesting.diff`) at the same lines. Preserved differences, measured on disposable fixtures for this migration:
+
+- Severity: the Python owner reports deep nesting as review evidence, per the catalog guidance for SRE-01 (escalate only for a demonstrated impact beyond readability); the Go audit escalates the identical lines to blocker. The divergence is recorded, not reconciled — changing either engine's severity is a separate decision.
+- Detection agrees on the boundary: indentation depth 5 and deeper is flagged by both engines at the same lines; depth 4, shallow guard clauses, and multiline call continuations are flagged by neither.
+- python-diff has no SRE-01 producer, so the unified audit never sees a cross-guard duplicate for this rule.
 
 ## Recorded SRE-08 differences
 
