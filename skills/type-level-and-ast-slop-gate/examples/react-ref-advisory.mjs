@@ -87,16 +87,19 @@ export function reviewLegacyRender(lock, usage, supportedVersions) {
 const OXLINT_RULE_CODE = "anti-slop(react-forward-ref-evidence)";
 const RENDER_OXLINT_RULE_CODE = "anti-slop(react-dom-render-evidence)";
 
-function usageFromOxlintReport(report) {
+function usageFromOxlintReport(report, installedPackage) {
   if (!Array.isArray(report?.diagnostics)) {
     throw new Error("Expected an Oxlint JSON diagnostics array");
   }
-  if (report.diagnostics.some((diagnostic) => diagnostic?.code === OXLINT_RULE_CODE)) {
+  const codes = new Set(report.diagnostics.map((diagnostic) => diagnostic?.code));
+  if (codes.has(RENDER_OXLINT_RULE_CODE) &&
+      (installedPackage === "react-dom" || !codes.has(OXLINT_RULE_CODE))) {
+    return { module: "react-dom", export: "render", kind: "call" };
+  }
+  if (codes.has(OXLINT_RULE_CODE)) {
     return { module: "react", export: "forwardRef", kind: "function-component" };
   }
-  return report.diagnostics.some((diagnostic) => diagnostic?.code === RENDER_OXLINT_RULE_CODE)
-    ? { module: "react-dom", export: "render", kind: "call" }
-    : undefined;
+  return undefined;
 }
 
 function reviewUsage(lock, usage, supportedVersions) {
@@ -116,7 +119,7 @@ if (import.meta.main) {
       const lock = JSON.parse(await readFile(lockPath, "utf8"));
       const record = JSON.parse(await readFile(usagePath, "utf8"));
       const usage = reportRequested
-        ? usageFromOxlintReport(JSON.parse(await readFile(reportPath, "utf8")))
+        ? usageFromOxlintReport(JSON.parse(await readFile(reportPath, "utf8")), lock?.installed?.name)
         : record;
       console.log(JSON.stringify(reviewUsage(lock, usage, record?.supportedVersions)));
     } catch {
