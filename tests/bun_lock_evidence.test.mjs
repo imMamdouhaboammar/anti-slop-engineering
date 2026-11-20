@@ -1,5 +1,10 @@
 import { test, expect } from "bun:test";
-import { inspectDirectDependency, readPublicNpmEvidence } from "../skills/grumpy-senior-staff-engineer/examples/bun-lock-evidence.mjs";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { inspectDirectDependency, inspectInstalledPackage, readPublicNpmEvidence } from "../skills/grumpy-senior-staff-engineer/examples/bun-lock-evidence.mjs";
+
+const script = new URL("../skills/grumpy-senior-staff-engineer/examples/bun-lock-evidence.mjs", import.meta.url);
 
 const manifest = '{"dependencies":{"@demo/library":"^2.0.0"},"devDependencies":{"example-prerelease":"3.0.0-rc.1"}}';
 const lock = String.raw`{
@@ -109,4 +114,76 @@ test("latest pointing at a prerelease does not count as stable", async () => {
   expect(result.locked_version).toBe("unlisted");
   expect(result.latest).toBe("3.0.0-rc.1");
   expect(result.latest_satisfies_declared_range).toBeNull();
+});
+
+test("reports installed identity and version separately from the lock evidence", () => {
+  expect(inspectInstalledPackage('{"name":"@demo/library","version":"2.1.0"}', "@demo/library")).toEqual({
+    status: "installed", name: "@demo/library", version: "2.1.0",
+  });
+  expect(inspectInstalledPackage('{"name":"@demo/library","version":"2.0.4"}', "@demo/library")).toEqual({
+    status: "installed", name: "@demo/library", version: "2.0.4",
+  });
+});
+
+test("keeps missing, malformed, wrong-identity, and invalid installed metadata explicit", () => {
+  expect(inspectInstalledPackage(null, "@demo/library")).toEqual({ status: "missing" });
+  expect(inspectInstalledPackage("{", "@demo/library").status).toBe("unreadable");
+  expect(inspectInstalledPackage('{"name":"other-library","version":"2.1.0"}', "@demo/library")).toEqual({
+    status: "identity_mismatch", name: "other-library",
+  });
+  expect(inspectInstalledPackage('{"name":"@demo/library","version":"2.1.0-!"}', "@demo/library").status).toBe("unsupported");
+  expect(inspectInstalledPackage('{"name":"@demo/library"}', "@demo/library").status).toBe("unsupported");
+});
+
+function writeProject(installedVersion) {
+  const dir = mkdtempSync(join(tmpdir(), "bun-lock-evidence-"));
+  writeFileSync(join(dir, "package.json"), manifest);
+  writeFileSync(join(dir, "bun.lock"), lock);
+  if (installedVersion !== null) {
+    const packageDir = join(dir, "node_modules", "@demo", "library");
+    mkdirSync(packageDir, { recursive: true });
+    writeFileSync(join(packageDir, "package.json"), JSON.stringify({ name: "@demo/library", version: installedVersion }));
+  }
+  return dir;
+}
+
+test("CLI receipt exposes a three-way disagreement between declared, locked, and installed", () => {
+  const dir = writeProject("2.0.4");
+  try {
+    const output = Bun.spawnSync([process.execPath, script.pathname, dir, "@demo/library"]);
+    expect(output.exitCode).toBe(0);
+    expect(JSON.parse(output.stdout.toString())).toEqual({
+      status: "locked", declared: "^2.0.0", resolved: "2.1.0", release: "stable",
+      installed: { status: "installed", name: "@demo/library", version: "2.0.4" },
+    });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("CLI receipt reports a missing installation without changing the lock verdict", () => {
+  const dir = writeProject(null);
+  try {
+    const output = Bun.spawnSync([process.execPath, script.pathname, dir, "@demo/library"]);
+    expect(output.exitCode).toBe(0);
+    const receipt = JSON.parse(output.stdout.toString());
+    expect(receipt.status).toBe("locked");
+    expect(receipt.installed).toEqual({ status: "missing" });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("CLI distinguishes unreadable installed metadata from a missing manifest", () => {
+  const dir = writeProject("2.0.4");
+  try {
+    const manifestPath = join(dir, "node_modules", "@demo", "library", "package.json");
+    rmSync(manifestPath);
+    mkdirSync(manifestPath);
+    const output = Bun.spawnSync([process.execPath, script.pathname, dir, "@demo/library"]);
+    expect(output.exitCode).toBe(0);
+    expect(JSON.parse(output.stdout.toString()).installed).toEqual({ status: "unreadable" });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

@@ -82,6 +82,29 @@ export function inspectDirectDependency(manifestText, lockText, packageName) {
 }
 
 
+export function inspectInstalledPackage(installedText, packageName) {
+  if (installedText === null || installedText === undefined) {
+    return { status: "missing" };
+  }
+  let installed;
+  try {
+    installed = JSON.parse(installedText);
+  } catch {
+    return { status: "unreadable" };
+  }
+  if (!installed || typeof installed !== "object" || Array.isArray(installed)) {
+    return { status: "unreadable" };
+  }
+  if (installed.name !== packageName) {
+    return { status: "identity_mismatch", name: typeof installed.name === "string" ? installed.name : null };
+  }
+  if (typeof installed.version !== "string" || !releaseVersion(installed.version)) {
+    return { status: "unsupported", name: packageName };
+  }
+  return { status: "installed", name: packageName, version: installed.version };
+}
+
+
 const npmOrigin = "https://registry.npmjs.org";
 const maxRegistryBytes = 2_000_000;
 const npmNamePart = /^[a-z0-9][a-z0-9._-]*$/;
@@ -186,12 +209,21 @@ if (import.meta.main) {
     } catch {
       evidence = { status: "unreadable" };
     }
+    let installed = { status: "unsupported" };
+    if (validNpmName(packageName)) {
+      try {
+        const installedText = await readFile(join(root, "node_modules", packageName, "package.json"), "utf8");
+        installed = inspectInstalledPackage(installedText, packageName);
+      } catch (error) {
+        installed = { status: error?.code === "ENOENT" ? "missing" : "unreadable" };
+      }
+    }
     if (mode === "--public-npm") {
       const registry = await readPublicNpmEvidence(packageName, evidence);
-      console.log(JSON.stringify({ ...evidence, registry: { ...registry, observed_at: new Date().toISOString() } }));
+      console.log(JSON.stringify({ ...evidence, registry: { ...registry, observed_at: new Date().toISOString() }, installed }));
       process.exitCode = registry.status === "observed" ? 0 : 2;
     } else {
-      console.log(JSON.stringify(evidence));
+      console.log(JSON.stringify({ ...evidence, installed }));
       process.exitCode = evidence.status === "locked" ? 0 : 1;
     }
   }
