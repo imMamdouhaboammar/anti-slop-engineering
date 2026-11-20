@@ -359,6 +359,246 @@ function writeSelections(targets, scope, skills) {
   return states
 }
 
+const MANAGED_INVENTORY = '.anti-slop-managed.json'
+
+function readRemovalFile(file) {
+  const fd = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK)
+  try {
+    if (!fs.fstatSync(fd).isFile()) throw new Error(`Expected a regular skill file: ${file}`)
+    return fs.readFileSync(fd)
+  } finally {
+    fs.closeSync(fd)
+  }
+}
+
+function readManagedInventory(directory) {
+  const file = path.join(directory, MANAGED_INVENTORY)
+  assertSafeFilePath(file)
+  let raw
+  try {
+    raw = readRemovalFile(file).toString('utf8')
+  } catch (err) {
+    if (err && err.code === 'ENOENT') return null
+    throw err
+  }
+  let state
+  try {
+    state = JSON.parse(raw)
+  } catch {
+    throw new Error(`Invalid managed inventory: ${file}`)
+  }
+  if (state?.format !== 1 || Object.prototype.toString.call(state.files) !== '[object Object]') {
+    throw new Error(`Invalid managed inventory: ${file}`)
+  }
+  return state.files
+}
+
+function listInstalledFiles(directory) {
+  const found = []
+  const walk = (current) => {
+    const entries = fs.readdirSync(current, { withFileTypes: true })
+    for (const entry of entries) {
+      const full = path.join(current, entry.name)
+      const relative = path.relative(directory, full).split(path.sep).join('/')
+      if (entry.isDirectory() && walk(full)) continue
+      found.push({ relative, regular: entry.isFile() })
+    }
+    return entries.length > 0
+  }
+  walk(directory)
+  return found
+}
+
+function fileDigest(file) {
+  return createHash('sha256').update(readRemovalFile(file)).digest('hex')
+}
+
+function inspectSkillRemoval(directory, skill) {
+  const snapshot = []
+  const conflicts = []
+  assertSafeFilePath(directory)
+  if (!fs.existsSync(directory)) return { snapshot: null, conflicts }
+  const inventory = readManagedInventory(directory)
+  const source = skillSourceDir()
+  const entries = listInstalledFiles(directory).sort((a, b) => a.relative.localeCompare(b.relative))
+  for (const { relative, regular } of entries) {
+    if (!regular) {
+      conflicts.push(relative)
+      continue
+    }
+    let expected = inventory?.[relative] ?? null
+    if (!expected && source && relative !== MANAGED_INVENTORY) {
+      const bundled = path.join(sourceForSkill(skill, source), relative)
+      const stats = fs.lstatSync(bundled, { throwIfNoEntry: false })
+      if (stats?.isFile()) expected = fileDigest(bundled)
+    }
+    if (!expected && relative !== MANAGED_INVENTORY) {
+      conflicts.push(relative)
+      continue
+    }
+    const digest = fileDigest(path.join(directory, relative))
+    if (relative === MANAGED_INVENTORY || digest === expected) snapshot.push([relative, digest])
+    else conflicts.push(relative)
+  }
+  return { snapshot, conflicts }
+}
+
+function planSkillRemoval(target, skill) {
+  const plan = { path: target.path, agents: target.agents.map((agent) => agent.id), status: 'not-installed', files: [], conflicts: [] }
+  const selection = readSelection(target)
+  if (!selection || !selection.skills.includes(skill)) return { plan, snapshot: null }
+  const { snapshot, conflicts } = inspectSkillRemoval(path.join(target.path, skill), skill)
+  plan.files = snapshot?.map(([relative]) => relative) ?? []
+  plan.conflicts = conflicts
+  plan.status = conflicts.length ? 'conflict' : 'removable'
+  return { plan, snapshot }
+}
+
+function restoreArchivedSkill(backup, directory) {
+  if (fs.lstatSync(directory, { throwIfNoEntry: false })) {
+    throw new Error(`Destination was recreated: ${directory}`)
+  }
+  fs.renameSync(backup, directory)
+  fs.rmdirSync(path.dirname(backup))
+}
+
+function archiveRemovedSkill(directory, skill, snapshot) {
+  const parent = path.dirname(path.dirname(directory))
+  assertSafeFilePath(directory)
+  const backupRoot = fs.mkdtempSync(path.join(parent, '.anti-slop-removed-'))
+  const backup = path.join(backupRoot, skill)
+  try {
+    fs.renameSync(directory, backup)
+    const current = inspectSkillRemoval(backup, skill)
+    if (current.conflicts.length || JSON.stringify(current.snapshot) !== JSON.stringify(snapshot)) {
+      throw new Error(`Installed files changed during removal: ${directory}`)
+    }
+    return backup
+  } catch (error) {
+    if (fs.lstatSync(backup, { throwIfNoEntry: false })) {
+      try {
+        restoreArchivedSkill(backup, directory)
+      } catch (restoreError) {
+        throw new Error(`${error.message}. Files retained at ${backup}: ${restoreError.message}`)
+      }
+      throw error
+    }
+    fs.rmdirSync(backupRoot)
+    throw error
+  }
+}
+
+function writeSelectionRemoval(target, skill) {
+  const previous = readSelection(target)
+  if (!previous || !previous.skills.includes(skill)) return null
+  const state = { format: previous.format, version: previous.version, scope: previous.scope,
+    agents: previous.agents, skills: previous.skills.filter((id) => id !== skill) }
+  const file = path.join(target.path, SELECTION_FILE)
+  const temporary = `${file}.${process.pid}.${randomUUID()}.tmp`
+  try {
+    fs.writeFileSync(temporary, JSON.stringify(state, null, 2) + '\n', { flag: 'wx' })
+    fs.renameSync(temporary, file)
+  } finally {
+    if (fs.existsSync(temporary)) fs.unlinkSync(temporary)
+  }
+  return { file, ...state }
+}
+
+function removeSkill({ skill, targets, scope, dryRun }) {
+  const planned = targets.map((target) => planSkillRemoval(target, skill))
+  const plans = planned.map(({ plan }) => plan)
+  if (dryRun) {
+    for (const plan of plans) if (plan.status === 'removable') plan.status = 'preview'
+    return { plans, selections: [], pointers: [] }
+  }
+  if (plans.some((plan) => plan.status === 'conflict')) {
+    for (const plan of plans) if (plan.status === 'removable') plan.status = 'blocked'
+    return { plans, selections: [], pointers: [] }
+  }
+  const changes = planned.filter(({ plan }) => plan.status === 'removable')
+  const pointerTargets = []
+  if (scope === 'project' && changes.length) {
+    const entries = new Set(targets.flatMap((target) => target.agents.map((agent) => agent.entry)))
+    for (const name of entries) {
+      const entry = path.join(process.cwd(), name)
+      assertSafeFilePath(entry)
+      const stats = fs.lstatSync(entry, { throwIfNoEntry: false })
+      if (stats && !stats.isFile()) throw new Error(`Invalid instruction file: ${entry}`)
+    }
+    for (const target of resolveTargets('project')) {
+      const agents = target.agents.filter((agent) => entries.has(agent.entry))
+      if (agents.length && readSelection(target)) pointerTargets.push({ ...target, agents })
+    }
+  }
+  try {
+    for (const { plan, snapshot } of changes) {
+      const directory = path.join(plan.path, skill)
+      if (snapshot !== null) plan.backup = archiveRemovedSkill(directory, skill, snapshot)
+      else if (fs.lstatSync(directory, { throwIfNoEntry: false })) {
+        throw new Error(`Installed files changed during removal: ${directory}`)
+      }
+    }
+  } catch (error) {
+    const retained = []
+    for (const { plan } of changes.reverse()) {
+      if (!plan.backup) continue
+      try {
+        restoreArchivedSkill(plan.backup, path.join(plan.path, skill))
+      } catch {
+        retained.push(plan.backup)
+      }
+    }
+    if (retained.length) throw new Error(`${error.message}. Files retained at ${retained.join(', ')}`)
+    throw error
+  }
+  const selections = []
+  let pointers = []
+  try {
+    for (const { plan } of changes) {
+      const state = writeSelectionRemoval(plan, skill)
+      if (state) selections.push(state)
+      plan.status = 'removed'
+    }
+    if (pointerTargets.length) {
+      const remaining = [...new Set(pointerTargets.flatMap((target) => readSelection(target)?.skills || []))]
+      pointers = updatePointers({ targets: pointerTargets, skills: remaining })
+    }
+  } catch (error) {
+    const backups = changes.flatMap(({ plan }) => plan.backup ? [plan.backup] : [])
+    if (backups.length) throw new Error(`${error.message}. Files retained at ${backups.join(', ')}`)
+    throw error
+  }
+  return { plans, selections, pointers }
+}
+
+function runRemoval({ skill, scope, agents, dryRun, jsonMode }) {
+  if (!/^[a-z0-9][a-z0-9-]*$/.test(skill) || !listAvailableSkills().includes(skill)) {
+    throw new Error(`Unknown or invalid plugin: ${skill}`)
+  }
+  if (skill === CORE_SKILL) {
+    throw new Error(`The required core skill (${CORE_SKILL}) cannot be removed`)
+  }
+  const targets = resolveTargets(scope, agents)
+  const { plans, selections, pointers } = removeSkill({ skill, targets, scope, dryRun })
+  const blocked = plans.some((plan) => plan.status === 'conflict')
+  if (jsonMode) {
+    console.log(JSON.stringify({ remove: skill, scope, agents, dryRun, targets: plans, selections, pointers }, null, 2))
+  } else {
+    for (const plan of plans) {
+      if (plan.status === 'preview') console.log(`  Would remove ${skill} from ${plan.path}: ${plan.files.length} managed file(s)`)
+      if (plan.status === 'removed') {
+        console.log(`  Removed ${skill} from ${plan.path}: ${plan.files.length} managed file(s)`)
+        if (plan.backup) console.log(`  Backup: ${plan.backup}`)
+      }
+      if (plan.status === 'not-installed') console.log(`  ${skill} is not installed in ${plan.path}`)
+      if (plan.status === 'blocked') console.log(`  Kept ${skill} in ${plan.path} because another target has conflicts`)
+      if (plan.status === 'conflict') console.log(`  ⚠ Removal blocked in ${plan.path}: modified files: ${plan.conflicts.join(', ')}`)
+    }
+    if (pointers.length > 0) console.log(`  Instruction pointers written: ${pointers.join(', ')}`)
+  }
+  return blocked ? 1 : 0
+}
+
 function pointerBlock(skills, skillPaths) {
   return [
     POINTER_START,
@@ -769,6 +1009,7 @@ Options:
   --preset <preset>   Preset: 'full', 'minimal', 'ci', 'backend', 'frontend', 'lead', or domain pack
   --skills <skills>   Optional skill IDs: 'all', 'core', or comma-separated names
   --plugins <names>   Alias for --skills; core is always included
+  --remove <skill>    Remove one installed optional skill (core cannot be removed); use --dry-run to preview
   --all               Select every available optional skill
   --overwrite         Refresh managed files, preserving local edits and conflicts
   --dry-run           Simulate installation without writing files
@@ -837,6 +1078,14 @@ Options:
   const validAgents = new Set(AGENTS.map((agent) => agent.id))
   for (const agent of selectedAgents) {
     if (!validAgents.has(agent)) throw new Error(`Unknown or invalid agent: ${agent}`)
+  }
+
+  const removeArg = optionValue(args, ['remove'])
+  if (removeArg !== null) {
+    if (hookPreview) throw new Error('--remove cannot be combined with a hook preview')
+    if (selectionOnly) throw new Error('--remove cannot be combined with --selection-only')
+    if (skillsArg || presetArg) throw new Error('--remove cannot be combined with --skills or --preset')
+    return runRemoval({ skill: removeArg, scope: scopeArg, agents: selectedAgents, dryRun, jsonMode })
   }
 
   const availableSkills = listAvailableSkills()

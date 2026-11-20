@@ -340,6 +340,166 @@ test('Setup: dry-run reports file conflicts without changing installed files', (
   }
 })
 
+test('Removal: dry-run previews managed files without changing the installation', () => {
+  const project = fs.mkdtempSync(path.join(os.tmpdir(), 'anti-slop-remove-preview-'))
+  const run = (args) => spawnSync(process.execPath, [installer, ...args], {
+    cwd: project, encoding: 'utf8', env: { ...process.env, HOME: project, CI: 'true' }, timeout: 15000,
+  })
+  try {
+    assert.equal(run(['--agent=codex', '--skills=tagore-guard', '--json']).status, 0)
+    const skillRoot = path.join(project, '.codex', 'skills')
+    const manifest = path.join(skillRoot, '.anti-slop-selection.json')
+    const before = fs.readFileSync(manifest, 'utf8')
+    const result = run(['--agent=codex', '--remove', 'tagore-guard', '--dry-run', '--json'])
+    assert.equal(result.status, 0, result.stderr)
+    const plan = JSON.parse(result.stdout)
+    assert.equal(plan.remove, 'tagore-guard')
+    assert.equal(plan.dryRun, true)
+    assert.equal(plan.targets.length, 1)
+    assert.equal(plan.targets[0].status, 'preview')
+    assert.ok(plan.targets[0].files.includes('SKILL.md'))
+    assert.deepEqual(plan.targets[0].conflicts, [])
+    assert.ok(fs.existsSync(path.join(skillRoot, 'tagore-guard', 'SKILL.md')))
+    assert.equal(fs.readFileSync(manifest, 'utf8'), before)
+    assert.ok(fs.readFileSync(path.join(project, 'AGENTS.md'), 'utf8').includes('`tagore-guard`:'))
+  } finally {
+    fs.rmSync(project, { recursive: true, force: true })
+  }
+})
+
+test('Removal: applying removal reconciles disk, manifest and generated block', () => {
+  const project = fs.mkdtempSync(path.join(os.tmpdir(), 'anti-slop-remove-apply-'))
+  const run = (args) => spawnSync(process.execPath, [installer, ...args], {
+    cwd: project, encoding: 'utf8', env: { ...process.env, HOME: project, CI: 'true' }, timeout: 15000,
+  })
+  try {
+    assert.equal(run(['--agent=codex', '--skills=tagore-guard', '--json']).status, 0)
+    const entry = path.join(project, 'AGENTS.md')
+    fs.appendFileSync(entry, '\nPersonal instructions remain.\n')
+    const result = run(['--agent=codex', '--remove', 'tagore-guard', '--json'])
+    assert.equal(result.status, 0, result.stderr)
+    const report = JSON.parse(result.stdout)
+    assert.equal(report.targets[0].status, 'removed')
+    assert.equal(path.basename(report.targets[0].backup), 'tagore-guard')
+    assert.ok(fs.existsSync(path.join(report.targets[0].backup, 'SKILL.md')))
+    assert.ok(report.targets[0].files.includes('SKILL.md'))
+    const skillRoot = path.join(project, '.codex', 'skills')
+    assert.equal(fs.existsSync(path.join(skillRoot, 'tagore-guard')), false)
+    assert.ok(fs.existsSync(path.join(skillRoot, 'anti-slop-engineering', 'SKILL.md')))
+    const inventory = JSON.parse(fs.readFileSync(path.join(skillRoot, '.anti-slop-selection.json'), 'utf8'))
+    assert.equal(inventory.format, 1)
+    assert.deepEqual(inventory.skills, ['anti-slop-engineering'])
+    const config = fs.readFileSync(entry, 'utf8')
+    assert.ok(!config.includes('`tagore-guard`:'), config)
+    assert.ok(config.includes('`anti-slop-engineering`:'))
+    assert.ok(config.includes('Personal instructions remain.'))
+  } finally {
+    fs.rmSync(project, { recursive: true, force: true })
+  }
+})
+
+test('Removal: a second removal is a harmless no-op', () => {
+  const project = fs.mkdtempSync(path.join(os.tmpdir(), 'anti-slop-remove-twice-'))
+  const run = (args) => spawnSync(process.execPath, [installer, ...args], {
+    cwd: project, encoding: 'utf8', env: { ...process.env, HOME: project, CI: 'true' }, timeout: 15000,
+  })
+  try {
+    assert.equal(run(['--agent=codex', '--skills=tagore-guard', '--json']).status, 0)
+    assert.equal(run(['--agent=codex', '--remove', 'tagore-guard', '--json']).status, 0)
+    const second = run(['--agent=codex', '--remove', 'tagore-guard', '--json'])
+    assert.equal(second.status, 0, second.stderr)
+    assert.equal(JSON.parse(second.stdout).targets[0].status, 'not-installed')
+    const inventory = JSON.parse(fs.readFileSync(
+      path.join(project, '.codex', 'skills', '.anti-slop-selection.json'), 'utf8'))
+    assert.deepEqual(inventory.skills, ['anti-slop-engineering'])
+  } finally {
+    fs.rmSync(project, { recursive: true, force: true })
+  }
+})
+
+test('Removal: a modified managed file blocks removal and is reported as a conflict', () => {
+  const project = fs.mkdtempSync(path.join(os.tmpdir(), 'anti-slop-remove-conflict-'))
+  const run = (args) => spawnSync(process.execPath, [installer, ...args], {
+    cwd: project, encoding: 'utf8', env: { ...process.env, HOME: project, CI: 'true' }, timeout: 15000,
+  })
+  try {
+    assert.equal(run(['--agent=codex', '--skills=tagore-guard', '--json']).status, 0)
+    const installed = path.join(project, '.codex/skills/tagore-guard/SKILL.md')
+    fs.writeFileSync(installed, 'my local version\n')
+    const result = run(['--agent=codex', '--remove', 'tagore-guard', '--json'])
+    assert.equal(result.status, 1, result.stdout)
+    const report = JSON.parse(result.stdout)
+    assert.equal(report.targets[0].status, 'conflict')
+    assert.ok(report.targets[0].conflicts.includes('SKILL.md'))
+    assert.equal(fs.readFileSync(installed, 'utf8'), 'my local version\n')
+    const inventory = JSON.parse(fs.readFileSync(
+      path.join(project, '.codex', 'skills', '.anti-slop-selection.json'), 'utf8'))
+    assert.deepEqual(inventory.skills, ['anti-slop-engineering', 'tagore-guard'])
+    assert.ok(fs.readFileSync(path.join(project, 'AGENTS.md'), 'utf8').includes('`tagore-guard`:'))
+  } finally {
+    fs.rmSync(project, { recursive: true, force: true })
+  }
+})
+
+test('Removal: the required core skill cannot be removed', () => {
+  const result = inDisposableProject(['--agent=codex', '--remove', 'anti-slop-engineering', '--json'])
+  assert.notEqual(result.status, 0)
+  assert.match(result.stderr, /core/i)
+})
+
+test('Removal: a symlinked managed inventory fails without following its target', () => {
+  const project = fs.mkdtempSync(path.join(os.tmpdir(), 'anti-slop-remove-link-'))
+  const run = (args) => spawnSync(process.execPath, [installer, ...args], {
+    cwd: project, encoding: 'utf8', env: { ...process.env, HOME: project, CI: 'true' }, timeout: 15000,
+  })
+  try {
+    assert.equal(run(['--agent=codex', '--skills=tagore-guard', '--json']).status, 0)
+    const inventory = path.join(project, '.codex', 'skills', 'tagore-guard', '.anti-slop-managed.json')
+    const victim = path.join(project, 'private.json')
+    fs.writeFileSync(victim, '{"private":true}\n')
+    fs.unlinkSync(inventory)
+    fs.symlinkSync(victim, inventory)
+    const result = run(['--agent=codex', '--remove', 'tagore-guard', '--json'])
+    assert.notEqual(result.status, 0)
+    assert.match(result.stderr, /symbolic link/i)
+    assert.equal(fs.readFileSync(victim, 'utf8'), '{"private":true}\n')
+  } finally {
+    fs.rmSync(project, { recursive: true, force: true })
+  }
+})
+
+test('Removal: an unknown skill is rejected', () => {
+  const result = inDisposableProject(['--agent=codex', '--remove', 'no-such-skill', '--json'])
+  assert.notEqual(result.status, 0)
+  assert.match(result.stderr, /Unknown or invalid/)
+})
+
+test('Removal: installed-selection audit still runs core after removal', () => {
+  const project = fs.mkdtempSync(path.join(os.tmpdir(), 'anti-slop-remove-audit-'))
+  const run = (args) => spawnSync(process.execPath, [installer, ...args], {
+    cwd: project, encoding: 'utf8', env: { ...process.env, HOME: project, CI: 'true' }, timeout: 15000,
+  })
+  const git = (args) => spawnSync('git', args, { cwd: project, encoding: 'utf8' })
+  try {
+    git(['init', '-q'])
+    git(['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.test', 'commit', '--allow-empty', '-qm', 'fixture'])
+    assert.equal(run(['--agent=codex', '--skills=tagore-guard', '--json']).status, 0)
+    assert.equal(run(['--agent=codex', '--remove', 'tagore-guard', '--json']).status, 0)
+    const manifest = path.join(project, '.codex', 'skills', '.anti-slop-selection.json')
+    const audit = spawnSync('python3', [path.join(root, 'scripts', 'audit_runner.py'),
+      'audit', '--json', '--installed-selection', manifest], {
+      cwd: project, encoding: 'utf8', env: { ...process.env, HOME: project }, timeout: 60000,
+    })
+    assert.equal(audit.status, 0, audit.stderr)
+    const guards = JSON.parse(audit.stdout).guards
+    assert.equal(guards.tagore_guard.skip_type, 'not-selected')
+    assert.equal(guards.diff_guard.status, 'PASS')
+    assert.equal(guards.sre_guard.status, 'PASS')
+  } finally {
+    fs.rmSync(project, { recursive: true, force: true })
+  }
+})
+
 test('Setup: a symlinked selection inventory fails without following its target', () => {
   const project = fs.mkdtempSync(path.join(os.tmpdir(), 'anti-slop-inventory-link-'))
   const run = (args) => spawnSync(process.execPath, [installer, ...args], {
@@ -558,6 +718,78 @@ for (const [agent, settings, tool] of additionalHookPreviews) {
     })
   })
 }
+
+test('Removal preserves an unowned empty directory in the skill tree', () => {
+  inClaudeWorkspace((dir) => {
+    const run = (args) => runClaudePreview(dir, ['--agent=codex', '--json', ...args])
+    assert.equal(run(['--skills=tagore-guard']).status, 0)
+    const skill = path.join(dir, '.codex', 'skills', 'tagore-guard')
+    fs.mkdirSync(path.join(skill, 'personal-notes'))
+    const result = run(['--remove', 'tagore-guard'])
+    assert.equal(result.status, 1, result.stderr)
+    assert.deepEqual(JSON.parse(result.stdout).targets[0].conflicts, ['personal-notes'])
+    assert.ok(fs.existsSync(path.join(skill, 'personal-notes')))
+    assert.ok(fs.existsSync(path.join(skill, 'SKILL.md')))
+  })
+})
+
+test('Removal checks the instruction destination before changing the installed skill', () => {
+  inClaudeWorkspace((dir) => {
+    const run = (args) => runClaudePreview(dir, ['--agent=codex', '--json', ...args])
+    assert.equal(run(['--skills=tagore-guard']).status, 0)
+    const entry = path.join(dir, 'AGENTS.md')
+    const root = path.join(dir, '.codex', 'skills')
+    const manifest = path.join(root, '.anti-slop-selection.json')
+    const before = fs.readFileSync(manifest, 'utf8')
+    fs.unlinkSync(entry)
+    fs.mkdirSync(entry)
+    assert.notEqual(run(['--remove', 'tagore-guard']).status, 0)
+    assert.ok(fs.existsSync(path.join(root, 'tagore-guard', 'SKILL.md')))
+    assert.equal(fs.readFileSync(manifest, 'utf8'), before)
+  })
+})
+
+test('Removal preserves a file added during the handoff of the installed skill', () => {
+  inClaudeWorkspace((dir) => {
+    const common = ['--agent=codex', '--json']
+    assert.equal(runClaudePreview(dir, [...common, '--skills=tagore-guard']).status, 0)
+    const skill = path.join(dir, '.codex', 'skills', 'tagore-guard')
+    const injection = path.join(dir, 'write-during-removal.mjs')
+    fs.writeFileSync(injection, `
+      import fs from 'node:fs';
+      import path from 'node:path';
+      const target = ${JSON.stringify(skill)};
+      for (const action of ['rmSync', 'renameSync']) {
+        const original = fs[action];
+        fs[action] = (source, ...args) => {
+          if (typeof source === 'string' && source.split(path.sep).join('/').endsWith('/.codex/skills/tagore-guard')) {
+            fs.writeFileSync(target + '/concurrent-notes.txt', 'keep this');
+          }
+          return original(source, ...args);
+        };
+      }
+    `)
+    const result = spawnSync(process.execPath, ['--import', injection, installer, ...common, '--remove', 'tagore-guard'], {
+      cwd: dir, encoding: 'utf8', env: { ...process.env, HOME: dir, CI: 'true' }, timeout: 15000,
+    })
+    assert.notEqual(result.status, 0, result.stderr)
+    assert.equal(fs.readFileSync(path.join(skill, 'concurrent-notes.txt'), 'utf8'), 'keep this')
+    assert.ok(fs.existsSync(path.join(skill, 'SKILL.md')))
+    assert.match(fs.readFileSync(path.join(dir, 'AGENTS.md'), 'utf8'), /tagore-guard/)
+  })
+})
+
+test('Removal keeps shared instructions for a different installed agent', () => {
+  inClaudeWorkspace((dir) => {
+    const setup = runClaudePreview(dir, ['--agent=cursor,codex', '--json', '--skills=tagore-guard'])
+    assert.equal(setup.status, 0, setup.stderr)
+    const result = runClaudePreview(dir, ['--agent=cursor', '--json', '--remove', 'tagore-guard'])
+    assert.equal(result.status, 0, result.stderr)
+    assert.ok(fs.existsSync(path.join(dir, '.codex', 'skills', 'tagore-guard', 'SKILL.md')))
+    const pointers = fs.readFileSync(path.join(dir, 'AGENTS.md'), 'utf8')
+    assert.ok(pointers.includes('.codex/skills/tagore-guard/SKILL.md'), pointers)
+  })
+})
 
 function runCodexPreview(dir, options) {
   return spawnSync(process.execPath, [cli, 'setup', '--agent=codex', '--skills=core', '--codex-hooks', '--dry-run', '--json', ...options], {
