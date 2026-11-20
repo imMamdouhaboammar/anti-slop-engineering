@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { request } from "node:https";
 import { join } from "node:path";
 
@@ -195,10 +195,69 @@ export async function readPublicNpmEvidence(packageName, evidence, transport = r
   }
 }
 
+function usableCacheRecord(cache, packageName, evidence) {
+  if (!cache || typeof cache !== "object" || Array.isArray(cache)) {
+    return null;
+  }
+  const observed = Date.parse(cache.observed_at);
+  const usable = cache.package === packageName && cache.resolved === evidence.resolved &&
+    cache.status === "observed" && cache.source === npmOrigin + "/" + encodeURIComponent(packageName) &&
+    typeof cache.locked_version === "string" &&
+    (typeof cache.deprecated === "boolean" || cache.deprecated === null) &&
+    (typeof cache.latest === "string" || cache.latest === null) &&
+    (typeof cache.latest_satisfies_declared_range === "boolean" ||
+      cache.latest_satisfies_declared_range === null) && Number.isFinite(observed);
+  return usable ? observed : null;
+}
+
+function cachedEvidence(cache) {
+  return {
+    source: cache.source, status: cache.status, locked_version: cache.locked_version,
+    deprecated: cache.deprecated, latest: cache.latest,
+    latest_satisfies_declared_range: cache.latest_satisfies_declared_range,
+    observed_at: cache.observed_at,
+  };
+}
+
+export async function readRegistryEvidenceWithCache(packageName, evidence, cache, now, ttlSeconds, transport = requestPublicNpm) {
+  if (!validNpmName(packageName) || evidence.status !== "locked") {
+    return { status: "unsupported" };
+  }
+  const observed = usableCacheRecord(cache, packageName, evidence);
+  const ageSeconds = observed === null ? null : Math.floor((now.getTime() - observed) / 1000);
+  if (ageSeconds !== null && ageSeconds >= 0 && ageSeconds <= ttlSeconds) {
+    return { ...cachedEvidence(cache), provenance: "cache", age_seconds: ageSeconds, freshness: "fresh" };
+  }
+  const live = await readPublicNpmEvidence(packageName, evidence, transport);
+  if (live.status === "observed") {
+    return { ...live, observed_at: now.toISOString(), provenance: "registry", age_seconds: 0, freshness: "fresh" };
+  }
+  if (ageSeconds !== null && ageSeconds >= 0) {
+    return { ...cachedEvidence(cache), provenance: "cache", age_seconds: ageSeconds, freshness: "stale", live_status: live.status };
+  }
+  return { ...live, observed_at: now.toISOString() };
+}
+
 if (import.meta.main) {
-  const [root, packageName, mode, extra] = process.argv.slice(2);
-  if (!root || !packageName || (mode !== undefined && mode !== "--public-npm") || extra !== undefined) {
-    console.error("Usage: bun bun-lock-evidence.mjs <project-root> <package-name> [--public-npm]");
+  const [root, packageName, mode, ...options] = process.argv.slice(2);
+  let cachePath = null;
+  let cacheMaxAge = 3600;
+  let optionsValid = mode === undefined || mode === "--public-npm";
+  if (mode === "--public-npm") {
+    for (let index = 0; index < options.length; index += 2) {
+      if (options[index] === "--cache" && options[index + 1]) {
+        cachePath = options[index + 1];
+      } else if (options[index] === "--cache-max-age" && Number.isFinite(Number(options[index + 1])) && Number(options[index + 1]) >= 0) {
+        cacheMaxAge = Number(options[index + 1]);
+      } else {
+        optionsValid = false;
+      }
+    }
+  } else if (options.length > 0) {
+    optionsValid = false;
+  }
+  if (!root || !packageName || !optionsValid || (cachePath !== null && mode !== "--public-npm")) {
+    console.error("Usage: bun bun-lock-evidence.mjs <project-root> <package-name> [--public-npm [--cache <path>] [--cache-max-age <seconds>]]");
     process.exitCode = 2;
   } else {
     let evidence;
@@ -218,7 +277,25 @@ if (import.meta.main) {
         installed = { status: error?.code === "ENOENT" ? "missing" : "unreadable" };
       }
     }
-    if (mode === "--public-npm") {
+    if (mode === "--public-npm" && cachePath !== null) {
+      let cache = null;
+      try {
+        cache = JSON.parse(await readFile(cachePath, "utf8"));
+      } catch {
+        cache = null;
+      }
+      const registry = await readRegistryEvidenceWithCache(packageName, evidence, cache, new Date(), cacheMaxAge);
+      if (registry.provenance === "registry" && registry.status === "observed") {
+        const { provenance, age_seconds, freshness, ...record } = registry;
+        try {
+          await writeFile(cachePath, JSON.stringify({ package: packageName, resolved: evidence.resolved, ...record }));
+        } catch {
+          // A cache that cannot be written does not change the observation.
+        }
+      }
+      console.log(JSON.stringify({ ...evidence, registry, installed }));
+      process.exitCode = registry.freshness === "fresh" ? 0 : 2;
+    } else if (mode === "--public-npm") {
       const registry = await readPublicNpmEvidence(packageName, evidence);
       console.log(JSON.stringify({ ...evidence, registry: { ...registry, observed_at: new Date().toISOString() }, installed }));
       process.exitCode = registry.status === "observed" ? 0 : 2;

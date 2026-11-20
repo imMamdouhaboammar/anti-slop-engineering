@@ -1,8 +1,8 @@
 import { test, expect } from "bun:test";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { inspectDirectDependency, inspectInstalledPackage, readPublicNpmEvidence } from "../skills/grumpy-senior-staff-engineer/examples/bun-lock-evidence.mjs";
+import { inspectDirectDependency, inspectInstalledPackage, readPublicNpmEvidence, readRegistryEvidenceWithCache } from "../skills/grumpy-senior-staff-engineer/examples/bun-lock-evidence.mjs";
 
 const script = new URL("../skills/grumpy-senior-staff-engineer/examples/bun-lock-evidence.mjs", import.meta.url);
 
@@ -169,6 +169,88 @@ test("CLI receipt reports a missing installation without changing the lock verdi
     const receipt = JSON.parse(output.stdout.toString());
     expect(receipt.status).toBe("locked");
     expect(receipt.installed).toEqual({ status: "missing" });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+const cacheRecord = {
+  package: "@demo/library", resolved: "2.1.0",
+  source: "https://registry.npmjs.org/%40demo%2Flibrary", status: "observed",
+  locked_version: "listed", deprecated: true, latest: "3.2.0",
+  latest_satisfies_declared_range: false, observed_at: "2026-11-20T10:00:00.000Z",
+};
+const cacheNow = new Date("2026-11-20T10:30:00.000Z");
+
+test("serves a fresh cached registry result without consulting the registry", async () => {
+  const locked = inspectDirectDependency(manifest, lock, "@demo/library");
+  let calls = 0;
+  const transport = async () => { calls += 1; throw new Error("must not be called"); };
+  const result = await readRegistryEvidenceWithCache("@demo/library", locked, cacheRecord, cacheNow, 3600, transport);
+  expect(calls).toBe(0);
+  expect(result).toEqual({
+    source: cacheRecord.source, status: "observed", locked_version: "listed", deprecated: true,
+    latest: "3.2.0", latest_satisfies_declared_range: false, observed_at: "2026-11-20T10:00:00.000Z",
+    provenance: "cache", age_seconds: 1800, freshness: "fresh",
+  });
+});
+
+test("serves an expired cache as stale evidence while offline", async () => {
+  const locked = inspectDirectDependency(manifest, lock, "@demo/library");
+  const offline = async () => { throw new Error("transport unavailable"); };
+  const result = await readRegistryEvidenceWithCache("@demo/library", locked, cacheRecord, cacheNow, 900, offline);
+  expect(result).toEqual({
+    source: cacheRecord.source, status: "observed", locked_version: "listed", deprecated: true,
+    latest: "3.2.0", latest_satisfies_declared_range: false, observed_at: "2026-11-20T10:00:00.000Z",
+    provenance: "cache", age_seconds: 1800, freshness: "stale", live_status: "unavailable",
+  });
+});
+
+test("refreshes an expired cache from the registry and reports zero age", async () => {
+  const locked = inspectDirectDependency(manifest, lock, "@demo/library");
+  const metadata = {
+    name: "@demo/library", "dist-tags": { latest: "3.2.0" }, versions: {
+      "2.1.0": { name: "@demo/library", version: "2.1.0", deprecated: "Retired release" },
+      "3.2.0": { name: "@demo/library", version: "3.2.0" },
+    },
+  };
+  const result = await readRegistryEvidenceWithCache(
+    "@demo/library", locked, cacheRecord, cacheNow, 900, async () => Response.json(metadata));
+  expect(result).toEqual({
+    source: cacheRecord.source, status: "observed", locked_version: "listed", deprecated: true,
+    latest: "3.2.0", latest_satisfies_declared_range: false, observed_at: "2026-11-20T10:30:00.000Z",
+    provenance: "registry", age_seconds: 0, freshness: "fresh",
+  });
+});
+
+test("reports an unavailable registry when no cache can serve", async () => {
+  const locked = inspectDirectDependency(manifest, lock, "@demo/library");
+  const offline = async () => { throw new Error("transport unavailable"); };
+  expect(await readRegistryEvidenceWithCache("@demo/library", locked, null, cacheNow, 3600, offline)).toEqual({
+    source: cacheRecord.source, status: "unavailable", observed_at: "2026-11-20T10:30:00.000Z",
+  });
+  const otherLock = { ...cacheRecord, resolved: "2.0.0" };
+  expect((await readRegistryEvidenceWithCache("@demo/library", locked, otherLock, cacheNow, 3600, offline)).status)
+    .toBe("unavailable");
+});
+
+test("CLI serves a fresh cache file and keeps the offline lock verdict", () => {
+  const dir = writeProject("2.1.0");
+  try {
+    const cachePath = join(dir, "registry-cache.json");
+    const recent = { ...cacheRecord, observed_at: new Date(Date.now() - 600_000).toISOString() };
+    writeFileSync(cachePath, JSON.stringify(recent));
+    const output = Bun.spawnSync([process.execPath, script.pathname, dir, "@demo/library",
+      "--public-npm", "--cache", cachePath, "--cache-max-age", "3600"]);
+    expect(output.exitCode).toBe(0);
+    const receipt = JSON.parse(output.stdout.toString());
+    expect(receipt.status).toBe("locked");
+    expect(receipt.registry).toMatchObject({
+      status: "observed", provenance: "cache", freshness: "fresh", latest: "3.2.0",
+    });
+    expect(receipt.registry.age_seconds).toBeGreaterThanOrEqual(600);
+    expect(receipt.registry.age_seconds).toBeLessThan(3600);
+    expect(JSON.parse(readFileSync(cachePath, "utf8"))).toEqual(recent);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
