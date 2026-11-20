@@ -52,4 +52,4 @@ node /path/to/anti-slop/bin/cli.js setup --agent=codex --codex-hooks --dry-run -
 node /path/to/anti-slop/bin/cli.js setup --agent=gemini --gemini-hooks --dry-run --json
 ```
 
-The preview reports the project settings path, supported tool, host trust requirement, and enforcement plan. Pass `--enforcement <mode>` (`strict`, `advisory`, `git-boundary`, `skills-only`) with `--codex-hooks` to preview whether a requested enforcement mode is supported by the adapter. Use the standalone adapter to apply or remove the hooks.
+The preview reports the project settings path, supported tool, host trust requirement, and enforcement plan. Pass `--enforcement <mode>` (`strict`, `advisory`, `git-boundary`, `skills-only`) with `--codex-hooks`, or in an interactive setup targeting Codex at project scope, to preview whether a requested enforcement mode is supported by the adapter. Use the standalone adapter to apply or remove the hooks.
