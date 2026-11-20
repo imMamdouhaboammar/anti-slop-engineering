@@ -90,3 +90,45 @@ class TargetedMutationTests(unittest.TestCase):
         _, report = self.run_mutation("--operator", "flip_boolean_return")
         self.assertEqual(report["status"], "no_mutants")
         self.assertEqual(report["results"], [])
+
+    def test_timed_out_mutant_is_inconclusive_and_excluded_from_score(self):
+        self.test_file.write_text(
+            "import time\nimport unittest\nfrom scripts.selector import select\n\n"
+            "class SelectorTests(unittest.TestCase):\n"
+            "    def test_case(self):\n"
+            "        result = select(True, False)\n"
+            "        if result == 0:\n            time.sleep(60)\n"
+            "        self.assertEqual(result, 4)\n", encoding="utf-8",
+        )
+        before = self.git("diff", "HEAD")
+        before_status = self.git("status", "--porcelain")
+        result, report = self.run_mutation()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(report["status"], "evaluated")
+        self.assertEqual({row["line"]: row["status"] for row in report["results"]},
+                         {2: "inconclusive", 4: "survived"})
+        self.assertEqual({row["line"]: row["observation"] for row in report["results"]},
+                         {2: "timed_out", 4: "passed"})
+        self.assertEqual(report["score"], {"killed": 0, "evaluated": 1})
+        self.assertEqual(self.git("diff", "HEAD"), before)
+        self.assertEqual(self.git("status", "--porcelain"), before_status)
+
+    def test_erroring_mutant_is_inconclusive_and_excluded_from_score(self):
+        self.test_file.write_text(
+            "import unittest\nfrom scripts.selector import select\n\n"
+            "class SelectorTests(unittest.TestCase):\n"
+            "    def test_case(self):\n        self.assertEqual(8 // select(True, False), 2)\n",
+            encoding="utf-8",
+        )
+        before = self.git("diff", "HEAD")
+        before_status = self.git("status", "--porcelain")
+        result, report = self.run_mutation()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(report["status"], "evaluated")
+        self.assertEqual({row["line"]: row["status"] for row in report["results"]},
+                         {2: "inconclusive", 4: "survived"})
+        self.assertEqual({row["line"]: row["observation"] for row in report["results"]},
+                         {2: "test_failure", 4: "passed"})
+        self.assertEqual(report["score"], {"killed": 0, "evaluated": 1})
+        self.assertEqual(self.git("diff", "HEAD"), before)
+        self.assertEqual(self.git("status", "--porcelain"), before_status)

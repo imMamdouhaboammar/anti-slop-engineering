@@ -159,12 +159,14 @@ Run the read-only helper from a checkout or package. Select the precise `site-pa
 ```sh
 python3 -I -S scripts/python_api_evidence.py consumer.py \
   --site-packages /path/to/venv/lib/python3.12/site-packages \
-  --distribution example-package --module example_package.client --symbol Client
+  --distribution example-package --consumer-import
 ```
 
-The `compiler` object records the actual Python interpreter and either a successful in-memory compile, a syntax diagnostic with its source range, or `not_checked`. The helper then locates the requested distribution's installed metadata and exact file ownership list. It reads a regular source file or stub owned by that distribution without importing project modules. Use `-I -S` to disable user site startup and Python site hooks in the verifier process.
+You can also specify `--module` and `--symbol` directly instead of using `--consumer-import`.
 
-`installed_api.status: declared` means a direct declaration is visible in the installed source or stub at the reported location. It does not prove Python can import it from the consumer's actual working directory, that a guarded or dynamic export works, or that the API type-checks. `not_declared` means no direct declaration in the selected stub. Missing metadata, namespace or binary modules, unresolved symbols in normal source, and dynamic stubs can yield `inconclusive`.
+The `compiler` object records the actual Python interpreter and either a successful in-memory compile, a syntax diagnostic with its source range, or `not_checked`. The helper then locates the requested distribution's installed metadata and exact file ownership list. In `--consumer-import` mode, it parses the consumer's top-level `from <module> import <symbol>` statements to find the single explicit import owned by that distribution. It then reads a regular source file or stub owned by that distribution without importing project modules. Use `-I -S` to disable user site startup and Python site hooks in the verifier process.
+
+`installed_api.status: declared` means a direct declaration is visible in the installed source or stub at the reported location. When using `--consumer-import`, the receipt includes `import_span` (the consumer's import location), `declaration_span` (the installed file's path and location), and `provenance` (the installation root and module file). It does not prove Python can import it from the consumer's actual working directory, that a guarded or dynamic export works, or that the API type-checks. `not_declared` means no direct declaration in the selected stub. Missing metadata, namespace or binary modules, unresolved symbols in normal source, dynamic stubs, or ambiguous imports can yield `inconclusive`.
 
 Exit status 0 requires both a completed syntax check and declaration evidence. Status 1 is a compiler diagnostic. Status 2 means the requested evidence was unavailable or inconclusive. No dependencies are installed, no registry is queried, and neither source file is executed.
 

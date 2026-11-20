@@ -1,0 +1,2 @@
+# Never disable TLS verification (verify=False) in this client; use the CA bundle.
+import requests

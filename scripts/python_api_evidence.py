@@ -75,10 +75,13 @@ def find_distribution(root, name):
     return version, {row[0] for row in rows if row}
 
 
-def find_module(root, owned, module):
+def module_candidates(module):
     stem = module.replace(".", "/")
-    candidates = [stem + ".pyi", stem + "/__init__.pyi", stem + ".py", stem + "/__init__.py"]
-    for candidate in candidates:
+    return [stem + ".pyi", stem + "/__init__.pyi", stem + ".py", stem + "/__init__.py"]
+
+
+def find_module(root, owned, module):
+    for candidate in module_candidates(module):
         if candidate in owned:
             path = regular_child(root, candidate)
             if path:
@@ -124,18 +127,72 @@ def installed_evidence(site, distribution, module, symbol):
     return {**result, "status": "inconclusive", "reason": "No direct declaration; runtime or conditional exports may apply"}
 
 
+def import_from_symbols(stmt):
+    if not isinstance(stmt, ast.ImportFrom) or stmt.level != 0 or not stmt.module:
+        return []
+    return [(stmt, stmt.module, alias.name) for alias in stmt.names if alias.name != "*"]
+
+
+def consumer_imports(source):
+    tree = ast.parse(read_bounded(source), filename=str(source))
+    return [entry for stmt in tree.body for entry in import_from_symbols(stmt)]
+
+
+def consumer_import_evidence(source, site, distribution):
+    result = {"distribution": distribution}
+    if not site.is_dir():
+        return {**result, "status": "not_checked", "reason": "The selected site-packages is unavailable"}
+    try:
+        imports = consumer_imports(source)
+        root = site.resolve(strict=True)
+        version, owned = find_distribution(root, distribution)
+    except (OSError, ValueError, SyntaxError, RecursionError, csv.Error) as error:
+        return {**result, "status": "inconclusive", "reason": str(error)}
+    selected = [
+        entry for entry in imports
+        if any(candidate in owned for candidate in module_candidates(entry[1]))
+    ]
+    if len(selected) != 1:
+        reason = ("The consumer has no explicit import from the selected distribution" if not selected
+                  else "The consumer imports more than one symbol from the selected distribution")
+        return {**result, "status": "inconclusive", "reason": reason, "version": version}
+    stmt, module, symbol = selected[0]
+    merged = dict(installed_evidence(site, distribution, module, symbol))
+    module_path = merged.get("path")
+    if "line" in merged:
+        merged["declaration_span"] = {
+            "path": merged.pop("path"), "line": merged.pop("line"), "column": merged.pop("column"),
+            "end_line": merged.pop("end_line"), "end_column": merged.pop("end_column"),
+        }
+    merged["import_span"] = {
+        "line": stmt.lineno, "column": stmt.col_offset,
+        "end_line": stmt.end_lineno, "end_column": stmt.end_col_offset,
+    }
+    merged["provenance"] = {"installation": str(root), "module": module_path}
+    return merged
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("source", type=Path)
     parser.add_argument("--site-packages", type=Path, required=True)
     parser.add_argument("--distribution", required=True)
-    parser.add_argument("--module", required=True)
-    parser.add_argument("--symbol", required=True)
+    parser.add_argument("--module")
+    parser.add_argument("--symbol")
+    parser.add_argument("--consumer-import", action="store_true",
+                        help="Derive the module and symbol from the consumer's own import")
     args = parser.parse_args()
+    if args.consumer_import and (args.module or args.symbol):
+        parser.error("--consumer-import derives the module and symbol from the consumer")
+    if not args.consumer_import and not (args.module and args.symbol):
+        parser.error("--module and --symbol are required unless --consumer-import is used")
     compiler = compiler_evidence(args.source)
     api = {"status": "not_checked"}
     if compiler["status"] == "passed":
-        api = installed_evidence(args.site_packages, args.distribution, args.module, args.symbol)
+        if args.consumer_import:
+            api = consumer_import_evidence(args.source, args.site_packages, args.distribution)
+        else:
+            api = installed_evidence(args.site_packages, args.distribution, args.module, args.symbol)
     print(json.dumps({"compiler": compiler, "installed_api": api}, indent=2))
     if compiler["status"] == "diagnostic":
         return 1

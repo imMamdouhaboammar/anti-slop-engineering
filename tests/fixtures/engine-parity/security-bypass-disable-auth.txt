@@ -1,0 +1,2 @@
+# Service settings for the internal client.
+DISABLE_AUTH = True
