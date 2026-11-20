@@ -465,3 +465,133 @@ func assertTypeChangeAudit(t *testing.T, docs string) {
 		t.Fatalf("unexpected type-change finding set: %+v", report)
 	}
 }
+
+func TestEvidenceModeMatchesDefaultOnQuotedBinaryAndControl(t *testing.T) {
+	producer := realChangesetProducer(t)
+	dir := initTempGitRepo(t)
+	for _, sub := range []string{"src", "assets"} {
+		if err := os.Mkdir(filepath.Join(dir, sub), 0750); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write := func(path string, body []byte) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, path), body, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	const quoted = "src/café données.py"
+	write(quoted, []byte("import time\n\n\ndef café():\n    return 1\n"))
+	write("assets/blob.bin", []byte{0, 1, 2, 'b', 'i', 'n', 'a', 'r', 'y', '-', 'v', '1'})
+	write("src/control.py", []byte("def control():\n    return 1\n"))
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "commit", "-m", "track quoted binary control fixture")
+	write(quoted, []byte("import time\n\n\ndef café():\n    time.sleep(5)\n    return 1\n"))
+	write("assets/blob.bin", []byte{0, 9, 8, 'b', 'i', 'n', 'a', 'r', 'y', '-', 'v', '2'})
+	write("src/control.py", []byte("def control():\n    return 1\n    # edited\n"))
+	runGit(t, dir, "add", "-A")
+
+	docs := writeChangesetSnapshots(t, producer, dir)
+	assertQuotedBinarySnapshots(t, docs)
+	t.Chdir(dir)
+	assertQuotedBinaryAudit(t, docs)
+}
+
+func assertQuotedBinarySnapshots(t *testing.T, docs string) {
+	t.Helper()
+	type pathRecord struct {
+		Text string `json:"text"`
+	}
+	type hunkRange struct {
+		OldStart int `json:"old_start"`
+		OldCount int `json:"old_count"`
+		NewStart int `json:"new_start"`
+		NewCount int `json:"new_count"`
+	}
+	type fileRecord struct {
+		Status  string      `json:"status"`
+		OldPath *pathRecord `json:"old_path"`
+		NewPath *pathRecord `json:"new_path"`
+		Binary  bool        `json:"binary"`
+		Added   *int        `json:"added"`
+		Deleted *int        `json:"deleted"`
+		Hunks   []hunkRange `json:"hunks"`
+	}
+	for _, snapshot := range []string{"worktree", "index"} {
+		data, err := os.ReadFile(filepath.Join(docs, snapshot+".json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var document struct {
+			Files []fileRecord `json:"files"`
+		}
+		if err := json.Unmarshal(data, &document); err != nil {
+			t.Fatalf("parse %s payload: %v", snapshot, err)
+		}
+		recordAt := func(path string) fileRecord {
+			t.Helper()
+			var matches []fileRecord
+			for _, record := range document.Files {
+				if record.NewPath != nil && record.NewPath.Text == path {
+					matches = append(matches, record)
+				}
+			}
+			if len(matches) != 1 {
+				t.Fatalf("%s snapshot has %d records for %q, want 1", snapshot, len(matches), path)
+			}
+			return matches[0]
+		}
+		quoted := recordAt("src/café données.py")
+		if quoted.Status != "M" || quoted.OldPath == nil || quoted.OldPath.Text != "src/café données.py" ||
+			quoted.Binary || quoted.Added == nil || *quoted.Added != 1 ||
+			quoted.Deleted == nil || *quoted.Deleted != 0 ||
+			!slices.Equal(quoted.Hunks, []hunkRange{{4, 0, 5, 1}}) {
+			t.Fatalf("%s snapshot lost the quoted-path text record: %+v", snapshot, quoted)
+		}
+		blob := recordAt("assets/blob.bin")
+		if blob.Status != "M" || !blob.Binary || blob.Added != nil || blob.Deleted != nil ||
+			len(blob.Hunks) != 0 {
+			t.Fatalf("%s snapshot fabricated counts or hunks for the binary change: %+v", snapshot, blob)
+		}
+		control := recordAt("src/control.py")
+		if control.Status != "M" || control.Binary || control.Added == nil || *control.Added != 1 ||
+			control.Deleted == nil || *control.Deleted != 0 ||
+			!slices.Equal(control.Hunks, []hunkRange{{2, 0, 3, 1}}) {
+			t.Fatalf("%s snapshot lost the text control range: %+v", snapshot, control)
+		}
+	}
+}
+
+func assertQuotedBinaryAudit(t *testing.T, docs string) {
+	t.Helper()
+	var normal, normalized, stderr bytes.Buffer
+	normalCode := executeAudit([]string{"--format", "json"}, &normal, &stderr)
+	if stderr.Len() != 0 {
+		t.Fatal(&stderr)
+	}
+	normalizedCode := executeAudit([]string{"--format", "json", "--changeset", filepath.Join(docs, "worktree.json"),
+		"--index-changeset", filepath.Join(docs, "index.json")}, &normalized, &stderr)
+	if normalCode != 1 || normalizedCode != normalCode || stderr.Len() != 0 || !bytes.Equal(normal.Bytes(), normalized.Bytes()) {
+		t.Fatalf("default and normalized audits differ: normal=%d/%s normalized=%d/%s stderr=%s",
+			normalCode, &normal, normalizedCode, &normalized, &stderr)
+	}
+	var report struct {
+		Findings []struct {
+			File     string `json:"file"`
+			Line     int    `json:"line"`
+			Code     string `json:"code"`
+			Severity string `json:"severity"`
+		} `json:"findings"`
+		SLI struct {
+			TotalFiles int `json:"total_files"`
+		} `json:"sli"`
+	}
+	if err := json.Unmarshal(normalized.Bytes(), &report); err != nil {
+		t.Fatal(err)
+	}
+	if report.SLI.TotalFiles != 2 || len(report.Findings) != 1 ||
+		report.Findings[0].File != "src/café données.py" || report.Findings[0].Line != 5 ||
+		report.Findings[0].Code != "SRE-SCALE-SLEEP" || report.Findings[0].Severity != "BLOCKER" {
+		t.Fatalf("unexpected quoted-path finding set: %+v", report)
+	}
+}
