@@ -624,18 +624,25 @@ test('Setup: updateAll scopes instruction pointer updates to installed project s
 
 const claudeSettings = '.claude/settings.local.json'
 
+let activePreviewHome = null
+
 function inClaudeWorkspace(callback) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ase-hook-plan-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'ase-hook-home-'))
+  const previousHome = activePreviewHome
+  activePreviewHome = home
   try {
-    callback(dir)
+    callback(dir, home)
   } finally {
-    fs.rmSync(dir, {recursive: true, force: true})
+    activePreviewHome = previousHome
+    fs.rmSync(dir, { recursive: true, force: true })
+    fs.rmSync(home, { recursive: true, force: true })
   }
 }
 
-function runClaudePreview(dir, args) {
+function runClaudePreview(dir, args, home = activePreviewHome || dir) {
   return spawnSync(process.execPath, [installer, ...args], {
-    cwd: dir, encoding: 'utf8', env: {...process.env, HOME: dir, CI: 'true'},
+    cwd: dir, encoding: 'utf8', env: { ...process.env, HOME: home, CI: 'true' },
   })
 }
 
@@ -696,7 +703,7 @@ for (const [agent, settings, tool] of additionalHookPreviews) {
     inClaudeWorkspace((dir) => {
       const args = ['--agent=' + agent, '--skills=core', '--' + agent + '-hooks', '--json']
       const run = (...options) => spawnSync(process.execPath, [cli, 'setup', ...args, ...options], {
-        cwd: dir, encoding: 'utf8', env: { ...process.env, HOME: dir, CI: 'true' }, timeout: 12000,
+        cwd: dir, encoding: 'utf8', env: { ...process.env, HOME: activePreviewHome || dir, CI: 'true' }, timeout: 12000,
       })
       const preview = run('--dry-run')
       assert.equal(preview.status, 0, preview.stderr)
@@ -710,7 +717,7 @@ for (const [agent, settings, tool] of additionalHookPreviews) {
       assert.notEqual(run().status, 0)
       assert.notEqual(run('--dry-run', '--scope=global').status, 0)
       const otherAgent = spawnSync(process.execPath, [cli, 'setup', '--agent=cursor', '--' + agent + '-hooks', '--dry-run'], {
-        cwd: dir, encoding: 'utf8', env: { ...process.env, HOME: dir, CI: 'true' }, timeout: 12000,
+        cwd: dir, encoding: 'utf8', env: { ...process.env, HOME: activePreviewHome || dir, CI: 'true' }, timeout: 12000,
       })
       assert.notEqual(otherAgent.status, 0)
       assert.notEqual(run('--dry-run', '--claude-hooks').status, 0)
@@ -791,9 +798,9 @@ test('Removal keeps shared instructions for a different installed agent', () => 
   })
 })
 
-function runCodexPreview(dir, options) {
+function runCodexPreview(dir, options, home = activePreviewHome || dir) {
   return spawnSync(process.execPath, [cli, 'setup', '--agent=codex', '--skills=core', '--codex-hooks', '--dry-run', '--json', ...options], {
-    cwd: dir, encoding: 'utf8', env: { ...process.env, HOME: dir, CI: 'true' }, timeout: 12000,
+    cwd: dir, encoding: 'utf8', env: { ...process.env, HOME: home, CI: 'true' }, timeout: 12000,
   })
 }
 
@@ -875,7 +882,7 @@ test('Enforcement: previews preserve an existing user hooks configuration', { sk
 test('Enforcement: the flag is rejected without a preview, for other adapters, or with an unknown mode', { skip: process.platform === 'win32' }, () => {
   inClaudeWorkspace((dir) => {
     const run = (args) => spawnSync(process.execPath, [cli, 'setup', ...args], {
-      cwd: dir, encoding: 'utf8', env: { ...process.env, HOME: dir, CI: 'true' }, timeout: 12000,
+      cwd: dir, encoding: 'utf8', env: { ...process.env, HOME: activePreviewHome || dir, CI: 'true' }, timeout: 12000,
     })
     const noPreview = run(['--agent=codex', '--skills=core', '--enforcement=advisory', '--dry-run', '--json'])
     assert.notEqual(noPreview.status, 0)
