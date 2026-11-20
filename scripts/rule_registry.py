@@ -14,6 +14,7 @@ REGISTRY_VERSION = 1
 OUTCOMES = ("tp", "fp", "tn", "fn")
 SEVERITY_GUIDANCE = {
     "OPS-01": "Escalate when evidence shows the swallowed error hides a required operation or trust-boundary failure.",
+    "SEC-12": "Confirm the switch-off reaches a real TLS or auth path before requesting a fix. The token also matches inside warning strings and comments.",
     "SIM-17": "Keep comments that explain a constraint, failure mode, or rationale the code cannot express. Treat narration findings as review only.",
     "SRE-01": "Treat nesting as review evidence. Escalate only for a demonstrated impact beyond readability.",
     "SRE-05": "Confirm the branch is unreachable or the placeholder is speculative before requesting removal.",
@@ -63,6 +64,7 @@ RULES = (
     Rule("sre_guard", "SCALE_UNBOUNDED_CONCURRENCY", "SRE-09", SRE_SOURCE),
     Rule("sre_guard", "SCALE_MISLEADING_HEALTH_CHECK", "SRE-12", SRE_SOURCE),
     Rule("diff_guard", "SKIPPED_TEST", "TST-03", DIFF_SOURCE),
+    Rule("diff_guard", "SECURITY_BYPASS_CANDIDATE", "SEC-12", DIFF_SOURCE),
 )
 BY_CODE = {rule.engine_code: rule for rule in RULES}
 

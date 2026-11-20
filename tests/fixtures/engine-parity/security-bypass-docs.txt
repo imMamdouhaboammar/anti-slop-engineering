@@ -1,0 +1,3 @@
+# Client guide
+
+Never call the API with verify=False in production; install the corporate CA instead.

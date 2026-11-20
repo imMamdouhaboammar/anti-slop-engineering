@@ -1,0 +1,5 @@
+import subprocess
+
+
+def commit_all(message):
+    subprocess.run(["git", "commit", "--no-verify", "-m", message], check=True)

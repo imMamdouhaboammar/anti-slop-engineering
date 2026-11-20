@@ -1,0 +1,1 @@
+WARNING_TEXT = "never pass verify=False to the HTTP client"

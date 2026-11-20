@@ -1,0 +1,7 @@
+import requests
+
+
+def make_session():
+    session = requests.Session()
+    session.verify = False
+    return session
