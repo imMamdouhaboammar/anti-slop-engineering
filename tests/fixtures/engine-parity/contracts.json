@@ -145,6 +145,24 @@
           "fixture_key": "go_code"
         }
       ]
+    },
+    {
+      "rule_id": "unbounded_concurrency",
+      "fixture": "unbounded_concurrency",
+      "owner": {
+        "engine": "python-sre",
+        "id": "SCALE_UNBOUNDED_CONCURRENCY",
+        "severity": "review",
+        "fixture_key": "sre_guard_id"
+      },
+      "fallbacks": [
+        {
+          "engine": "python-diff",
+          "id": "SRE_SCALE_UNBOUNDED_CONCURRENCY",
+          "severity": "review",
+          "fixture_key": "diff_guard_id"
+        }
+      ]
     }
   ],
   "pairs": {
@@ -265,6 +283,17 @@
         "go_code": "SRE-KISS-NESTING",
         "go_code_exit": 1,
         "go_code_severity": "blocker"
+      }
+    },
+    "unbounded_concurrency": {
+      "diff": "unbounded_concurrency.diff",
+      "shared": {
+        "diff_guard_id": "SRE_SCALE_UNBOUNDED_CONCURRENCY",
+        "diff_guard_id_exit": 0,
+        "diff_guard_id_severity": "review",
+        "sre_guard_id": "SCALE_UNBOUNDED_CONCURRENCY",
+        "sre_guard_id_exit": 0,
+        "sre_guard_id_severity": "review"
       }
     }
   }

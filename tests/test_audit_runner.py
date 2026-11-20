@@ -723,6 +723,20 @@ class CatalogDuplicateSuppressionTests(unittest.TestCase):
         self.assertEqual(result[0]["rule"], "SCALE_UNBOUNDED_OR_FLAT_RETRY")
         self.assertEqual(len(result[0]["suppressed_duplicates"]), 1)
 
+    def test_unbounded_concurrency_pair_collapses_to_owner(self):
+        fallback = self._finding(
+            "diff_guard", "SRE_SCALE_UNBOUNDED_CONCURRENCY", "SRE-09", "HIGH")
+        owner = self._finding(
+            "sre_guard", "SCALE_UNBOUNDED_CONCURRENCY", "SRE-09", "HIGH")
+        result = audit_runner._suppress_catalog_duplicates([fallback, owner])
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["guard"], "sre_guard")
+        self.assertEqual(
+            result[0]["suppressed_duplicates"],
+            [{"guard": "diff_guard", "rule": "SRE_SCALE_UNBOUNDED_CONCURRENCY",
+              "severity": "HIGH"}],
+        )
+
     def test_blind_sleep_pair_collapses_to_owner(self):
         fallback = self._finding(
             "diff_guard", "SRE_SCALE_SLEEP_BAND_AID", "SRE-07", "HIGH", line=9)
@@ -865,3 +879,61 @@ class CatalogDuplicateSuppressionTests(unittest.TestCase):
         ]
         self.assertEqual(flagged, [])
         self.assertEqual(report["blockers_count"], 0)
+
+    def test_combined_audit_suppresses_unbounded_concurrency_duplicate(self):
+        base = "def helper(x):\n    return x\n"
+        fan_out = (
+            "import asyncio\n\n\n"
+            "async def fan_out(urls):\n"
+            "    return await asyncio.gather(*[fetch(u) for u in urls])\n"
+        )
+        exit_code, report = self._combined_audit(base, fan_out)
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(report["status"], "PASS")
+        fans = [f for f in report["findings"] if f.get("catalog_id") == "SRE-09"]
+        self.assertEqual(len(fans), 1)
+        self.assertEqual(fans[0]["guard"], "sre_guard")
+        self.assertEqual(fans[0]["line"], 5)
+        self.assertEqual(
+            fans[0]["suppressed_duplicates"],
+            [{"guard": "diff_guard", "rule": "SRE_SCALE_UNBOUNDED_CONCURRENCY",
+              "severity": "HIGH"}],
+        )
+
+    def test_combined_audit_keeps_owner_only_concurrency_under_references(self):
+        base = "def helper(x):\n    return x\n"
+        fan_out = (
+            "import asyncio\n\n\n"
+            "async def fan_out(urls):\n"
+            "    return await asyncio.gather(*[fetch(u) for u in urls])\n"
+        )
+        with tempfile.TemporaryDirectory() as root:
+            def git(*args):
+                subprocess.run(["git", *args], cwd=root, check=True, capture_output=True)
+
+            git("init", "-q")
+            git("config", "user.email", "fixture@example.test")
+            git("config", "user.name", "Fixture")
+            target = Path(root, "references", "fanout.py")
+            target.parent.mkdir(parents=True)
+            target.write_text(base, encoding="utf-8")
+            git("add", "-A")
+            git("commit", "-qm", "base")
+            target.write_text(fan_out, encoding="utf-8")
+            git("add", "-A")
+            env = {
+                key: value for key, value in os.environ.items()
+                if key not in ("TOIL_GUARD_BIN", "ANTI_SLOP_RUST_BIN")
+            }
+            proc = subprocess.run(
+                [sys.executable, str(SCRIPTS_DIR / "audit_runner.py"),
+                 "audit", "--base", "HEAD", "--json"],
+                cwd=root, capture_output=True, text=True, env=env, timeout=300,
+            )
+            report = json.loads(proc.stdout)
+        self.assertEqual(proc.returncode, 0)
+        fans = [f for f in report["findings"] if f.get("catalog_id") == "SRE-09"]
+        self.assertEqual(len(fans), 1)
+        self.assertEqual(fans[0]["guard"], "sre_guard")
+        self.assertEqual(fans[0]["file"], "references/fanout.py")
+        self.assertNotIn("suppressed_duplicates", fans[0])

@@ -1,0 +1,12 @@
+diff --git a/worker.py b/worker.py
+index 9aa19f0..3242776 100644
+--- a/worker.py
++++ b/worker.py
+@@ -1,2 +1,5 @@
+-def helper(x):
+-    return x
++import asyncio
++
++
++async def fan_out(urls):
++    return await asyncio.gather(*[fetch(u) for u in urls])

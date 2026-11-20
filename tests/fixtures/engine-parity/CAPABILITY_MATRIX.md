@@ -59,3 +59,11 @@ Canonical owner: python-sre (`SCALE_UNBOUNDED_OR_FLAT_RETRY`, blocker). Fallback
 - Go flags exponential backoff written without the words `backoff` or `jitter` (for example `time.sleep(2 ** attempt)`); the Python guards treat a non-literal sleep argument as backoff-shaped and stay silent.
 - The Python guards flag `while attempts <= N` counter loops with a fixed sleep; Go has no while-loop form and reports only the sleep itself (SRE-07).
 - The unified audit suppresses the fallback entry when both Python guards report SRE-08 at the same file and line: the owner's entry is kept with its blocker severity and the suppressed fallback is recorded on it (`suppressed_duplicates`). The same owner-aware suppression applies to the error-swallow (OPS-01) and blind-sleep (SRE-07) pairs; findings at distinct locations and unmapped findings are never merged.
+
+## Recorded SRE-09 differences
+
+Canonical owner: python-sre (`SCALE_UNBOUNDED_CONCURRENCY`, review). Fallback: python-diff (`SRE_SCALE_UNBOUNDED_CONCURRENCY`, review). Both report the canonical fixture (`unbounded_concurrency.diff`) at line 5. Preserved differences, measured on disposable fixtures for this migration:
+
+- No detection or severity divergence: both guards run the identical fan-out pattern (`Promise.all(... .map(...))`, `asyncio.gather(*...)`) and report review at the same line for Python and JavaScript fan-out. Ownership gives the combined audit one canonical entry per location; before this registration the combined audit emitted both entries at every shared location.
+- Scope: python-diff skips this rule under `references/` paths; python-sre reports fan-out there, and its entry stands alone in the combined audit with no suppressed duplicate. Both guards stay silent on the same fan-out in a test path and on bounded fan-out (fixed argument lists with no splat or map).
+- No Go or Rust producer is registered for SRE-09.
