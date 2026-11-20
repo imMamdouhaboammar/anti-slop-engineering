@@ -20,6 +20,16 @@ test("React 19 function component wrapper receives an advisory with migration ev
   assert.match(result.suggestion, /ref prop/);
 });
 
+test("forwardRef requires React identity when installed evidence is present", () => {
+  const receipt = (installed) => reviewForwardRef({ ...evidence, installed }, usage, compatibility);
+  for (const status of ["missing", "unreadable", "unsupported", "identity_mismatch"]) {
+    assert.equal(receipt({ status }).status, "inconclusive");
+  }
+  assert.equal(receipt({ status: "installed", name: "react-dom", version: "19.0.0" }).status, "inconclusive");
+  assert.equal(receipt({ status: "installed", name: "react", version: "18.3.1" }).status, "inconclusive");
+  assert.equal(receipt({ status: "installed", name: "react", version: "19.0.0" }).status, "advisory");
+});
+
 test("React 18, prereleases and unverified lock evidence do not trigger advice", () => {
   assert.equal(reviewForwardRef({ ...evidence, resolved: "18.3.1" }, usage, compatibility).status, "not_applicable");
   assert.equal(reviewForwardRef({ ...evidence, resolved: "19.0.0-rc.1", release: "prerelease" }, usage, compatibility).status, "inconclusive");

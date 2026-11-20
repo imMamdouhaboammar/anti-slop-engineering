@@ -15,6 +15,12 @@ export function reviewForwardRef(lock, usage, supportedVersions) {
   if (Bun.semver.order(lock.resolved, "19.0.0") < 0) {
     return { status: "not_applicable", version: lock.resolved };
   }
+  const installed = lock.installed;
+  if (installed !== undefined && (installed?.status !== "installed" || installed.name !== "react" ||
+      typeof installed.version !== "string" || !exactStableRelease.test(installed.version) ||
+      !Bun.semver.satisfies(installed.version, "^19.0.0"))) {
+    return { status: "inconclusive", reason: "Installed evidence must identify a stable React 19 release" };
+  }
   if (!Array.isArray(supportedVersions) || !supportedVersions.length ||
       !supportedVersions.every((release) => typeof release === "string" && exactStableRelease.test(release))) {
     return { status: "inconclusive", reason: "Supply the reviewed exact React releases in the compatibility matrix" };
