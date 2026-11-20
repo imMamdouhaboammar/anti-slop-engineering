@@ -322,6 +322,21 @@ class EngineParityContractTests(unittest.TestCase):
                     self.assertNotIn(identity, registered)
         self.assertEqual(declared, registered)
 
+    def test_registry_owner_matches_contracts_owner_for_shared_rules(self):
+        engine_names = {
+            "diff_guard": "python-diff",
+            "sre_guard": "python-sre",
+            "go": "go-audit",
+            "rust": "rust-triage",
+        }
+        for rule in self.contracts["shared_rules"]:
+            owner = rule["owner"]
+            registered = rule_registry.BY_CODE[owner["id"]]
+            catalog_owner = rule_registry.catalog_owner(registered.catalog_id)
+            self.assertIsNotNone(catalog_owner, rule["rule_id"])
+            self.assertEqual(catalog_owner.engine_code, owner["id"])
+            self.assertEqual(engine_names[catalog_owner.engine], owner["engine"])
+
     def test_clean_repo_shared_contract(self):
         expected = self.contracts["fixtures"]["clean"]["shared"]
         repo_dir, _ = self._create_repo()

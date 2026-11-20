@@ -25,9 +25,9 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 if __package__:
-    from .rule_registry import finding_metadata
+    from .rule_registry import catalog_owner, finding_metadata
 else:
-    from rule_registry import finding_metadata
+    from rule_registry import catalog_owner, finding_metadata
 
 GLOBAL_CONFIG_DIR = Path.home() / ".config" / "anti-slop-engineering"
 GLOBAL_SETTINGS_FILE = GLOBAL_CONFIG_DIR / "settings.json"
@@ -1206,6 +1206,69 @@ def read_installed_skills(manifest: Path) -> set[str]:
     return installed
 
 
+def _catalog_keeper(
+    findings: List[Dict[str, Any]], indexes: List[int], catalog_id: str,
+) -> Optional[int]:
+    """Return the registered owner’s index when it reported this location."""
+    owner = catalog_owner(catalog_id)
+    if owner is not None:
+        for index in indexes:
+            entry = findings[index]
+            if entry.get("guard") == owner.engine and entry.get("rule") == owner.engine_code:
+                return index
+    return None
+
+
+def _suppress_catalog_duplicates(
+    findings: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """Collapse cross-guard duplicates that share one catalog identity.
+
+    Two guards can report the same catalog rule at the same file and line
+    (a registered owner and one of its fallbacks). Keep the owner's entry,
+    with its severity, and record each suppressed entry on it. Preserve
+    fallback-only groups, same-guard findings, and distinct locations.
+    """
+    groups: Dict[Tuple[str, str, int], List[int]] = {}
+    for index, finding in enumerate(findings):
+        catalog_id = finding.get("catalog_id")
+        line = finding.get("line")
+        if not catalog_id or not finding.get("mapped") or not finding.get("file"):
+            continue
+        if not isinstance(line, int) or line < 1:
+            continue
+        key = (str(catalog_id), str(finding["file"]), line)
+        groups.setdefault(key, []).append(index)
+
+    dropped = set()
+    suppressed: Dict[int, List[Dict[str, Any]]] = {}
+    for (catalog_id, _file, _line), indexes in groups.items():
+        if len(indexes) < 2:
+            continue
+        keeper = _catalog_keeper(findings, indexes, catalog_id)
+        if keeper is None:
+            continue
+        for index in indexes:
+            if findings[index].get("guard") == findings[keeper].get("guard"):
+                continue
+            dropped.add(index)
+            entry = findings[index]
+            suppressed.setdefault(keeper, []).append({
+                "guard": entry.get("guard"),
+                "rule": entry.get("rule"),
+                "severity": entry.get("severity"),
+            })
+
+    result: List[Dict[str, Any]] = []
+    for index, finding in enumerate(findings):
+        if index in dropped:
+            continue
+        if index in suppressed:
+            finding["suppressed_duplicates"] = suppressed[index]
+        result.append(finding)
+    return result
+
+
 def collect_audit_findings(
     base: str = "HEAD", pr_title: str = "", pr_body_file: str = "",
     template_file: str = "", canary_token: str = "",
@@ -1262,6 +1325,7 @@ def collect_audit_findings(
         guards[name] = outcome
         findings.extend(child_findings)
 
+    findings = _suppress_catalog_duplicates(findings)
     for index, finding in enumerate(findings, start=1):
         finding["id"] = f"FINDING-{index:03d}"
     return findings, guards
