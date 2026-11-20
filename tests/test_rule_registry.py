@@ -109,7 +109,35 @@ class RuleRegistryTests(unittest.TestCase):
         report = rule_registry.build_coverage({})
         self.assertEqual(report["total_patterns"], 217)
         self.assertEqual(report["counts"]["automatic"], 0)
-        self.assertEqual(report["counts"]["manual-review"], 217)
+        self.assertEqual(report["counts"]["manual-review"], 0)
+        self.assertEqual(report["counts"]["unobserved"], 217)
+
+    def test_measured_failure_is_manual_review_not_unobserved(self):
+        fixture = {"diff_guard:ERROR_SWALLOW_CANDIDATE": {"tp": 0, "fp": 1, "tn": 1, "fn": 1}}
+        report = rule_registry.build_coverage(fixture)
+        self.assertEqual(report["patterns"]["OPS-01"]["status"], "manual-review")
+        self.assertEqual(report["patterns"]["OPS-01"]["fixtures"], fixture)
+        self.assertEqual(report["counts"]["automatic"], 0)
+        self.assertEqual(report["counts"]["manual-review"], 1)
+        self.assertEqual(report["counts"]["unobserved"], report["total_patterns"] - 1)
+        self.assertEqual(sum(report["counts"].values()), report["total_patterns"])
+
+    def test_categories_without_evidence_are_labelled_not_counted(self):
+        report = rule_registry.build_coverage({})
+        self.assertEqual(report["categories_without_evidence"], ["out-of-scope", "planned"])
+        self.assertNotIn("out-of-scope", report["counts"])
+        self.assertNotIn("planned", report["counts"])
+
+    def test_precision_denominator_is_reported_alongside_precision(self):
+        detector = "sre_guard:SCALE_MISLEADING_HEALTH_CHECK"
+        receipt = {detector: {"tp": 1, "fp": 1, "tn": 1, "fn": 0}}
+        report = rule_registry.build_coverage(receipt)
+        self.assertEqual(report["fixture_precision"][detector], 0.5)
+        self.assertEqual(report["fixture_denominators"][detector], 2)
+        positives_only = {"diff_guard:ERROR_SWALLOW_CANDIDATE": {"tp": 1, "fp": 0, "tn": 0, "fn": 0}}
+        report = rule_registry.build_coverage(positives_only)
+        self.assertIsNone(report["fixture_precision"]["diff_guard:ERROR_SWALLOW_CANDIDATE"])
+        self.assertEqual(report["fixture_denominators"]["diff_guard:ERROR_SWALLOW_CANDIDATE"], 1)
 
     def test_report_requires_positive_and_negative_evidence(self):
         fixture = {"diff_guard:ERROR_SWALLOW_CANDIDATE": {"tp": 1, "fp": 0, "tn": 1, "fn": 0}}
