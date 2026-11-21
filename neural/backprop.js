@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Mamdouh Aboammar <mamdouhfces1997@gmail.com> and contributors
 
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadNeuralGraph } from "./router.js";
@@ -33,12 +33,10 @@ export function backpropagateFinding(finding) {
   );
 
   let ledger = { invariants: [], invariants_count: 0, schema_version: "1.0.0" };
-  if (existsSync(ledgerPath)) {
-    try {
-      ledger = JSON.parse(readFileSync(ledgerPath, "utf8"));
-    } catch (readErr) {
-      ledger = { invariants: [], invariants_count: 0, schema_version: "1.0.0" };
-    }
+  try {
+    ledger = JSON.parse(readFileSync(ledgerPath, "utf8"));
+  } catch (readErr) {
+    ledger = { invariants: [], invariants_count: 0, schema_version: "1.0.0" };
   }
 
   const invariantId = matchedInvariant ? matchedInvariant.id : `INV-BACKPROP-${finding.type.toUpperCase()}`;
