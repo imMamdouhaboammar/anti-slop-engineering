@@ -35,7 +35,7 @@ export function backpropagateFinding(finding) {
   let ledger = { invariants: [], invariants_count: 0, schema_version: "1.0.0" };
   try {
     ledger = JSON.parse(readFileSync(ledgerPath, "utf8"));
-  } catch (readErr) {
+  } catch {
     ledger = { invariants: [], invariants_count: 0, schema_version: "1.0.0" };
   }
 

@@ -50,7 +50,7 @@ export async function pingLocalDaemon(port, path = "/healthz") {
       signal: AbortSignal.timeout(500),
     });
     isAlive = Boolean(res.ok);
-  } catch (err) {
+  } catch {
     isAlive = false;
   }
   return isAlive;

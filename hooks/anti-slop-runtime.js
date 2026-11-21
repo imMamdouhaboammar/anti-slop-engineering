@@ -5,9 +5,10 @@
 import process from 'node:process';
 
 function isVsCodeCopilotRoot(pluginRoot, depth = 0) {
-  if (depth > 5 || typeof pluginRoot !== 'string' || pluginRoot.length === 0 || pluginRoot.length > 1024) return false;
-  return pluginRoot.includes('agent-plugins') &&
-    pluginRoot.toLowerCase().includes('.vscode');
+  if (depth > 5) return false;
+  const root = String(pluginRoot || '');
+  if (root.length === 0 || root.length > 1024) return false;
+  return root.includes('agent-plugins') && root.toLowerCase().includes('.vscode');
 }
 
 export const isCopilot = Boolean(process.env.COPILOT_PLUGIN_DATA) ||
@@ -23,10 +24,12 @@ function writeOut(str) {
 }
 
 export function logHookBanner(message, depth = 0) {
-  if (depth > 5 || typeof message !== 'string' || message.length > 2048) return;
+  if (depth > 5) return;
+  const text = String(message || '');
+  if (text.length === 0 || text.length > 2048) return;
   try {
-    process.stderr.write(message.endsWith('\n') ? message : message + '\n');
-  } catch (_e) {
+    process.stderr.write(text.endsWith('\n') ? text : text + '\n');
+  } catch {
     // Ignore stderr closed errors
   }
 }
