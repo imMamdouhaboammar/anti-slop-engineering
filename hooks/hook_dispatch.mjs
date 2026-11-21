@@ -26,8 +26,8 @@ process.stdin.on("end", () => {
   if (input.trim()) {
     try {
       payload = JSON.parse(input.trim());
-    } catch {
-      // payload not JSON
+    } catch (parseErr) {
+      payload = { raw: input.trim() };
     }
   }
 

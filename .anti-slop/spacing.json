@@ -1,0 +1,10 @@
+{
+  "roles": {
+    "pageInset": 24,
+    "sectionGap": 32,
+    "groupGap": 16,
+    "stackGap": 12,
+    "inlineGap": 8,
+    "componentInset": 8
+  }
+}

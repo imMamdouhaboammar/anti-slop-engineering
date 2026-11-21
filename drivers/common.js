@@ -44,14 +44,16 @@ export function spawnNativeBinary(binPath, args = [], options = {}) {
  * Pings an HTTP daemon on local port.
  */
 export async function pingLocalDaemon(port, path = "/healthz") {
+  let isAlive = false;
   try {
     const res = await fetch(`http://127.0.0.1:${port}${path}`, {
       signal: AbortSignal.timeout(500),
     });
-    return res.ok;
-  } catch {
-    return false;
+    isAlive = Boolean(res.ok);
+  } catch (err) {
+    isAlive = false;
   }
+  return isAlive;
 }
 
 /**

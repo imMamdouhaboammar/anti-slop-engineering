@@ -505,6 +505,9 @@ CLI_COMMAND_TO_GUARD_MAP: Dict[str, str] = {
 EXCLUDED_CLI_COMMANDS: Dict[str, str] = {
     "serve-rust": "Daemon lifecycle command for background Rust HTTP microservice (:9091)",
     "serve-go": "Daemon lifecycle command for background Go HTTP microservice (:9092)",
+    "mcp-server": "MCP stdio server exposing anti-slop tools to agentic IDEs and Antigravity",
+    "mcp": "Alias for mcp-server subcommand",
+    "neural": "Neural invariant network query router and graph inspector",
     "explain": "Catalog entry and remediation lookup",
     "build": "Build orchestration compiling native Rust and Go microservice binaries",
     "audit": "Unified multi-guard orchestrator entrypoint (invokes canonical registry)",
@@ -873,6 +876,9 @@ def build_guard_command(
         if name == "styleseed_guard":
             tokens = Path.cwd() / ".anti-slop" / "tokens.json"
             extra = ["--tokens", str(tokens)] if tokens.exists() else []
+            spacing = Path.cwd() / ".anti-slop" / "spacing.json"
+            if spacing.exists():
+                extra.extend(["--spacing", str(spacing)])
             return [sys.executable, str(script_path), "--scan", ".", *extra, "--json"]
         return [sys.executable, str(script_path), "--scan", ".", "--json"]
 

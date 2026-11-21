@@ -36,8 +36,8 @@ export function backpropagateFinding(finding) {
   if (existsSync(ledgerPath)) {
     try {
       ledger = JSON.parse(readFileSync(ledgerPath, "utf8"));
-    } catch {
-      // ignore
+    } catch (readErr) {
+      ledger = { invariants: [], invariants_count: 0, schema_version: "1.0.0" };
     }
   }
 

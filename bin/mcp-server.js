@@ -161,7 +161,7 @@ const TOOLS = [
 
 async function handleAuditCalls(name, args) {
   if (name === "anti_slop_audit") {
-    const cliArgs = ["--json"];
+    const cliArgs = ["audit", "--json"];
     if (args.base) cliArgs.push("--base", args.base);
     if (args.strict) cliArgs.push("--strict");
     if (args.guards) {
@@ -223,22 +223,26 @@ async function handleGovernanceGuards(name, args) {
     return res.stdout || res.stderr;
   }
   if (name === "anti_slop_reduction_guard") {
-    const cliArgs = ["--json"];
-    if (args.action) cliArgs.push(args.action);
+    const action = args.action || "status";
+    const cliArgs = [action, "--json"];
     const res = await executeGuard("reduction", cliArgs);
     return res.stdout || res.stderr;
   }
   if (name === "anti_slop_re0_handoff") {
-    const cliArgs = ["--json"];
-    if (args.action) cliArgs.push(args.action);
-    if (args.file) cliArgs.push(args.file);
+    const action = args.action || "verify";
+    const cliArgs = [action, "--json"];
+    if (args.file) cliArgs.push("--file", args.file);
     const res = await executeGuard("re0", cliArgs);
     return res.stdout || res.stderr;
   }
   if (name === "anti_slop_invariant_steward") {
-    const cliArgs = ["--json"];
-    if (args.action) cliArgs.push(args.action);
-    if (args.base) cliArgs.push("--base", args.base);
+    const action = args.action || "audit";
+    const cliArgs = [action, "--json"];
+    if (action === "drift" && args.base) {
+      cliArgs.push("--base", args.base);
+    } else if (action === "audit") {
+      cliArgs.push(".anti-slop/invariant-ledger.json");
+    }
     const res = await executeGuard("steward", cliArgs);
     return res.stdout || res.stderr;
   }
@@ -285,6 +289,11 @@ function sendResponse(id, result, error = null) {
     resp.result = result;
   }
   process.stdout.write(JSON.stringify(resp) + "\n");
+}
+
+function serializeOutput(output) {
+  if (String(output) === output) return output;
+  return JSON.stringify(output, null, 2);
 }
 
 export function startMcpServer() {
@@ -338,7 +347,7 @@ export function startMcpServer() {
           content: [
             {
               type: "text",
-              text: typeof output === "string" ? output : JSON.stringify(output, null, 2),
+              text: serializeOutput(output),
             },
           ],
           isError: false,

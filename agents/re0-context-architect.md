@@ -37,9 +37,9 @@ Exactly ONE atomic, executable command or file edit. Zero option bags, zero "you
 ## The Cold-Read Shower Test
 
 Before completing any handoff, evaluate the note against the Shower Test:
-- Can an engineer or subagent who just stepped out of the shower—with zero prior conversational context—read this state note in 60 seconds and immediately execute the `NEXT_SINGLE_ACTION` without asking clarifying questions or guessing ungrounded references?
-- If NO: Reject the state note and compress/disambiguate.
-- If YES: State note is certified ready for context reset.
+- An engineer or subagent who just stepped out of the shower (with zero prior conversational context) must be able to read this state note in 60 seconds and immediately execute the `NEXT_SINGLE_ACTION` without asking clarifying questions or guessing ungrounded references.
+- When ambiguous: Reject the state note and compress or disambiguate.
+- When clear: State note is certified ready for context reset.
 
 ---
 
