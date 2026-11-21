@@ -1,0 +1,53 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"require(require('path').join(process.env.CLAUDE_PLUGIN_ROOT || process.env.CODEX_PLUGIN_ROOT || '.', 'hooks/anti-slop-activate.cjs'))\"",
+            "timeout": 15,
+            "statusMessage": "Activating anti-slop engineering gates..."
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"require(require('path').join(process.env.CLAUDE_PLUGIN_ROOT || process.env.CODEX_PLUGIN_ROOT || '.', 'hooks/anti-slop-subagent.cjs'))\"",
+            "timeout": 15,
+            "statusMessage": "Arming subagent with anti-slop invariants..."
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "write_file|edit_file|Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"hooks/hook_dispatch.mjs\" PreToolUse write",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "write_file|edit_file|Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"hooks/hook_dispatch.mjs\" PostToolUse write",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
