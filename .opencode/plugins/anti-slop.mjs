@@ -116,7 +116,9 @@ export default {
         if (client && client.app && typeof client.app.log === 'function') {
           client.app.log({ body: { service: 'anti-slop-engineering', level, message } });
         }
-      } catch (_e) {}
+      } catch (_e) {
+        // Logging failure in detached server context is non-fatal
+      }
     };
 
     return {

@@ -2,19 +2,15 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Mamdouh Aboammar <mamdouhfces1997@gmail.com> and contributors
 
-import process from 'node:process';
 import { getAntiSlopInstructions } from './anti-slop-instructions.js';
-import { writeHookOutput } from './anti-slop-runtime.js';
+import { logHookBanner, writeHookOutput } from './anti-slop-runtime.js';
 
-export function activateSubagent() {
+export function activateSubagent(depth = 0) {
+  if (depth > 5) return;
   const instructions = getAntiSlopInstructions();
-  try {
-    process.stderr.write(
-      '🛡️  [Anti-Slop Engineering] Arming subagent with anti-slop invariants.\n'
-    );
-  } catch (_e) {
-    // Ignore stderr closed errors
-  }
+  logHookBanner(
+    '🛡️  [Anti-Slop Engineering] Arming subagent with anti-slop invariants.'
+  );
 
   writeHookOutput('SubagentStart', instructions);
 }

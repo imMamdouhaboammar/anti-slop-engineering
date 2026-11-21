@@ -22,6 +22,15 @@ function writeOut(str) {
   process.stdout.write(str.endsWith('\n') ? str : str + '\n');
 }
 
+export function logHookBanner(message, depth = 0) {
+  if (depth > 5 || typeof message !== 'string' || message.length > 2048) return;
+  try {
+    process.stderr.write(message.endsWith('\n') ? message : message + '\n');
+  } catch (_e) {
+    // Ignore stderr closed errors
+  }
+}
+
 export function writeHookOutput(event, context, extra = {}) {
   if (isCodex || isQoder || isCodeBuddy || isCopilot) {
     const output = {};
