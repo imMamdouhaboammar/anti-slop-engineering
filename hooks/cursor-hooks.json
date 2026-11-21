@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "command": "node \"ANTI_SLOP_DIR/hooks/anti-slop-activate.js\"",
+        "timeout": 15
+      }
+    ],
+    "beforeSubmitPrompt": [
+      {
+        "command": "node \"ANTI_SLOP_DIR/hooks/anti-slop-activate.js\"",
+        "timeout": 15
+      }
+    ]
+  }
+}
