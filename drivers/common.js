@@ -2,7 +2,30 @@
 // Copyright (c) 2026 Mamdouh Aboammar <mamdouhfces1997@gmail.com> and contributors
 
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 import process from "node:process";
+import { fileURLToPath } from "node:url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+export const rootDir = resolve(__dirname, "..");
+
+/**
+ * Resolves canonical native binary location with platform suffix support.
+ * @param {string} binaryBaseName - Base binary name without extension
+ * @param {...string} serviceSubpath - Relative segments to service build directory
+ * @returns {string|null} Resolved executable path or null if not found
+ */
+export function resolveNativeBinaryPath(binaryBaseName, ...serviceSubpath) {
+  const nativeSuffix = process.platform === "win32" ? ".exe" : "";
+  const executable = binaryBaseName + nativeSuffix;
+  const candidates = [
+    resolve(rootDir, "dist", "bin", executable),
+    resolve(rootDir, ...serviceSubpath, executable),
+  ];
+  return candidates.find(existsSync) || null;
+}
 
 /**
  * Spawns a native binary and collects output.
