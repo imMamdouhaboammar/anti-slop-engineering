@@ -24,8 +24,10 @@
   - **H**ypothetical hardening: Do not add defense against scenarios that cannot occur in the current architecture.
   - **I**ntent violation: Solve the underlying user problem, not just the literal symptom.
   - **T**ask thrashing: Maintain focus on the discrete next action; avoid hopping between unrelated files.
-- Climb the Senior Dev Ladder: Verify necessity -> Reuse codebase helpers -> Prioritize standard library built-ins -> Prefer native platform features -> Use existing dependencies -> Emit minimal sufficient code.
-- **Name the Built-in**: Never hand-roll primitives provided by runtime/platform (`crypto.randomUUID()`, `URLSearchParams`, `structuredClone()`, etc.).
+
+- Climb the Senior Dev Ladder:
+  - Verify necessity -> Reuse codebase helpers -> Prioritize standard library built-ins -> Prefer native platform features -> Use existing dependencies -> Emit minimal sufficient code.
+  - **Name the Built-in**: Never hand-roll primitives provided by runtime/platform (`crypto.randomUUID()`, `URLSearchParams`, `structuredClone()`, etc.).
 
 ## 5. Type-Level & AST Slop Gate
 - Eliminate chained type assertions (`as unknown as T`).
@@ -52,22 +54,26 @@
 - RFC 9457 Problem Details: All error payloads must return machine-readable problem details (`type`, `title`, `status`, `detail`, `instance`).
 
 ## 9. Mandela Test-Oracle Elimination
-- Hunt down the 8 Mandela Leakage Patterns:
+- Core leakage patterns (1 to 4):
   1. Tautological assertions (`expect(true).toBe(true)`).
   2. Swallowed assertion errors (`try { expect(...) } catch {}`).
   3. Circular mock confirmation (mocks verifying mocks).
   4. Benchmark leakage in training/eval sets.
+
+- Secondary leakage patterns (5 to 8):
   5. Frame-injected evals.
   6. Empty assertions.
   7. Unasserted side effects.
   8. Self-grading verification loops.
 
 ## 10. Musk 5-Step Reduction & Add-Back Ledger
-- Question every requirement (who said it, why is it needed).
-- Delete unnecessary code, dependencies, and steps before attempting to optimize.
-- Simplify and optimize only what remains.
-- Accelerate cycle times.
-- Automate repetitive toil.
+Five reduction steps:
+1. Question every requirement (who said it, why is it needed).
+2. Delete unnecessary code, dependencies, and steps before attempting to optimize.
+3. Simplify and optimize only what remains.
+4. Accelerate cycle times.
+5. Automate repetitive toil.
+
 - Maintain Add-Back rate target between 10% and 25% in `.anti-slop/add-back-ledger.jsonl`.
 
 ## 11. NVIDIA Re0 Context Reset & Cold-Read Shower Test

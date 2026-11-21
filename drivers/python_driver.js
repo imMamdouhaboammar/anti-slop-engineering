@@ -48,7 +48,11 @@ export function runPythonGuard(scriptName, args = [], options = {}) {
     proc.on("close", (code) => {
       clearTimeout(timer);
       let parsed = null;
-      try { parsed = JSON.parse(bufOut.trim()); } catch {}
+      try {
+        parsed = JSON.parse(bufOut.trim());
+      } catch (parseErr) {
+        parsed = null;
+      }
       resolvePromise({ exitCode: code ?? 1, stdout: bufOut, stderr: bufErr, json: parsed });
     });
 

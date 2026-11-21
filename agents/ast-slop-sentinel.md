@@ -30,10 +30,12 @@ Pattern Check
 
 1. **Locate & Pinpoint**:
    - Trace AST node to exact file, line number, and column.
+
 2. **Remediate Idiomatically**:
    - Replace chained casts with type guards or branded type constructors.
    - Replace empty conditional spreads with clean object assembly.
    - Replace module mocks with direct interface implementations or constructor injection.
+
 3. **Verify**:
    - Run `bunx anti-slop-engineering ast --base HEAD`.
    - Run `bun run lint:oxlint`.

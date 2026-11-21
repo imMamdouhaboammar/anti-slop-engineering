@@ -107,20 +107,31 @@ def has_anchor(paragraph: str) -> bool:
     return False
 
 
+def strip_frontmatter(text: str) -> str:
+    """Strip YAML frontmatter if present at the start of markdown text."""
+    s = text.strip()
+    if s.startswith("---"):
+        parts = s.split("---", 2)
+        if len(parts) >= 3:
+            return parts[2].strip()
+    return s
+
+
 def calculate_scannability_metrics(text: str) -> Dict[str, Any]:
     """Compute mathematical scannability metrics (text shape vs raw vocabulary)."""
-    words = count_words(text)
-    paras = split_paragraphs(text)
+    content = strip_frontmatter(text)
+    words = count_words(content)
+    paras = split_paragraphs(content)
     
     # Words to first bold anchor (headline: time-to-point)
-    bold_match = _BOLD.search(text)
+    bold_match = _BOLD.search(content)
     if bold_match:
-        ttp = count_words(text[: bold_match.start()])
+        ttp = count_words(content[: bold_match.start()])
     else:
         ttp = words
 
     # Answer first: line 1 starts with bold statement or heading
-    lines = [ln.strip() for ln in text.strip().splitlines() if ln.strip()]
+    lines = [ln.strip() for ln in content.strip().splitlines() if ln.strip()]
     first_line = lines[0] if lines else ""
     answer_first = bool(first_line.startswith("**") or first_line.startswith("#") or _VERDICT_OPENER.match(first_line))
 
@@ -259,52 +270,93 @@ def check_working_memory_bounds(text: str) -> Tuple[int, List[Dict[str, Any]]]:
     current_list_start = -1
     current_items: List[int] = []
 
+    def flush_list(start: int, items: List[int]) -> int:
+        length = len(items)
+        if length > 5:
+            violations.append({"start_line": start, "count": length})
+        return length
+
     for line_idx, line in enumerate(lines, start=1):
-        m = _LIST_ITEM_LINE.match(line)
-        if m:
+        if _LIST_ITEM_LINE.match(line):
             if current_list_start == -1:
                 current_list_start = line_idx
             current_items.append(line_idx)
-        else:
-            if current_items:
-                length = len(current_items)
-                if length > max_list_len:
-                    max_list_len = length
-                if length > 5:
-                    violations.append({
-                        "start_line": current_list_start,
-                        "count": length,
-                    })
-                current_list_start = -1
-                current_items = []
+            continue
+
+        if current_items:
+            max_list_len = max(max_list_len, flush_list(current_list_start, current_items))
+            current_list_start = -1
+            current_items = []
 
     if current_items:
-        length = len(current_items)
-        if length > max_list_len:
-            max_list_len = length
-        if length > 5:
-            violations.append({
-                "start_line": current_list_start,
-                "count": length,
-            })
+        max_list_len = max(max_list_len, flush_list(current_list_start, current_items))
 
     return max_list_len, violations
 
 
-def audit_text(
-    text: str,
-    target_name: str = "input",
-    check_deliverable: bool = False,
-    check_blocking: bool = True,
-    max_wall_words: int = 60,
-    max_ttp: int = 25,
-) -> Dict[str, Any]:
-    """Run full cognitive bandwidth audit on text and produce an RFC 9457 record."""
-    scannability = calculate_scannability_metrics(text)
-    pure, purity_reasons = check_deliverable_purity(text)
-    blocking_ok, blocking_meta = check_blocking_placement(text)
-    max_list_items, list_violations = check_working_memory_bounds(text)
+def _determine_audit_outcome(findings: List[Dict[str, Any]]) -> Tuple[int, str, str, str, str]:
+    """Map cognitive findings to status code, problem type, and remediation action."""
+    if any(f["category"] == "COGNITIVE-BURIED-ASK" for f in findings):
+        return (
+            422,
+            "ERR_BURIED_BLOCKING_QUESTION",
+            "Blocking questions must sit in the terminal block with line 1 flagged.",
+            "MOVE_BLOCKING_ASK_TO_TERMINUS",
+            "Move the decision question to the very last block; flag 'Confirm before I proceed' on line 1.",
+        )
+    if any(f["category"] == "COGNITIVE-DELIVERABLE-IMPURITY" for f in findings):
+        return (
+            422,
+            "ERR_DELIVERABLE_IMPURITY",
+            "Deliverable contains conversational wrapper fluff or closer offers.",
+            "STRIP_WRAPPER_FRAMING",
+            "Remove 'Here is...', 'Hope this helps!', and transitional lead-ins. Deliver raw artifact only.",
+        )
+    if any(f["category"] == "COGNITIVE-SCANNABILITY" for f in findings):
+        return (
+            422,
+            "ERR_EXCESSIVE_WALL_OF_TEXT",
+            "Text contains unbroken prose walls that exceed human cognitive scanning thresholds.",
+            "BREAK_WALL_WITH_ANCHORS",
+            "Break long paragraphs into blank-line-separated points with bold anchors or '→' bullet markers.",
+        )
+    if any(f["category"] == "COGNITIVE-WORKING-MEMORY" for f in findings):
+        return (
+            422,
+            "ERR_WORKING_MEMORY_OVERFLOW",
+            "Flat lists exceed Miller's Law working memory capacity.",
+            "CHUNK_UNBOUNDED_LISTS",
+            "Group lists into <= 5 items per section, or provide top 3 with progressive disclosure.",
+        )
+    if findings:
+        return (
+            422,
+            "ERR_ATTENTION_BUDGET_EXCEEDED",
+            "Review cognitive findings before proceeding.",
+            "FRONT_LOAD_ANSWER",
+            "Put bottom-line on line 1 and prune tangential narrative.",
+        )
+    return (
+        200,
+        "NO_ATTENTION_FINDINGS",
+        "All cognitive bandwidth, scannability, deliverable purity, and blocking placement gates passed clean.",
+        "NO_ACTION_REQUIRED",
+        "Maintain direct payloads, scannable anchors, and terminal blocking placement.",
+    )
 
+
+def _collect_attention_findings(
+    scannability: Dict[str, Any],
+    pure: bool,
+    purity_reasons: List[str],
+    blocking_meta: Dict[str, Any],
+    list_violations: List[Dict[str, Any]],
+    check_deliverable: bool,
+    check_blocking: bool,
+    max_wall_words: int,
+    max_ttp: int,
+) -> List[Dict[str, Any]]:
+    """Assemble all cognitive, scannability, purity, and working-memory findings."""
     findings: List[Dict[str, Any]] = []
 
     # 1. Check Scannability: Long unbroken walls of text
@@ -366,43 +418,36 @@ def audit_text(
             "evidence": f"List at line {v['start_line']} with {v['count']} items.",
         })
 
-    # Determine status & code
-    status = 200
-    code = "NO_ATTENTION_FINDINGS"
-    detail = "All cognitive bandwidth, scannability, deliverable purity, and blocking placement gates passed clean."
-    action = "NO_ACTION_REQUIRED"
-    guidance = "Maintain direct payloads, scannable anchors, and terminal blocking placement."
+    return findings
 
-    if any(f["category"] == "COGNITIVE-BURIED-ASK" for f in findings):
-        status = 422
-        code = "ERR_BURIED_BLOCKING_QUESTION"
-        detail = "Blocking questions must sit in the terminal block with line 1 flagged."
-        action = "MOVE_BLOCKING_ASK_TO_TERMINUS"
-        guidance = "Move the decision question to the very last block; flag 'Confirm before I proceed' on line 1."
-    elif any(f["category"] == "COGNITIVE-DELIVERABLE-IMPURITY" for f in findings):
-        status = 422
-        code = "ERR_DELIVERABLE_IMPURITY"
-        detail = "Deliverable contains conversational wrapper fluff or closer offers."
-        action = "STRIP_WRAPPER_FRAMING"
-        guidance = "Remove 'Here is...', 'Hope this helps!', and transitional lead-ins. Deliver raw artifact only."
-    elif any(f["category"] == "COGNITIVE-SCANNABILITY" for f in findings):
-        status = 422
-        code = "ERR_EXCESSIVE_WALL_OF_TEXT"
-        detail = "Text contains unbroken prose walls that exceed human cognitive scanning thresholds."
-        action = "BREAK_WALL_WITH_ANCHORS"
-        guidance = "Break long paragraphs into blank-line-separated points with bold anchors or '→' bullet markers."
-    elif any(f["category"] == "COGNITIVE-WORKING-MEMORY" for f in findings):
-        status = 422
-        code = "ERR_WORKING_MEMORY_OVERFLOW"
-        detail = "Flat lists exceed Miller's Law working memory capacity."
-        action = "CHUNK_UNBOUNDED_LISTS"
-        guidance = "Group lists into <= 5 items per section, or provide top 3 with progressive disclosure."
-    elif findings:
-        status = 422
-        code = "ERR_ATTENTION_BUDGET_EXCEEDED"
-        detail = "Review cognitive findings before proceeding."
-        action = "FRONT_LOAD_ANSWER"
-        guidance = "Put bottom-line on line 1 and prune tangential narrative."
+
+def audit_text(
+    text: str,
+    target_name: str = "input",
+    check_deliverable: bool = False,
+    check_blocking: bool = True,
+    max_wall_words: int = 60,
+    max_ttp: int = 25,
+) -> Dict[str, Any]:
+    """Run full cognitive bandwidth audit on text and produce an RFC 9457 record."""
+    scannability = calculate_scannability_metrics(text)
+    pure, purity_reasons = check_deliverable_purity(text)
+    blocking_ok, blocking_meta = check_blocking_placement(text)
+    max_list_items, list_violations = check_working_memory_bounds(text)
+
+    findings = _collect_attention_findings(
+        scannability,
+        pure,
+        purity_reasons,
+        blocking_meta,
+        list_violations,
+        check_deliverable,
+        check_blocking,
+        max_wall_words,
+        max_ttp,
+    )
+
+    status, code, detail, action, guidance = _determine_audit_outcome(findings)
 
     return {
         "type": "https://anti-slop-engineering.org/errors/attention-budget",
