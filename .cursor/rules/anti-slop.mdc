@@ -1,0 +1,47 @@
+---
+description: Anti-Slop Engineering discipline, SRE invariants, and AST guards.
+globs:
+alwaysApply: true
+---
+
+# Anti-Slop Engineering Rules
+
+> Operating rules and architectural invariants enforced by Anti-Slop Engineering.
+
+## 1. Gate 0 Preflight & Autonomous Tool Routing
+- Infer domain intent autonomously; name tools briefly on Gate 0; never edit blindly without verifying remote git sync.
+
+## 2. Google Site Reliability Engineering (SRE) Mandate
+- **KISS**: Maintain control flow nesting depth <= 4 levels. Decompose functions > 80 lines into single-responsibility units.
+- **DRY**: Single source of truth. Deduplicate repeated logic (>= 4 lines) into canonical modules.
+- **YAGNI**: Ban speculative arguments, dead code branches, and empty placeholder comments.
+- **Toil Elimination**: Exponential backoff with full jitter on retries; bound concurrency; never swallow exceptions silently.
+
+## 3. Clean-Room Dev Ladder & SHIT Interceptors
+- Intercept Scope creep, Hypothetical hardening, Intent violation, Task thrashing.
+- Prioritize platform and standard library built-ins (`crypto.randomUUID()`, `structuredClone()`, `URLSearchParams`).
+
+## 4. Type-Level & AST Slop Gate
+- Eliminate chained type assertions (`as unknown as T` / `as any as T`).
+- Eliminate ungrounded assertions (`as T` without nearby `// SAFETY:` justification).
+- Eliminate quadratic reducer copies (`acc = { ...acc, [k]: v }` inside `.reduce()`).
+- Eliminate conditional empty spreads (`...(c ? { x } : {})`).
+- Eliminate test-oracle erosion via module-level mocking (`vi.mock()`).
+
+## 5. Comment Budget & Zero-Obviousness Mandate
+- Enforce Comment-to-Code Ratio ($\text{CCR} \le 0.35$).
+- Ban syntax play-by-play narration comments (`// increment i`, `// return result`).
+
+## 6. Apple Craft & WCAG 2.2 Contrast
+- Exhaustive UI state matrices (`loading_skeleton`, `empty`, `partial_error`, `offline`, `optimistic_rollback`).
+- Zero Cumulative Layout Shift ($CLS = 0.000$) with pre-reserved geometry.
+- Text contrast must meet $\ge 4.5:1$ (normal text) and $\ge 3:1$ (large text).
+
+## 7. Zero-Trust & 10M Concurrent Scale
+- Boundary schema parsing; distributed idempotency; constant-time crypto (`crypto.timingSafeEqual()`); RFC 9457 problem details.
+
+## 8. Mandela Test-Oracle Elimination
+- Ban tautological assertions (`expect(true).toBe(true)`), swallowed errors, and circular mock verifications.
+
+## 9. NVIDIA Re0 Context Reset & Cold-Read Shower Test
+- Keep state notes bounded ($\le 1,500$ tokens) with `OBJECTIVE`, `PROVEN_INVARIANTS`, `NEGATIVE_CORPUS`, and `NEXT_SINGLE_ACTION`.

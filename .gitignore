@@ -65,7 +65,10 @@ ehthumbs.db
 Thumbs.db
 .idea/
 .vscode/
-.cursor/
+.cursor/*
+!.cursor/rules/
+.cursor/rules/*
+!.cursor/rules/anti-slop.mdc
 *.swp
 *.swo
 *~
@@ -75,11 +78,9 @@ Thumbs.db
 .claude/
 .gemini/
 /.codex/
-/.opencode/
 /.cline/
 /.hermes/
 /.pi/
-/.windsurf/
 .agent-kernel/
 .superpowers/
 .xerj/

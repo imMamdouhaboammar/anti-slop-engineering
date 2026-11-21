@@ -1,0 +1,17 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "anti-slop-engineering",
+  "description": "Enterprise-grade agentic guard suite, SRE/AST verification engines, and neural invariant governance for AI coding agents.",
+  "owner": {
+    "name": "Mamdouh Aboammar",
+    "url": "https://github.com/imMamdouhaboammar"
+  },
+  "plugins": [
+    {
+      "name": "anti-slop-engineering",
+      "description": "Enforces 7 gates, AST slop elimination, Google SRE KISS/DRY/YAGNI, and test oracle integrity.",
+      "source": "./",
+      "category": "developer-tools"
+    }
+  ]
+}
