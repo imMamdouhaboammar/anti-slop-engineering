@@ -1,0 +1,2 @@
+description = "Run anti-slop preflight triage and verify 7 gates"
+prompt = "Analyze this task and workspace through the Anti-Slop Engineering framework. Verify Gate 0 Preflight, Google SRE KISS/DRY/YAGNI mandates, eliminate AST-level slop, and enforce zero-obviousness comment budget. Do not add unrequested code or speculative abstractions."

@@ -1,0 +1,2 @@
+description = "Verify Google SRE principles (KISS, DRY, YAGNI, toil elimination)"
+prompt = "Audit this codebase or diff strictly against Google SRE principles: (1) KISS: control-flow nesting depth <= 4, functions > 80 lines decomposed; (2) DRY: single source of truth, deduplicate >= 4 lines; (3) YAGNI: prune speculative params, dead branches, and empty placeholder comments; (4) Toil Elimination: exponential backoff with full jitter, bounded concurrency, no silent exception swallowing."

@@ -1,0 +1,2 @@
+description = "Comprehensive anti-slop audit across codebase files and diffs"
+prompt = "Execute a comprehensive anti-slop audit across the codebase or diff. Check: (1) diff bloat and unverified edits, (2) Google SRE KISS/DRY/YAGNI violations, (3) AST slop and chained assertions, (4) comment-to-code ratio > 0.35, (5) WCAG 2.2 contrast compliance, (6) Mandela test oracle leakage. Group findings by Must fix / Should fix / Optimization."

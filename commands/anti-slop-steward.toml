@@ -1,0 +1,2 @@
+description = "Invariant steward audit against architectural memory and drift"
+prompt = "Audit this codebase or pull request diff against the Invariant Ledger in .anti-slop/invariant-ledger.json to detect architectural drift and ensure formal reassessment triggers are respected."

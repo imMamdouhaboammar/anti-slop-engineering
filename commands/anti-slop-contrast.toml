@@ -1,0 +1,2 @@
+description = "Scan UI files and color pairs for WCAG 2.2 contrast compliance"
+prompt = "Scan the UI codebase or specified colors for WCAG 2.2 AA compliance: normal text >= 4.5:1, large text >= 3:1, and verify accessible focus indicators."
