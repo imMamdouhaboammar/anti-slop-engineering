@@ -1,0 +1,20 @@
+name: anti-slop-engineering
+version: 1.12.0
+description: Enterprise-grade agentic guard suite, SRE/AST verification engines, and neural invariant governance for Hermes Agent.
+author: Mamdouh Aboammar
+provides_hooks:
+  - pre_llm_call
+provides_commands:
+  - anti-slop
+  - anti-slop-audit
+  - anti-slop-sre
+  - anti-slop-ast
+  - anti-slop-contrast
+  - anti-slop-steward
+provides_skills:
+  - anti-slop
+  - anti-slop-audit
+  - anti-slop-sre
+  - anti-slop-ast
+  - anti-slop-contrast
+  - anti-slop-steward

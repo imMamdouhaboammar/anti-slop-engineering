@@ -1,0 +1,15 @@
+{
+  "name": "anti-slop-engineering",
+  "version": "1.12.0",
+  "description": "Enterprise-grade agentic guard suite, SRE/AST verification engines, and neural invariant governance for Qoder.",
+  "author": {
+    "name": "Mamdouh Aboammar",
+    "url": "https://github.com/imMamdouhaboammar"
+  },
+  "homepage": "https://github.com/imMamdouhaboammar/anti-slop-engineering",
+  "license": "MIT",
+  "keywords": ["anti-slop", "code-quality", "sre", "kiss", "dry", "yagni", "qoder"],
+  "skills": "./skills/",
+  "rules": "./.qoder/rules/",
+  "hooks": "./hooks/qoder-hooks.json"
+}

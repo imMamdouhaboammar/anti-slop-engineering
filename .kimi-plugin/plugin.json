@@ -1,0 +1,16 @@
+{
+  "name": "anti-slop-engineering",
+  "description": "Enterprise-grade agentic guard suite, SRE/AST verification engines, and neural invariant governance for Kimi Code.",
+  "author": {
+    "name": "Mamdouh Aboammar",
+    "url": "https://github.com/imMamdouhaboammar"
+  },
+  "homepage": "https://github.com/imMamdouhaboammar/anti-slop-engineering",
+  "license": "MIT",
+  "interface": {
+    "displayName": "Anti-Slop Engineering",
+    "shortDescription": "Prevent AI slop, enforce 7 gates, Google SRE, and test oracle integrity."
+  },
+  "skills": "./skills/",
+  "systemPromptPath": "./rules/AGENTS.md"
+}
