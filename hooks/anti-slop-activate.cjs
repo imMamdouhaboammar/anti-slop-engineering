@@ -3,17 +3,14 @@
 // Copyright (c) 2026 Mamdouh Aboammar <mamdouhfces1997@gmail.com> and contributors
 
 const { getAntiSlopInstructions } = require('./anti-slop-instructions.cjs');
-const { writeHookOutput } = require('./anti-slop-runtime.cjs');
+const { logHookBanner, writeHookOutput } = require('./anti-slop-runtime.cjs');
 
-function activate() {
+function activate(depth = 0) {
+  if (depth > 5) return;
   const instructions = getAntiSlopInstructions();
-  try {
-    process.stderr.write(
-      '🛡️  [Anti-Slop Engineering] Multi-agent harness active. 7 Gates, SRE invariants & AST guards engaged.\n'
-    );
-  } catch (_e) {
-    // Ignore stderr closed errors
-  }
+  logHookBanner(
+    '🛡️  [Anti-Slop Engineering] Multi-agent harness active. 7 Gates, SRE invariants & AST guards engaged.'
+  );
 
   writeHookOutput('SessionStart', instructions);
 }
