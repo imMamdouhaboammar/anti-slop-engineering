@@ -12,7 +12,13 @@
       "agent": "sre-invariant-guardian",
       "mcp_tool": "anti_slop_sre_guard",
       "skill": "grumpy-senior-staff-engineer",
-      "file_patterns": ["**/*.ts", "**/*.js", "**/*.py", "**/*.go", "**/*.rs"]
+      "file_patterns": [
+        "**/*.ts",
+        "**/*.js",
+        "**/*.py",
+        "**/*.go",
+        "**/*.rs"
+      ]
     },
     {
       "id": "INV-SRE-TOIL-ELIMINATION",
@@ -22,7 +28,13 @@
       "agent": "sre-invariant-guardian",
       "mcp_tool": "anti_slop_sre_guard",
       "skill": "agency-sre-site-reliability-engineer",
-      "file_patterns": ["**/*.ts", "**/*.js", "**/*.py", "**/*.go", "**/*.rs"]
+      "file_patterns": [
+        "**/*.ts",
+        "**/*.js",
+        "**/*.py",
+        "**/*.go",
+        "**/*.rs"
+      ]
     },
     {
       "id": "INV-AST-CHAINED-CASTS",
@@ -32,7 +44,10 @@
       "agent": "ast-slop-sentinel",
       "mcp_tool": "anti_slop_ast_guard",
       "skill": "type-level-and-ast-slop-gate",
-      "file_patterns": ["**/*.ts", "**/*.tsx"]
+      "file_patterns": [
+        "**/*.ts",
+        "**/*.tsx"
+      ]
     },
     {
       "id": "INV-AST-EMPTY-SPREADS",
@@ -42,7 +57,12 @@
       "agent": "ast-slop-sentinel",
       "mcp_tool": "anti_slop_ast_guard",
       "skill": "type-level-and-ast-slop-gate",
-      "file_patterns": ["**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx"]
+      "file_patterns": [
+        "**/*.ts",
+        "**/*.tsx",
+        "**/*.js",
+        "**/*.jsx"
+      ]
     },
     {
       "id": "INV-AST-REDUCER-ACCUMULATOR",
@@ -52,7 +72,12 @@
       "agent": "ast-slop-sentinel",
       "mcp_tool": "anti_slop_ast_guard",
       "skill": "type-level-and-ast-slop-gate",
-      "file_patterns": ["**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx"]
+      "file_patterns": [
+        "**/*.ts",
+        "**/*.tsx",
+        "**/*.js",
+        "**/*.jsx"
+      ]
     },
     {
       "id": "INV-COMMENT-CCR-BOUND",
@@ -62,7 +87,9 @@
       "agent": "anti-slop-orchestrator",
       "mcp_tool": "anti_slop_comment_guard",
       "skill": "comment-budget-guard",
-      "file_patterns": ["**/*.*"]
+      "file_patterns": [
+        "**/*.*"
+      ]
     },
     {
       "id": "INV-APPLE-CRAFT-CLS",
@@ -72,7 +99,12 @@
       "agent": "apple-craft-physicist",
       "mcp_tool": "anti_slop_audit",
       "skill": "apple-craft-and-interaction-physics",
-      "file_patterns": ["**/*.tsx", "**/*.jsx", "**/*.css", "**/*.html"]
+      "file_patterns": [
+        "**/*.tsx",
+        "**/*.jsx",
+        "**/*.css",
+        "**/*.html"
+      ]
     },
     {
       "id": "INV-CONTRAST-WCAG",
@@ -82,7 +114,12 @@
       "agent": "apple-craft-physicist",
       "mcp_tool": "anti_slop_contrast_guard",
       "skill": "ui-and-copy-discipline",
-      "file_patterns": ["**/*.tsx", "**/*.jsx", "**/*.css", "**/*.html"]
+      "file_patterns": [
+        "**/*.tsx",
+        "**/*.jsx",
+        "**/*.css",
+        "**/*.html"
+      ]
     },
     {
       "id": "INV-DEMOCK-NO-DUMMY-DB",
@@ -92,7 +129,12 @@
       "agent": "anti-slop-orchestrator",
       "mcp_tool": "anti_slop_demock_guard",
       "skill": "demock-guard",
-      "file_patterns": ["src/**/*.ts", "lib/**/*.ts", "app/**/*.ts", "**/*.py"]
+      "file_patterns": [
+        "src/**/*.ts",
+        "lib/**/*.ts",
+        "app/**/*.ts",
+        "**/*.py"
+      ]
     },
     {
       "id": "INV-MANDELA-NO-TAUTOLOGY",
@@ -102,7 +144,11 @@
       "agent": "mandela-leakage-hunter",
       "mcp_tool": "anti_slop_mandela_guard",
       "skill": "mandela-guard",
-      "file_patterns": ["test*/**", "**/*.test.*", "**/*.spec.*"]
+      "file_patterns": [
+        "test*/**",
+        "**/*.test.*",
+        "**/*.spec.*"
+      ]
     },
     {
       "id": "INV-REDUCTION-ADD-BACK",
@@ -112,7 +158,9 @@
       "agent": "anti-slop-orchestrator",
       "mcp_tool": "anti_slop_reduction_guard",
       "skill": "reduction-guard",
-      "file_patterns": ["**/*.*"]
+      "file_patterns": [
+        "**/*.*"
+      ]
     },
     {
       "id": "INV-RE0-SHOWER-TEST",
@@ -122,7 +170,10 @@
       "agent": "re0-context-architect",
       "mcp_tool": "anti_slop_re0_handoff",
       "skill": "re0-handoff-guard",
-      "file_patterns": ["**/*.md", "**/state-note*.json"]
+      "file_patterns": [
+        "**/*.md",
+        "**/state-note*.json"
+      ]
     },
     {
       "id": "INV-PARANOID-IDEMPOTENCY",
@@ -132,7 +183,11 @@
       "agent": "paranoid-principal-architect",
       "mcp_tool": "anti_slop_audit",
       "skill": "paranoid-principal-architect",
-      "file_patterns": ["src/api/**", "src/controllers/**", "src/routes/**"]
+      "file_patterns": [
+        "src/api/**",
+        "src/controllers/**",
+        "src/routes/**"
+      ]
     },
     {
       "id": "INV-OBSERVABILITY-CARDINALITY",
@@ -142,7 +197,521 @@
       "agent": "paranoid-principal-architect",
       "mcp_tool": "anti_slop_audit",
       "skill": "observability-and-slo-architect",
-      "file_patterns": ["src/telemetry/**", "src/metrics/**"]
+      "file_patterns": [
+        "src/telemetry/**",
+        "src/metrics/**"
+      ]
+    },
+    {
+      "id": "INV-ANTI_SLOP_ENGINEERING",
+      "category": "core_hygiene",
+      "description": "Prevent, detect, and repair AI coding slop and dirty engineering in repositories. Use for planning features, writing code, changing tests, reviewing pull requests, refactoring, hardening CI, debugging regressions, or auditing agent-generated changes.",
+      "guard": "diff_guard",
+      "agent": "anti-slop-orchestrator",
+      "mcp_tool": "anti_slop_diff_guard",
+      "skill": "anti-slop-engineering",
+      "file_patterns": [
+        "**/*"
+      ]
+    },
+    {
+      "id": "INV-API_ERGONOMICS_AND_CONTRACT_GOVE",
+      "category": "api_contract",
+      "description": "1. **No boolean parameter traps.** Functions taking two or more boolean arguments are prohibited. Replace boolean flags with named union literals or discriminated option records (e.g. `mode: \"sync\" | \"async\"` instead of `isAsync: boolean`). 2. **Nomi",
+      "guard": "api_contract_guard",
+      "agent": "anti-slop-orchestrator",
+      "mcp_tool": "anti_slop_api_contract_guard",
+      "skill": "api-ergonomics-and-contract-governor",
+      "file_patterns": [
+        "**/*.ts",
+        "**/*.js",
+        "**/*.py",
+        "**/*.go",
+        "**/*.rs",
+        "**/api/**"
+      ]
+    },
+    {
+      "id": "INV-APPLE_CRAFT_AND_FRAME_BUDGET",
+      "category": "apple_craft_and_ui",
+      "description": "Never interleave DOM style writes and layout geometry reads (`getBoundingClientRect()`, `offsetWidth`, `offsetHeight`, `clientHeight`, `scrollTop`, `getComputedStyle()`) within the same frame. Batch all geometry reads first (`FastDOM` read phase), th",
+      "guard": "frame_budget_guard",
+      "agent": "apple-craft-physicist",
+      "mcp_tool": "anti_slop_frame_budget_guard",
+      "skill": "apple-craft-and-frame-budget",
+      "file_patterns": [
+        "**/*.tsx",
+        "**/*.jsx",
+        "**/*.vue",
+        "**/*.svelte",
+        "**/*.css",
+        "**/*.html"
+      ]
+    },
+    {
+      "id": "INV-ASSET_PROVENANCE_GUARD",
+      "category": "security_and_governance",
+      "description": "1. **Physical Provenance Ledger:** Every local image, model, font, or audio file in project asset directories must possess an entry in `.anti-slop/asset-ledger.jsonl`. 2. **Cryptographic SHA-256 Integrity:** Computed file SHA-256 hashes must match th",
+      "guard": "asset_provenance_guard",
+      "agent": "paranoid-principal-architect",
+      "mcp_tool": "anti_slop_asset_provenance_guard",
+      "skill": "asset-provenance-guard",
+      "file_patterns": [
+        "**/assets/**",
+        "**/public/**",
+        "**/*.png",
+        "**/*.svg",
+        "**/*.jpg"
+      ]
+    },
+    {
+      "id": "INV-BACKPROP_GUARD",
+      "category": "agent_governance",
+      "description": "1. **Backprop Before Local Merge:** Significant downstream failures must emit an upstream invariant candidate before PR completion. 2. **One Canonical Owner:** Every backpropagated lesson belongs in exactly one Single Source of Truth (SSOT). 3. **Pre",
+      "guard": "backprop_guard",
+      "agent": "re0-context-architect",
+      "mcp_tool": "anti_slop_backprop_guard",
+      "skill": "backprop-guard",
+      "file_patterns": [
+        "**/rules/**",
+        "**/AGENTS.md",
+        "**/.anti-slop/**"
+      ]
+    },
+    {
+      "id": "INV-CHAOS_AND_DEGRADATION_CHOREOGRAP",
+      "category": "sre_and_architecture",
+      "description": "Plan and review graceful degradation and controlled fault tests for dependencies, worker pools, retries, circuit breakers, and recovery. Use when an optional dependency may fail, a critical outcome becomes uncertain, or recovery could overload a serv",
+      "guard": "skills_compliance",
+      "agent": "sre-invariant-guardian",
+      "mcp_tool": "anti_slop_skill_compliance",
+      "skill": "chaos-and-degradation-choreographer",
+      "file_patterns": [
+        "**/src/**",
+        "**/services/**",
+        "**/k8s/**"
+      ]
+    },
+    {
+      "id": "INV-CHROMATIC_DRIFT_GUARD",
+      "category": "apple_craft_and_ui",
+      "description": "1. **Cheerful Drift Bound:** Actual painted chroma must not exceed committed target chroma by more than $\\Delta C = 0.03$ without explicit commit-sheet justification. 2. **Committed Lightness Anchor:** Theme and body background lightness must align w",
+      "guard": "chroma_drift_guard",
+      "agent": "apple-craft-physicist",
+      "mcp_tool": "anti_slop_chroma_drift_guard",
+      "skill": "chromatic-drift-guard",
+      "file_patterns": [
+        "**/*.css",
+        "**/*.tsx",
+        "**/*.jsx",
+        "**/tailwind.config.*"
+      ]
+    },
+    {
+      "id": "INV-COGNITIVE_LOAD_AND_ATTENTION_GOV",
+      "category": "agent_governance",
+      "description": "Ban `Here is...`, `Below is...`, `Sure!`, `I've drafted...`",
+      "guard": "attention_guard",
+      "agent": "re0-context-architect",
+      "mcp_tool": "anti_slop_attention_guard",
+      "skill": "cognitive-load-and-attention-governor",
+      "file_patterns": [
+        "**/*.md",
+        "**/PR_DESCRIPTION.md",
+        "**/docs/**"
+      ]
+    },
+    {
+      "id": "INV-CONTEXT_WINDOW_AND_TOKEN_ECONOMI",
+      "category": "agent_governance",
+      "description": "Review LLM context selection, retrieval evidence, prompt cache boundaries, time to first token, and structured output contracts. Use for changes that affect what an LLM sees, reuses, or returns.",
+      "guard": "skills_compliance",
+      "agent": "re0-context-architect",
+      "mcp_tool": "anti_slop_skill_compliance",
+      "skill": "context-window-and-token-economics-architect",
+      "file_patterns": [
+        "**/*.prompt",
+        "**/*.md",
+        "**/prompts/**",
+        "**/agents/**"
+      ]
+    },
+    {
+      "id": "INV-CRYPTOGRAPHIC_AGILITY_AND_SECRET",
+      "category": "security_and_governance",
+      "description": "Review authenticated encryption, key-version migrations, encryption key retirement, and service-secret rotation. Use when a change affects cryptographic libraries, key storage, KMS permissions, or credential handling.",
+      "guard": "skills_compliance",
+      "agent": "paranoid-principal-architect",
+      "mcp_tool": "anti_slop_skill_compliance",
+      "skill": "cryptographic-agility-and-secret-lifecycle-gate",
+      "file_patterns": [
+        "**/*.env*",
+        "**/src/security/**",
+        "**/src/crypto/**",
+        "**/auth/**"
+      ]
+    },
+    {
+      "id": "INV-DECISION_GUARD",
+      "category": "sre_and_architecture",
+      "description": "1. **Goal before method.** Restate the wanted result separately from the user's proposed technique. 2. **Observed before derived.** Search available authoritative sources and native capabilities for a directly observable answer before designing proxi",
+      "guard": "decision_guard",
+      "agent": "sre-invariant-guardian",
+      "mcp_tool": "anti_slop_decision_guard",
+      "skill": "decision-guard",
+      "file_patterns": [
+        "**/docs/**",
+        "**/adr/**",
+        "**/src/**"
+      ]
+    },
+    {
+      "id": "INV-DESIGN_SYSTEM_DRIFT_GUARD",
+      "category": "apple_craft_and_ui",
+      "description": "1. **Variant Budget Enforcement:** Each control kind (`button`, `input`, `select`, `card`, `badge`) must strictly adhere to its declared variant budget (default: 4 for button/card, 2 for select/input). 2. **Keyboard Focus Ring Protection:** Interacti",
+      "guard": "system_drift_guard",
+      "agent": "apple-craft-physicist",
+      "mcp_tool": "anti_slop_system_drift_guard",
+      "skill": "design-system-drift-guard",
+      "file_patterns": [
+        "**/*.tsx",
+        "**/*.jsx",
+        "**/*.css",
+        "**/components/**"
+      ]
+    },
+    {
+      "id": "INV-DETERMINISTIC_SIMULATION_AND_PRO",
+      "category": "testing_and_simulation",
+      "description": "1. **Ban example-based tests as the sole verification of critical invariants.** Code that computes money, mutates critical state, or decodes untrusted input must include property-based or fuzz tests. 2. **Zero real wall-clock sleeps in simulation cod",
+      "guard": "simulation_guard",
+      "agent": "mandela-leakage-hunter",
+      "mcp_tool": "anti_slop_simulation_guard",
+      "skill": "deterministic-simulation-and-property-testing",
+      "file_patterns": [
+        "**/tests/**",
+        "**/*.test.*",
+        "**/*_test.*"
+      ]
+    },
+    {
+      "id": "INV-DISTRIBUTED_CONSENSUS_AND_CONCUR",
+      "category": "sre_and_architecture",
+      "description": "Review concurrent writes, optimistic concurrency, idempotent delivery, distributed leases, leader election, clock assumptions, and database transaction boundaries. Use when a stale reader, duplicate request, partition, or paused worker could violate ",
+      "guard": "skills_compliance",
+      "agent": "sre-invariant-guardian",
+      "mcp_tool": "anti_slop_skill_compliance",
+      "skill": "distributed-consensus-and-concurrency-gate",
+      "file_patterns": [
+        "**/src/cluster/**",
+        "**/src/raft/**",
+        "**/src/concurrency/**"
+      ]
+    },
+    {
+      "id": "INV-FINOPS_AND_UNIT_ECONOMICS_GOVERN",
+      "category": "sre_and_architecture",
+      "description": "Review cost per request, job, or tenant across cloud egress, API fan-out, retries, GPU usage, and model tokens. Use when an input or dependency failure can multiply paid work or when a proposed change cites cost savings.",
+      "guard": "skills_compliance",
+      "agent": "sre-invariant-guardian",
+      "mcp_tool": "anti_slop_skill_compliance",
+      "skill": "finops-and-unit-economics-governor",
+      "file_patterns": [
+        "**/terraform/**",
+        "**/infra/**",
+        "**/src/queries/**"
+      ]
+    },
+    {
+      "id": "INV-FUTURE_SCALE_GATE",
+      "category": "sre_and_architecture",
+      "description": "Use before committing to hard-to-reverse foundations for a long-lived software product, language, runtime, data model, or platform; when current workload evidence is being used to dismiss credible growth requirements; or when a team wants to build fo",
+      "guard": "future_scale_guard",
+      "agent": "sre-invariant-guardian",
+      "mcp_tool": "anti_slop_future_scale_guard",
+      "skill": "future-scale-gate",
+      "file_patterns": [
+        "**/src/**",
+        "**/services/**",
+        "**/docs/adr/**"
+      ]
+    },
+    {
+      "id": "INV-HONEYPOT_TRAP_GUARD",
+      "category": "security_and_governance",
+      "description": "1. **Active trap over passive substring:** Never flag standard HTML comments that GitHub automatically populates into the PR text box. Only flag when an active instruction is explicitly triggered. 2. **Template maintenance isolation:** Never evaluate",
+      "guard": "honeypot_trap_guard",
+      "agent": "paranoid-principal-architect",
+      "mcp_tool": "anti_slop_honeypot_trap_guard",
+      "skill": "honeypot-trap-guard",
+      "file_patterns": [
+        "**/.github/**",
+        "**/*.md",
+        "**/templates/**"
+      ]
+    },
+    {
+      "id": "INV-HOUSE_TELL_GUARD",
+      "category": "agent_governance",
+      "description": "1. **Gate 0 Physical Deliverable:** Zero code modification is permitted before `.anti-slop/commit-sheet.json` or `design/COMMIT-SHEET.md` exists and passes validation. 2. **The Seven Commitments:** The commit-sheet must provide non-generic, substanti",
+      "guard": "house_tell_guard",
+      "agent": "re0-context-architect",
+      "mcp_tool": "anti_slop_house_tell_guard",
+      "skill": "house-tell-guard",
+      "file_patterns": [
+        "**/*.ts",
+        "**/*.js",
+        "**/*.py",
+        "**/*.go",
+        "**/*.rs",
+        "**/*.md"
+      ]
+    },
+    {
+      "id": "INV-INSTALL_ANTI_SLOP",
+      "category": "core_hygiene",
+      "description": "Install, configure, update, or upgrade vendored anti-slop Oxlint plugins. Use when adding anti-slop, picking up upstream rules or fixes, or migrating an existing installation while preserving local customizations.",
+      "guard": "safe_install",
+      "agent": "anti-slop-orchestrator",
+      "mcp_tool": "anti_slop_safe_install",
+      "skill": "install-anti-slop",
+      "file_patterns": [
+        "**/package.json",
+        "**/install.sh",
+        "**/Makefile"
+      ]
+    },
+    {
+      "id": "INV-LLM_EVAL_AND_PROMPT_INJECTION_FO",
+      "category": "security_and_governance",
+      "description": "Review how agents handle untrusted text, authorize tool requests, and protect private outputs. Use for retrieval, tool connectors, agent permissions, or evaluation of coding agents.",
+      "guard": "skills_compliance",
+      "agent": "paranoid-principal-architect",
+      "mcp_tool": "anti_slop_skill_compliance",
+      "skill": "llm-eval-and-prompt-injection-fortress",
+      "file_patterns": [
+        "**/prompts/**",
+        "**/src/ai/**",
+        "**/src/llm/**"
+      ]
+    },
+    {
+      "id": "INV-MECHANICAL_SYMPATHY_AND_PERF_GAT",
+      "category": "sre_and_architecture",
+      "description": "1. **FastDOM Phase Separation:** Separate geometric layout reads (`getBoundingClientRect()`, `offsetWidth`, `scrollTop`) from style mutations. Perform all reads first, then batch writes in `requestAnimationFrame`. 2. **Ban `transition: all`:** Enumer",
+      "guard": "perf_guard",
+      "agent": "sre-invariant-guardian",
+      "mcp_tool": "anti_slop_perf_guard",
+      "skill": "mechanical-sympathy-and-perf-gate",
+      "file_patterns": [
+        "**/*.ts",
+        "**/*.js",
+        "**/*.py",
+        "**/*.go",
+        "**/*.rs"
+      ]
+    },
+    {
+      "id": "INV-MECHANICAL_SYMPATHY_PROFILER",
+      "category": "sre_and_architecture",
+      "description": "Run or specify `EXPLAIN (ANALYZE, BUFFERS)` (or the storage engine's physical plan profiler) and record actual execution time (`ms`), `Shared Hit Blocks` vs `Shared Read Blocks`, scan type (`Seq Scan` vs `Index Scan` / `Index Only Scan`), and heap fe",
+      "guard": "profiler_guard",
+      "agent": "sre-invariant-guardian",
+      "mcp_tool": "anti_slop_profiler_guard",
+      "skill": "mechanical-sympathy-profiler",
+      "file_patterns": [
+        "**/*.ts",
+        "**/*.js",
+        "**/*.py",
+        "**/*.go",
+        "**/*.rs"
+      ]
+    },
+    {
+      "id": "INV-MOTION_RUNTIME_GUARD",
+      "category": "apple_craft_and_ui",
+      "description": "1. **Retina Resolution Mandate:** Motion performance benchmarks must be conducted at $\\text{DPR} \\ge 2.0$ ($1440 \\times 900 \\times 2 = 5.184\\text{MP}$) with 4x CPU throttling. 2. **FPS & Long-Task Bounds:** Minimum acceptable frame rate is $\\ge 50$ F",
+      "guard": "motion_runtime_guard",
+      "agent": "apple-craft-physicist",
+      "mcp_tool": "anti_slop_motion_runtime_guard",
+      "skill": "motion-runtime-guard",
+      "file_patterns": [
+        "**/*.tsx",
+        "**/*.jsx",
+        "**/*.css",
+        "**/*.js"
+      ]
+    },
+    {
+      "id": "INV-OBSERVABILITY_AND_SLO_GATE",
+      "category": "sre_and_architecture",
+      "description": "place unbounded or high-cardinality values (`user_id`, `customer_id`, `account_id`, `request_id`, `trace_id`, `span_id`, `correlation_id`, `session_id`, `order_id`, `idempotency_key`, `email`, `ip_address`, `error.message`, or raw unparameterized URL",
+      "guard": "observability_guard",
+      "agent": "sre-invariant-guardian",
+      "mcp_tool": "anti_slop_observability_guard",
+      "skill": "observability-and-slo-gate",
+      "file_patterns": [
+        "**/src/telemetry/**",
+        "**/src/metrics/**",
+        "**/observability/**"
+      ]
+    },
+    {
+      "id": "INV-PR_BOUNDARY_GUARD",
+      "category": "core_hygiene",
+      "description": "1. **Topology hygiene:** Never submit PRs directly from `main` or `master`. Always branch to an intent-revealing feature branch (`feat/`, `fix/`, `chore/`). 2. **Subject length discipline:** Limit commit subject lines to 100 characters max (warning a",
+      "guard": "pr_boundary_guard",
+      "agent": "anti-slop-orchestrator",
+      "mcp_tool": "anti_slop_pr_boundary_guard",
+      "skill": "pr-boundary-guard",
+      "file_patterns": [
+        "**/.github/**",
+        "**/PR_TEMPLATE.md"
+      ]
+    },
+    {
+      "id": "INV-PRIVACY_AND_DATA_LINEAGE_GATE",
+      "category": "security_and_governance",
+      "description": "1. **Tainted PII Types everywhere.** Wrap emails, phone numbers, IP addresses, physical locations, and national IDs in nominal branded types and `Redacted<T>` containers. 2. **Ban unredacted serialization.** Override `toString()`, `toJSON()`, and run",
+      "guard": "privacy_guard",
+      "agent": "paranoid-principal-architect",
+      "mcp_tool": "anti_slop_privacy_guard",
+      "skill": "privacy-and-data-lineage-gate",
+      "file_patterns": [
+        "**/src/models/**",
+        "**/src/schema/**",
+        "**/src/user/**",
+        "**/db/**"
+      ]
+    },
+    {
+      "id": "INV-REPO_MEMORY_AND_INVARIANT_STEWAR",
+      "category": "sre_and_architecture",
+      "description": "1. **Deterministic Ledger Sync:** Historical records (`*record*.json`) must be parsed, deduplicated, and indexed by unique Invariant IDs (e.g. `INV-PARANOID-001`, `INV-ROLLOUT-002`). 2. **Token-Thrifty TOON Generation:** Every ledger sync must emit b",
+      "guard": "invariant_steward_guard",
+      "agent": "sre-invariant-guardian",
+      "mcp_tool": "anti_slop_invariant_steward_guard",
+      "skill": "repo-memory-and-invariant-steward",
+      "file_patterns": [
+        "**/.anti-slop/invariant-ledger.json",
+        "**/docs/adr/**"
+      ]
+    },
+    {
+      "id": "INV-ROOT_FIX_GATE",
+      "category": "sre_and_architecture",
+      "description": "1. **Goal is not a patch instruction.** Restate observable behavior separately from the proposed code modification. 2. **Trace writes as well as reads.** A presentation symptom can originate from a data contract, mapping, default, workflow, or author",
+      "guard": "root_fix_guard",
+      "agent": "sre-invariant-guardian",
+      "mcp_tool": "anti_slop_root_fix_guard",
+      "skill": "root-fix-gate",
+      "file_patterns": [
+        "**/src/**",
+        "**/services/**"
+      ]
+    },
+    {
+      "id": "INV-SAFE_EVOLUTION_AND_ROLLOUT_CHORE",
+      "category": "sre_and_architecture",
+      "description": "1. **Tolerant Reader pattern across all boundaries:** Serializers and deserializers must ignore unknown fields rather than throwing errors. In protobuf/Thrift, field tags must never be renumbered or reused. In JSON/REST, new response fields must neve",
+      "guard": "rollout_guard",
+      "agent": "sre-invariant-guardian",
+      "mcp_tool": "anti_slop_rollout_guard",
+      "skill": "safe-evolution-and-rollout-choreographer",
+      "file_patterns": [
+        "**/proto/**",
+        "**/schemas/**",
+        "**/src/contracts/**",
+        "**/api/**"
+      ]
+    },
+    {
+      "id": "INV-SCIENTIFIC_FAULT_ISOLATION",
+      "category": "sre_and_architecture",
+      "description": "Use `git bisect run <reproducer_cmd>` to isolate regressions across commits in $\\lceil \\log_2(N) \\rceil$ steps.",
+      "guard": "fault_isolation_guard",
+      "agent": "sre-invariant-guardian",
+      "mcp_tool": "anti_slop_fault_isolation_guard",
+      "skill": "scientific-fault-isolation",
+      "file_patterns": [
+        "**/src/**",
+        "**/tests/**"
+      ]
+    },
+    {
+      "id": "INV-STYLESEED_GUARD",
+      "category": "apple_craft_and_ui",
+      "description": "Enforce StyleSeed Cognitive Job Output Grammars, 4-tier token canon DAG, 18-role semantic graph completeness, 11 pairwise contrast gates, 6-role spatial rhythm hierarchy, and S1 multi-screen longitudinal drift bounds.",
+      "guard": "styleseed_guard",
+      "agent": "apple-craft-physicist",
+      "mcp_tool": "anti_slop_styleseed_guard",
+      "skill": "styleseed-guard",
+      "file_patterns": [
+        "**/*.css",
+        "**/*.tsx",
+        "**/*.jsx",
+        "**/styles/**"
+      ]
+    },
+    {
+      "id": "INV-SUPPLY_CHAIN_AND_SBOM_SENTINEL",
+      "category": "security_and_governance",
+      "description": "Review new dependencies, lockfiles, install hooks, build attestations, SBOMs, and container base images. Use when package identity, artifact integrity, registry trust, or a change in release ownership needs verification.",
+      "guard": "skills_compliance",
+      "agent": "paranoid-principal-architect",
+      "mcp_tool": "anti_slop_skill_compliance",
+      "skill": "supply-chain-and-sbom-sentinel",
+      "file_patterns": [
+        "**/package.json",
+        "**/pnpm-lock.yaml",
+        "**/bun.lockb",
+        "**/bun.lock",
+        "**/go.mod",
+        "**/Cargo.lock"
+      ]
+    },
+    {
+      "id": "INV-TAGORE_GUARD",
+      "category": "agent_governance",
+      "description": "1. **The Dual Subtotal Floor Invariant:** A deliverable must score $\\ge 56/80$ overall AND meet BOTH subtotal floors: $$\\text{Mechanics} \\ge 35/50 \\quad \\land \\quad \\text{Substance} \\ge 21/30$$ Passing mechanics while failing substance is rejected as",
+      "guard": "tagore_guard",
+      "agent": "re0-context-architect",
+      "mcp_tool": "anti_slop_tagore_guard",
+      "skill": "tagore-guard",
+      "file_patterns": [
+        "**/*.md",
+        "**/docs/**",
+        "**/.github/**"
+      ]
+    },
+    {
+      "id": "INV-VERIFICATION_ORACLE_ARCHITECT",
+      "category": "testing_and_simulation",
+      "description": "A Fake is illegal unless paired with a parameterized **Shared Contract Test Suite** (`describeRepositoryContract(factory)`) that executes identical behavioral assertions against both the `InMemoryFake` and the `RealAdapter`.",
+      "guard": "verification_oracle_guard",
+      "agent": "mandela-leakage-hunter",
+      "mcp_tool": "anti_slop_verification_oracle_guard",
+      "skill": "verification-oracle-architect",
+      "file_patterns": [
+        "**/tests/**",
+        "**/*.test.*",
+        "**/*_test.*"
+      ]
+    },
+    {
+      "id": "INV-ZERO_DOWNTIME_MIGRATION_GATE",
+      "category": "sre_and_architecture",
+      "description": "Add nullable columns, new tables, or additive optional API fields alongside legacy structures. Begin dual-writing.",
+      "guard": "migration_guard",
+      "agent": "sre-invariant-guardian",
+      "mcp_tool": "anti_slop_migration_guard",
+      "skill": "zero-downtime-migration-gate",
+      "file_patterns": [
+        "**/migrations/**",
+        "**/db/**",
+        "**/src/schema/**",
+        "**/*.sql"
+      ]
     }
   ],
   "agents": [
@@ -170,5 +739,6 @@
     "anti_slop_neural_route",
     "anti_slop_backprop",
     "anti_slop_forensic_hunter"
-  ]
+  ],
+  "total_skills": 46
 }

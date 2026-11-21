@@ -157,6 +157,14 @@ const TOOLS = [
       },
     },
   },
+  {
+    name: "anti_slop_skill_compliance",
+    description: "Evaluate target code or git diff against all 46 Anti-Slop skills, verifying compliance with rules, axioms, and negative corpus.",
+    inputSchema: makePathSchema({
+      skills: { type: "string", description: "Comma-separated skill IDs or 'all' (default: all)" },
+      strict: { type: "boolean", description: "Enforce zero-tolerance mode (fail on any warning or advisory)" },
+    }),
+  },
 ];
 
 async function handleAuditCalls(name, args) {
@@ -173,6 +181,15 @@ async function handleAuditCalls(name, args) {
   if (name === "anti_slop_diff_guard") {
     const cliArgs = ["--json", "--base", args.base || "HEAD"];
     const res = await executeGuard("diff", cliArgs);
+    return res.stdout || res.stderr;
+  }
+  if (name === "anti_slop_skill_compliance") {
+    const cliArgs = ["--json"];
+    if (args.path) cliArgs.push("--target", args.path);
+    if (args.base) cliArgs.push("--base", args.base);
+    if (args.skills) cliArgs.push("--skills", args.skills);
+    if (args.strict) cliArgs.push("--strict");
+    const res = await executeGuard("skills", cliArgs);
     return res.stdout || res.stderr;
   }
   if (name === "anti_slop_sre_guard") {

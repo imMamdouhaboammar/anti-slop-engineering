@@ -46,10 +46,23 @@ export async function executeGuard(guardName, args = [], options = {}) {
     "hunter": "forensic_hunter.py",
     "audit": "audit_runner.py",
     "backprop": "backprop_guard.py",
+    "skills": "skills_compliance_engine.py",
+    "compliance": "skills_compliance_engine.py",
+    "skills_compliance": "skills_compliance_engine.py",
   };
 
   const script = scriptMap[guardName] || `${guardName}.py`;
   return runPythonGuard(script, args, options);
+}
+
+/**
+ * Runs the universal skills compliance evaluation engine across target files or diff.
+ * @param {string[]} [args] - Additional CLI arguments (--target, --skills, --json, etc.)
+ * @param {object} [options] - Execution options
+ * @returns {Promise<object>} Execution result
+ */
+export async function evaluateSkillsCompliance(args = [], options = {}) {
+  return runPythonGuard("skills_compliance_engine.py", args, options);
 }
 
 export async function checkPolyglotHealth() {

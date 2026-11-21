@@ -54,6 +54,8 @@ const profilerGuardScript = resolve(rootDir, "scripts", "profiler_guard.py");
 const faultIsolationGuardScript = resolve(rootDir, "scripts", "fault_isolation_guard.py");
 const migrationGuardScript = resolve(rootDir, "scripts", "migration_guard.py");
 const verificationOracleGuardScript = resolve(rootDir, "scripts", "verification_oracle_guard.py");
+const skillsComplianceScript = resolve(rootDir, "scripts", "skills_compliance_engine.py");
+const extractSkillsScript = resolve(rootDir, "scripts", "extract_skill_rules.py");
 const auditRunnerScript = resolve(rootDir, "scripts", "audit_runner.py");
 const ruleRegistryScript = resolve(rootDir, "scripts", "rule_registry.py");
 const installerScript = resolve(rootDir, "scripts", "installer.mjs");
@@ -205,13 +207,17 @@ const executableAliases = {
   "neural": "neural",
   "route": "neural",
   "graph": "neural",
+  "skills": "skills",
+  "skills-compliance": "skills",
+  "verify": "skills",
+  "extract-skills": "extract-skills",
 };
 const args = process.argv.slice(2);
 if (executableAliases[invokedAs]) args.unshift(executableAliases[invokedAs]);
 
 function printBanner() {
   console.log(`
-🛡️  Anti-Slop Engineering CLI (v1.12.0)
+🛡️  Anti-Slop Engineering CLI (v1.13.0)
    Clean-Room AI Coding Guard & High-Performance Polyglot Architecture
    Engines: Standard Library Python Guard | Rust Microservice | Go Toil Guard
    Author: Mamdouh Aboammar <mamdouhfces1997@gmail.com>
@@ -529,6 +535,10 @@ if (cmd === "build") {
   runPythonScript(verificationOracleGuardScript, ["counterfactual", ...args.slice(1)], "verification_oracle_guard");
 } else if (cmd === "audit") {
   runPythonScript(auditRunnerScript, ["audit", ...args.slice(1)], "audit_runner");
+} else if (cmd === "skills" || cmd === "skills-compliance" || cmd === "verify") {
+  runPythonScript(skillsComplianceScript, args.slice(1), "skills_compliance_engine");
+} else if (cmd === "extract-skills") {
+  runPythonScript(extractSkillsScript, args.slice(1), "extract_skill_rules");
 } else if (cmd === "mode") {
   runPythonScript(auditRunnerScript, ["mode", ...args.slice(1)], "audit_runner");
 } else if (cmd === "install" || cmd === "setup") {
@@ -578,8 +588,11 @@ if (cmd === "build") {
   const sub = args[1] || "route";
   if (sub === "graph") {
     const graphFile = resolve(rootDir, "neural", "graph.json");
-    if (existsSync(graphFile)) {
+    try {
       console.log(readFileSync(graphFile, "utf8"));
+    } catch (err) {
+      console.error(`Failed to read neural graph: ${err.message}`);
+      process.exit(1);
     }
   } else {
     const routerScript = resolve(rootDir, "neural", "router.js");

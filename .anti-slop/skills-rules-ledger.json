@@ -1,0 +1,1387 @@
+{
+  "schema_version": "2.0.0",
+  "generated_at": "2026-11-21T16:08:26.323674+00:00",
+  "total_skills": 46,
+  "total_rules": 111,
+  "skills": {
+    "anti-slop-engineering": {
+      "id": "anti-slop-engineering",
+      "display_name": "anti-slop-engineering",
+      "description": "Prevent, detect, and repair AI coding slop and dirty engineering in repositories. Use for planning features, writing code, changing tests, reviewing pull requests, refactoring, hardening CI, debugging regressions, or auditing agent-generated changes. Enforces behavioral contracts, focused diffs, test integrity, repo conventions, security boundaries, and evidence-based completion.",
+      "category": "core_hygiene",
+      "severity": "CRITICAL",
+      "guard_script": "diff_guard.py",
+      "file_patterns": [
+        "*"
+      ],
+      "execution_tier": "DETERMINISTIC",
+      "axioms_count": 1,
+      "axioms": [
+        {
+          "id": "AXIOM-1",
+          "title": "Core Principle of anti-slop-engineering",
+          "assertion": "Prevent, detect, and repair AI coding slop and dirty engineering in repositories. Use for planning features, writing code, changing tests, reviewing pull requests, refactoring, hardening CI, debugging regressions, or auditing agent-generated changes. Enforces behavioral contracts, focused diffs, tes"
+        }
+      ]
+    },
+    "api-ergonomics-and-contract-governor": {
+      "id": "api-ergonomics-and-contract-governor",
+      "display_name": "api-ergonomics-and-contract-governor",
+      "description": "Enforces Microsoft TypeScript compiler-team ergonomic rigor and Stripe world-class API design standards for SDKs, CLIs, and internal modules. Use when designing public SDKs, library interfaces, CLI commands, or internal module boundaries; enforcing pit-of-success defaults, discriminated unions, branded nominal types, progressive disclosure, and RFC 9457 problem details — even if they don't explicitly say \"api governor\". Do NOT use for trivial internal variable renames, local loop optimizations, or simple non-contract utility functions.",
+      "category": "api_contract",
+      "severity": "HIGH",
+      "guard_script": "api_contract_guard.py",
+      "file_patterns": [
+        "*.ts",
+        "*.js",
+        "*.py",
+        "*.go",
+        "*.rs",
+        "api/**"
+      ],
+      "execution_tier": "DETERMINISTIC",
+      "axioms_count": 1,
+      "axioms": [
+        {
+          "id": "AXIOM-1",
+          "title": "Rules",
+          "assertion": "1. **No boolean parameter traps.** Functions taking two or more boolean arguments are prohibited. Replace boolean flags with named union literals or discriminated option records (e.g. `mode: \"sync\" | \"async\"` instead of `isAsync: boolean`). 2. **Nominal branding for all domain identifiers.** Never p"
+        }
+      ]
+    },
+    "apple-craft-and-frame-budget": {
+      "id": "apple-craft-and-frame-budget",
+      "display_name": "apple-craft-and-frame-budget",
+      "description": "Enforces Apple Human Interface Guidelines (HIG) craft and 60/120Hz Client Runtime Physics across web, mobile, and desktop interfaces. Use when building, refactoring, or auditing interactive UI components, animations, state management, optimistic mutations, skeleton loaders, scroll/gesture handlers, modals, or client rendering pipelines — even if the user doesn't explicitly say \"Apple craft\" or \"frame budget\". Do NOT use for headless backend-only services, SQL schema migrations, or non-interactive CLI scripts.",
+      "category": "apple_craft_and_ui",
+      "severity": "HIGH",
+      "guard_script": "frame_budget_guard.py",
+      "file_patterns": [
+        "*.tsx",
+        "*.jsx",
+        "*.vue",
+        "*.svelte",
+        "*.css",
+        "*.html"
+      ],
+      "execution_tier": "DETERMINISTIC",
+      "axioms_count": 7,
+      "axioms": [
+        {
+          "id": "AXIOM-1",
+          "title": "Zero Layout Thrashing:",
+          "assertion": "Never interleave DOM style writes and layout geometry reads (`getBoundingClientRect()`, `offsetWidth`, `offsetHeight`, `clientHeight`, `scrollTop`, `getComputedStyle()`) within the same frame. Batch all geometry reads first (`FastDOM` read phase), then batch all style mutations (`requestAnimationFra"
+        },
+        {
+          "id": "AXIOM-2",
+          "title": "Compositor-Only Motion:",
+          "assertion": "Animate strictly `transform` (`translate3d`, `scale`, `rotate`) and `opacity`. Animating `width`, `height`, `top`, `left`, `margin`, `padding`, or `border-width` triggers full document reflow and paint on every frame and is strictly prohibited. Use FLIP (First, Last, Invert, Play) for layout transit"
+        },
+        {
+          "id": "AXIOM-3",
+          "title": "Zero Main-Thread Blocking:",
+          "assertion": "Never execute large `JSON.parse`/`JSON.stringify`, synchronous `localStorage`/`sessionStorage` I/O inside render/scroll/input paths, or $O(N)$ sorting/filtering over $>500$ items on the Main Thread. Offload to Web Workers, IndexedDB async transactions, or chunk work across frames with `scheduler.yie"
+        },
+        {
+          "id": "AXIOM-4",
+          "title": "Epsilon-Terminated `requestAnimationFrame`:",
+          "assertion": "Never leave continuous `requestAnimationFrame` loops running after spring/lerp physics settle. Define a strict convergence threshold ($\\epsilon = 10^{-4}$) and call `cancelAnimationFrame(handle)` as soon as $|\\text{current} - \\text{target}| < \\epsilon$ and $|\\text{velocity}| < \\epsilon$."
+        },
+        {
+          "id": "AXIOM-5",
+          "title": "Touch Device Native Inertia:",
+          "assertion": "Never apply programmatic scroll hijacking or wheel-smoothing engines to touch devices. Gate all custom momentum scroll engines behind `!window.matchMedia('(pointer: coarse)').matches && window.innerWidth >= 768`."
+        },
+        {
+          "id": "AXIOM-6",
+          "title": "Modal & Drawer Dialog Physics:",
+          "assertion": "All slide-out drawers, sheets, and modals must declare `role=\"dialog\"` and `aria-modal=\"true\"`, lock `document.body` scroll without horizontal scrollbar shift (`scrollbar-gutter: stable`), trap `Tab` / `Shift+Tab` focus inside the active container, and restore focus to the exact trigger element upon"
+        },
+        {
+          "id": "AXIOM-7",
+          "title": "Rules",
+          "assertion": "1. **Ban `transition: all`.** Always enumerate explicit compositor properties (`transition: transform 200ms cubic-bezier(0.22, 1, 0.36, 1), opacity 150ms ease-out`). `transition: all` accidentally animates layout properties (`height`, `padding`, `margin`) during responsive resizes and state changes."
+        }
+      ]
+    },
+    "apple-craft-and-interaction-physics": {
+      "id": "apple-craft-and-interaction-physics",
+      "display_name": "apple-craft-and-interaction-physics",
+      "description": "Enforces Apple Human Interface Guidelines (HIG) craft, Design Engineering, and 60/120Hz Interaction Physics across web, mobile, and desktop interfaces. Mandates Exhaustive UI State Matrices (loading skeleton, empty, partial error, offline, optimistic rollback), Zero Cumulative Layout Shift (CLS = 0.000 via strict geometry pre-reservation), Interruptible Spring Physics with velocity continuity, Keyboard and Focus Ring Mastery, and 120Hz compositor budgeting. Use when designing, building, refactoring, or auditing interactive UI components, animations, transitions, state machines, gesture handlers, modals, forms, or rendering pipelines — even if the user does not explicitly say \"Apple HIG\" or \"interaction physics\". Do NOT use for headless backend-only services, database DDL migrations, or non-interactive CLI batch scripts.",
+      "category": "apple_craft_and_ui",
+      "severity": "CRITICAL",
+      "guard_script": "apple_craft_guard.py",
+      "file_patterns": [
+        "*.tsx",
+        "*.jsx",
+        "*.vue",
+        "*.svelte",
+        "*.css",
+        "*.html"
+      ],
+      "execution_tier": "DETERMINISTIC",
+      "axioms_count": 23,
+      "axioms": [
+        {
+          "id": "AXIOM-1",
+          "title": "`loading_skeleton`:",
+          "assertion": "Render a pixel-matched skeleton whose outer dimensions, padding, and layout tracks match the resolved state to the exact pixel (`CLS = 0`)."
+        },
+        {
+          "id": "AXIOM-2",
+          "title": "`empty`:",
+          "assertion": "A first-class zero-state with clear contextual guidance and a prominent, actionable CTA (never a blank void or generic \"No items\")."
+        },
+        {
+          "id": "AXIOM-3",
+          "title": "`partial_error`:",
+          "assertion": "Isolate sub-region component failures with an inline retry affordance; secondary component failures must NEVER crash or blank the primary screen."
+        },
+        {
+          "id": "AXIOM-4",
+          "title": "`offline`:",
+          "assertion": "Surface a non-intrusive offline indicator, preserve cached content for reading, and queue non-destructive mutations locally."
+        },
+        {
+          "id": "AXIOM-5",
+          "title": "`optimistic_rollback`:",
+          "assertion": "Instantaneous visual feedback (< 16ms) and optimistic state transition (< 50ms) backed by an immutable rollback snapshot (`previousStateSnapshot`); if the server rejects, gracefully revert and restore the user's exact draft text into the active input."
+        },
+        {
+          "id": "AXIOM-6",
+          "title": "`loaded_fresh`:",
+          "assertion": "Canonical populated interactive state."
+        },
+        {
+          "id": "AXIOM-7",
+          "title": "`revalidating_stale`:",
+          "assertion": "Keep existing data fully interactive on screen while displaying a subtle, non-blocking refresh indicator (never flash full-screen loaders during background sync)."
+        },
+        {
+          "id": "AXIOM-8",
+          "title": "`terminal_error`:",
+          "assertion": "Full-screen or modal failure with actionable recovery options, retry button, and clear incident correlation tokens."
+        },
+        {
+          "id": "AXIOM-9",
+          "title": "Compile-Time Exhaustiveness:",
+          "assertion": "Banish combinatorial booleans (`isLoading`, `isError`). Model states as a Discriminated Union with a tag (`status`). Enforce `assertNever(state)` in the default branch of every state switch."
+        },
+        {
+          "id": "AXIOM-10",
+          "title": "Instant Interruption:",
+          "assertion": "Every animation and transition must be immediately interruptible at any point in its timeline by user input (pointer down, swipe, click, key press). Never lock interaction behind animation duration queues."
+        },
+        {
+          "id": "AXIOM-11",
+          "title": "Velocity Inheritance:",
+          "assertion": "When a motion is interrupted mid-flight, the new trajectory must inherit the instantaneous velocity ($v_0$) of the interrupted motion ($F = -kx - cv$). Snapping to 0 velocity or jumping to target geometry is a physical defect."
+        },
+        {
+          "id": "AXIOM-12",
+          "title": "Banning `transition: all`:",
+          "assertion": "Explicitly declare animated compositor properties (`transition: transform ...`). Never use `transition: all`, which captures layout properties during responsive resizes."
+        },
+        {
+          "id": "AXIOM-13",
+          "title": "Compositor-Only Properties:",
+          "assertion": "Animate strictly GPU-composited properties: `transform` (`translate3d`, `scale`, `rotate`) and `opacity`. Animating `height`, `width`, `top`, `left`, `margin`, `padding`, or `border-width` triggers document reflow and is strictly prohibited."
+        },
+        {
+          "id": "AXIOM-14",
+          "title": "Epsilon Convergence:",
+          "assertion": "Spring calculations and `requestAnimationFrame` loops must check convergence ($\\epsilon \\le 10^{-4}$) and immediately call `cancelAnimationFrame(handle)` when $|\\text{current} - \\text{target}| < \\epsilon$ and $|\\text{velocity}| < \\epsilon$."
+        },
+        {
+          "id": "AXIOM-15",
+          "title": "Respect Motion Preferences:",
+          "assertion": "Honor `@media (prefers-reduced-motion: reduce)` by immediately completing animations or degrading to instant opacity cross-fades."
+        },
+        {
+          "id": "AXIOM-16",
+          "title": "Focus Ring Discipline:",
+          "assertion": "Never suppress focus outlines (`outline: none`, `outline: 0`) without providing an explicit, high-contrast replacement. Enforce `:focus-visible` styling with a minimum 3:1 contrast ratio against the background, at least a 2px stroke, and `outline-offset: 2px` so the ring is never clipped."
+        },
+        {
+          "id": "AXIOM-17",
+          "title": "Modal & Drawer Focus Trapping & Restoration:",
+          "assertion": "Every slide-out drawer, bottom sheet, and modal dialog must declare `role=\"dialog\"` and `aria-modal=\"true\"`, trap `Tab` and `Shift+Tab` cycles inside the container, and programmatically restore focus to the trigger element that opened it upon dismissal (`Escape` or close button)."
+        },
+        {
+          "id": "AXIOM-18",
+          "title": "Roving Tabindex for Composite Controls:",
+          "assertion": "Composite widgets (toolbars, segmented controls, tablists, menus, data grids) must implement the Roving Tabindex pattern (`tabIndex={isActive ? 0 : -1}`) with Arrow-key navigation to eliminate tab-stop exhaustion."
+        },
+        {
+          "id": "AXIOM-19",
+          "title": "Screen Reader Semantics & ARIA Live Regions:",
+          "assertion": "Surface dynamic state changes and toast notifications via `aria-live=\"polite\"` or `role=\"status\"`. Declare `aria-busy=\"true\"` on containers undergoing async updates. Provide explicit accessible names (`aria-label` or visually hidden text) for all icon buttons."
+        },
+        {
+          "id": "AXIOM-20",
+          "title": "Zero Layout Thrashing:",
+          "assertion": "Never interleave DOM style mutations and layout reads (`getBoundingClientRect()`, `offsetWidth`, `offsetHeight`, `scrollTop`). Batch all layout reads first, then execute style mutations in `requestAnimationFrame`."
+        },
+        {
+          "id": "AXIOM-21",
+          "title": "Zero Main-Thread Blocking:",
+          "assertion": "Never execute synchronous `JSON.parse`/`JSON.stringify`, `localStorage` I/O, or heavy sorting over large arrays inside input, render, or scroll handlers. Offload to Web Workers or slice with `scheduler.yield()`."
+        },
+        {
+          "id": "AXIOM-22",
+          "title": "Touch Device Native Inertia:",
+          "assertion": "Never apply programmatic scroll hijacking or custom wheel smoothing to touch devices. Gate momentum scroll engines behind `!window.matchMedia('(pointer: coarse)').matches && window.innerWidth >= 768`."
+        },
+        {
+          "id": "AXIOM-23",
+          "title": "Rules",
+          "assertion": "1. **Ban bare `outline: none`.** Any removal of default focus outlines must be accompanied by an explicit, accessible `:focus-visible` ring declaring `outline: 2px solid <color>` and `outline-offset: 2px`. 2. **Ban `transition: all`.** Explicitly enumerate animated compositor properties (`transform`"
+        }
+      ]
+    },
+    "asset-provenance-guard": {
+      "id": "asset-provenance-guard",
+      "display_name": "asset-provenance-guard",
+      "description": "Enforce cryptographic SHA-256 asset integrity, explicit open-source license provenance (CC0, MIT, SIL OFL, Apache 2.0), and prevent unverified external CDN hotlinks in shipping builds.",
+      "category": "security_and_governance",
+      "severity": "HIGH",
+      "guard_script": "asset_provenance_guard.py",
+      "file_patterns": [
+        "assets/**",
+        "public/**",
+        "*.png",
+        "*.svg",
+        "*.jpg"
+      ],
+      "execution_tier": "DETERMINISTIC",
+      "axioms_count": 1,
+      "axioms": [
+        {
+          "id": "AXIOM-1",
+          "title": "Rules",
+          "assertion": "1. **Physical Provenance Ledger:** Every local image, model, font, or audio file in project asset directories must possess an entry in `.anti-slop/asset-ledger.jsonl`. 2. **Cryptographic SHA-256 Integrity:** Computed file SHA-256 hashes must match the recorded ledger hash exactly. 3. **Approved Perm"
+        }
+      ]
+    },
+    "backprop-guard": {
+      "id": "backprop-guard",
+      "display_name": "backprop-guard",
+      "description": "Backpropagate downstream code failures, test rejections, and slop findings into upstream rules, invariants, and AGENTS.md rather than merely patching downstream symptoms.",
+      "category": "agent_governance",
+      "severity": "MEDIUM",
+      "guard_script": "backprop_guard.py",
+      "file_patterns": [
+        "rules/**",
+        "AGENTS.md",
+        ".anti-slop/**"
+      ],
+      "execution_tier": "DETERMINISTIC",
+      "axioms_count": 1,
+      "axioms": [
+        {
+          "id": "AXIOM-1",
+          "title": "Rules",
+          "assertion": "1. **Backprop Before Local Merge:** Significant downstream failures must emit an upstream invariant candidate before PR completion. 2. **One Canonical Owner:** Every backpropagated lesson belongs in exactly one Single Source of Truth (SSOT). 3. **Preserve Generalization:** Formulate rules as general"
+        }
+      ]
+    },
+    "chaos-and-degradation-choreographer": {
+      "id": "chaos-and-degradation-choreographer",
+      "display_name": "chaos-and-degradation-choreographer",
+      "description": "Plan and review graceful degradation and controlled fault tests for dependencies, worker pools, retries, circuit breakers, and recovery. Use when an optional dependency may fail, a critical outcome becomes uncertain, or recovery could overload a service.",
+      "category": "sre_and_architecture",
+      "severity": "HIGH",
+      "guard_script": null,
+      "file_patterns": [
+        "src/**",
+        "services/**",
+        "k8s/**"
+      ],
+      "execution_tier": "SEMANTIC",
+      "axioms_count": 1,
+      "axioms": [
+        {
+          "id": "AXIOM-1",
+          "title": "Core Principle of chaos-and-degradation-choreographer",
+          "assertion": "Plan and review graceful degradation and controlled fault tests for dependencies, worker pools, retries, circuit breakers, and recovery. Use when an optional dependency may fail, a critical outcome becomes uncertain, or recovery could overload a service."
+        }
+      ]
+    },
+    "chromatic-drift-guard": {
+      "id": "chromatic-drift-guard",
+      "display_name": "chromatic-drift-guard",
+      "description": "Quantify chromatic saturation drift, OKLCH color space adherence, and eliminate AI category reflex traps (cheerful drift, warm-cream bands, purple-blue gradient clichés, dark-mode inertia).",
+      "category": "apple_craft_and_ui",
+      "severity": "MEDIUM",
+      "guard_script": "chroma_drift_guard.py",
+      "file_patterns": [
+        "*.css",
+        "*.tsx",
+        "*.jsx",
+        "tailwind.config.*"
+      ],
+      "execution_tier": "DETERMINISTIC",
+      "axioms_count": 1,
+      "axioms": [
+        {
+          "id": "AXIOM-1",
+          "title": "Rules",
+          "assertion": "1. **Cheerful Drift Bound:** Actual painted chroma must not exceed committed target chroma by more than $\\Delta C = 0.03$ without explicit commit-sheet justification. 2. **Committed Lightness Anchor:** Theme and body background lightness must align with the committed target lightness $L_{\\text{targe"
+        }
+      ]
+    },
+    "cognitive-load-and-attention-governor": {
+      "id": "cognitive-load-and-attention-governor",
+      "display_name": "cognitive-load-and-attention-governor",
+      "description": "Enforce cognitive bandwidth and attention economy invariants across AI agent outputs, human-in-the-loop interactions, pull request descriptions, standalone deliverables, and multi-agent swarm handoffs. Governs scannability metrics (time-to-point, max wall length, landing anchor density), terminal blocking-question placement, deliverable purity (zero opener/closer fluff), working memory list bounding (Miller's law <= 5), and non-regression constraint preservation.",
+      "category": "agent_governance",
+      "severity": "MEDIUM",
+      "guard_script": "attention_guard.py",
+      "file_patterns": [
+        "*.md",
+        "PR_DESCRIPTION.md",
+        "docs/**"
+      ],
+      "execution_tier": "DETERMINISTIC",
+      "axioms_count": 7,
+      "axioms": [
+        {
+          "id": "AXIOM-1",
+          "title": "Zero Opener Wrappers:",
+          "assertion": "Ban `Here is...`, `Below is...`, `Sure!`, `I've drafted...`"
+        },
+        {
+          "id": "AXIOM-2",
+          "title": "Zero Closer Offers:",
+          "assertion": "Ban `Let me know if...`, `Hope this helps!`, `Feel free to customize...`"
+        },
+        {
+          "id": "AXIOM-3",
+          "title": "Zero Lead-in Preamble:",
+          "assertion": "Ban transitional lines ending in `:` or `.` right before a fenced code or quote block."
+        },
+        {
+          "id": "AXIOM-4",
+          "title": "Time-to-Point ($TTP \\le 20$ words):",
+          "assertion": "Distance to the first bold anchor or verdict."
+        },
+        {
+          "id": "AXIOM-5",
+          "title": "Maximum Wall Length ($W_{max} \\le 60$ words):",
+          "assertion": "Longest paragraph without a bold word, bullet, or heading."
+        },
+        {
+          "id": "AXIOM-6",
+          "title": "Anchor Density ($\\rho_{anchor} \\ge 3.0$ per 100w):",
+          "assertion": "Visual anchors (`**...**`, `→`, `#`, `-`) every 30 words."
+        },
+        {
+          "id": "AXIOM-7",
+          "title": "Answer-First ($\\mathcal{A}_1 = 1$):",
+          "assertion": "Non-empty Line 1 starts with a bold takeaway or direct verdict."
+        }
+      ]
+    },
+    "comment-budget-guard": {
+      "id": "comment-budget-guard",
+      "display_name": "comment-budget-guard",
+      "description": "Enforce Comment-to-Code Ratios (CCR) and eliminate syntax play-by-play narration comments while strictly preserving formal safety contracts, JSDoc/TSDoc docstrings, and license headers.",
+      "category": "code_hygiene",
+      "severity": "HIGH",
+      "guard_script": "comment_budget_guard.py",
+      "file_patterns": [
+        "*.ts",
+        "*.tsx",
+        "*.js",
+        "*.jsx",
+        "*.py",
+        "*.go",
+        "*.rs"
+      ],
+      "execution_tier": "DETERMINISTIC",
+      "axioms_count": 1,
+      "axioms": [
+        {
+          "id": "AXIOM-1",
+          "title": "Rules",
+          "assertion": "1. **Silence over noise:** If a line of code is obvious to a competent engineer, narrating it with comments is banned. 2. **Contract preservation:** Never strip or discourage `// SAFETY:` proof annotations, formal docstrings, or license headers. 3. **Proportional budget:** High CCR on its own is cla"
+        }
+      ]
+    },
+    "context-window-and-token-economics-architect": {
+      "id": "context-window-and-token-economics-architect",
+      "display_name": "context-window-and-token-economics-architect",
+      "description": "Review LLM context selection, retrieval evidence, prompt cache boundaries, time to first token, and structured output contracts. Use for changes that affect what an LLM sees, reuses, or returns.",
+      "category": "agent_governance",
+      "severity": "MEDIUM",
+      "guard_script": null,
+      "file_patterns": [
+        "*.prompt",
+        "*.md",
+        "prompts/**",
+        "agents/**"
+      ],
+      "execution_tier": "SEMANTIC",
+      "axioms_count": 1,
+      "axioms": [
+        {
+          "id": "AXIOM-1",
+          "title": "Core Principle of context-window-and-token-economics-architect",
+          "assertion": "Review LLM context selection, retrieval evidence, prompt cache boundaries, time to first token, and structured output contracts. Use for changes that affect what an LLM sees, reuses, or returns."
+        }
+      ]
+    },
+    "cryptographic-agility-and-secret-lifecycle-gate": {
+      "id": "cryptographic-agility-and-secret-lifecycle-gate",
+      "display_name": "cryptographic-agility-and-secret-lifecycle-gate",
+      "description": "Review authenticated encryption, key-version migrations, encryption key retirement, and service-secret rotation. Use when a change affects cryptographic libraries, key storage, KMS permissions, or credential handling.",
+      "category": "security_and_governance",
+      "severity": "CRITICAL",
+      "guard_script": null,
+      "file_patterns": [
+        "*.env*",
+        "src/security/**",
+        "src/crypto/**",
+        "**/auth/**"
+      ],
+      "execution_tier": "SEMANTIC",
+      "axioms_count": 1,
+      "axioms": [
+        {
+          "id": "AXIOM-1",
+          "title": "Core Principle of cryptographic-agility-and-secret-lifecycle-gate",
+          "assertion": "Review authenticated encryption, key-version migrations, encryption key retirement, and service-secret rotation. Use when a change affects cryptographic libraries, key storage, KMS permissions, or credential handling."
+        }
+      ]
+    },
+    "decision-guard": {
+      "id": "decision-guard",
+      "display_name": "decision-guard",
+      "description": "Use when an AI agent is deriving metrics or complex explanations while a direct answer may exist, choosing a software architecture or technology stack, or making consequential technical decisions with long-term operational costs and uncertain assumptions. Do not use for narrow, fully specified implementation or routine bug fixes.",
+      "category": "sre_and_architecture",
+      "severity": "HIGH",
+      "guard_script": "decision_guard.py",
+      "file_patterns": [
+        "docs/**",
+        "adr/**",
+        "src/**"
+      ],
+      "execution_tier": "DETERMINISTIC",
+      "axioms_count": 1,
+      "axioms": [
+        {
+          "id": "AXIOM-1",
+          "title": "Rules",
+          "assertion": "1. **Goal before method.** Restate the wanted result separately from the user's proposed technique. 2. **Observed before derived.** Search available authoritative sources and native capabilities for a directly observable answer before designing proxies, formula chains, or new infrastructure. 3. **Ev"
+        }
+      ]
+    },
+    "demock-guard": {
+      "id": "demock-guard",
+      "display_name": "demock-guard",
+      "description": "Detect and eliminate test doubles on production paths, silent dummy fallbacks (e.g. SQLite fallbacks in Supabase apps), fail-open authorization gates, and placeholder stubs.",
+      "category": "code_hygiene",
+      "severity": "CRITICAL",
+      "guard_script": "demock_guard.py",
+      "file_patterns": [
+        "*.ts",
+        "*.js",
+        "*.py",
+        "src/**",
+        "services/**",
+        "lib/**"
+      ],
+      "execution_tier": "DETERMINISTIC",
+      "axioms_count": 1,
+      "axioms": [
+        {
+          "id": "AXIOM-1",
+          "title": "Rules",
+          "assertion": "1. **Fail-Closed by Default:** External dependency outages must never be silently masked with dummy fallback objects. Fail closed or degrade gracefully with visible caller-facing status. 2. **Zero Test Doubles in Runtime:** `Mock*`, `MagicMock`, `Fake*`, and test framework doubles are strictly banne"
+        }
+      ]
+    },
+    "design-system-drift-guard": {
+      "id": "design-system-drift-guard",
+      "display_name": "design-system-drift-guard",
+      "description": "Audit multi-surface applications for cross-route design system drift, unpoliced component variant explosions, orphaned single-route tokens, and keyboard focus-ring accessibility suppression.",
+      "category": "apple_craft_and_ui",
+      "severity": "MEDIUM",
+      "guard_script": "system_drift_guard.py",
+      "file_patterns": [
+        "*.tsx",
+        "*.jsx",
+        "*.css",
+        "components/**"
+      ],
+      "execution_tier": "DETERMINISTIC",
+      "axioms_count": 1,
+      "axioms": [
+        {
+          "id": "AXIOM-1",
+          "title": "Rules",
+          "assertion": "1. **Variant Budget Enforcement:** Each control kind (`button`, `input`, `select`, `card`, `badge`) must strictly adhere to its declared variant budget (default: 4 for button/card, 2 for select/input). 2. **Keyboard Focus Ring Protection:** Interactive elements must never suppress outline (`outline:"
+        }
+      ]
+    },
+    "deterministic-simulation-and-property-testing": {
+      "id": "deterministic-simulation-and-property-testing",
+      "display_name": "deterministic-simulation-and-property-testing",
+      "description": "Enforces Microsoft Research and AWS rigorous testing discipline. Use when testing distributed consensus, stateful workflows, actor concurrency, codecs/parsers, or untrusted boundaries using Property-Based Testing (fast-check, Hypothesis), Deterministic Simulation Testing (DST with virtual clocks and reproducible seeds), formal State-Machine Modeling with impossible states made unrepresentable, and Structure-Aware Fuzzing — even if they don't explicitly say \"deterministic simulation\". Do NOT use for trivial UI styling tweaks, simple static text changes, or routine non-consequential scripts.",
+      "category": "testing_and_simulation",
+      "severity": "HIGH",
+      "guard_script": "simulation_guard.py",
+      "file_patterns": [
+        "tests/**",
+        "*.test.*",
+        "*_test.*"
+      ],
+      "execution_tier": "DETERMINISTIC",
+      "axioms_count": 1,
+      "axioms": [
+        {
+          "id": "AXIOM-1",
+          "title": "Rules",
+          "assertion": "1. **Ban example-based tests as the sole verification of critical invariants.** Code that computes money, mutates critical state, or decodes untrusted input must include property-based or fuzz tests. 2. **Zero real wall-clock sleeps in simulation code.** `setTimeout`, `sleep()`, and `Date.now()` are"
+        }
+      ]
+    },
+    "distributed-consensus-and-concurrency-gate": {
+      "id": "distributed-consensus-and-concurrency-gate",
+      "display_name": "distributed-consensus-and-concurrency-gate",
+      "description": "Review concurrent writes, optimistic concurrency, idempotent delivery, distributed leases, leader election, clock assumptions, and database transaction boundaries. Use when a stale reader, duplicate request, partition, or paused worker could violate a data invariant.",
+      "category": "sre_and_architecture",
+      "severity": "CRITICAL",
+      "guard_script": null,
+      "file_patterns": [
+        "src/cluster/**",
+        "src/raft/**",
+        "src/concurrency/**"
+      ],
+      "execution_tier": "SEMANTIC",
+      "axioms_count": 1,
+      "axioms": [
+        {
+          "id": "AXIOM-1",
+          "title": "Core Principle of distributed-consensus-and-concurrency-gate",
+          "assertion": "Review concurrent writes, optimistic concurrency, idempotent delivery, distributed leases, leader election, clock assumptions, and database transaction boundaries. Use when a stale reader, duplicate request, partition, or paused worker could violate a data invariant."
+        }
+      ]
+    },
+    "finops-and-unit-economics-governor": {
+      "id": "finops-and-unit-economics-governor",
+      "display_name": "finops-and-unit-economics-governor",
+      "description": "Review cost per request, job, or tenant across cloud egress, API fan-out, retries, GPU usage, and model tokens. Use when an input or dependency failure can multiply paid work or when a proposed change cites cost savings.",
+      "category": "sre_and_architecture",
+      "severity": "MEDIUM",
+      "guard_script": null,
+      "file_patterns": [
+        "terraform/**",
+        "infra/**",
+        "src/queries/**"
+      ],
+      "execution_tier": "SEMANTIC",
+      "axioms_count": 1,
+      "axioms": [
+        {
+          "id": "AXIOM-1",
+          "title": "Core Principle of finops-and-unit-economics-governor",
+          "assertion": "Review cost per request, job, or tenant across cloud egress, API fan-out, retries, GPU usage, and model tokens. Use when an input or dependency failure can multiply paid work or when a proposed change cites cost savings."
+        }
+      ]
+    },
+    "future-scale-gate": {
+      "id": "future-scale-gate",
+      "display_name": "future-scale-gate",
+      "description": "Use before committing to hard-to-reverse foundations for a long-lived software product, language, runtime, data model, or platform; when current workload evidence is being used to dismiss credible growth requirements; or when a team wants to build for extreme future scale without proving which foundations matter. Separate future operating constraints from speculative infrastructure, compare lifetime costs, and test an evolution path. Skip routine reversible implementation and established, unchanged architecture decisions.",
+      "category": "sre_and_architecture",
+      "severity": "HIGH",
+      "guard_script": "future_scale_guard.py",
+      "file_patterns": [
+        "src/**",
+        "services/**",
+        "docs/adr/**"
+      ],
+      "execution_tier": "DETERMINISTIC",
+      "axioms_count": 1,
+      "axioms": [
+        {
+          "id": "AXIOM-1",
+          "title": "Core Principle of future-scale-gate",
+          "assertion": "Use before committing to hard-to-reverse foundations for a long-lived software product, language, runtime, data model, or platform; when current workload evidence is being used to dismiss credible growth requirements; or when a team wants to build for extreme future scale without proving which found"
+        }
+      ]
+    },
+    "grumpy-senior-staff-engineer": {
+      "id": "grumpy-senior-staff-engineer",
+      "display_name": "grumpy-senior-staff-engineer",
+      "description": "Transforms the agent into a battle-hardened, brutally honest, hype-allergic Grumpy Senior Staff Engineer. Use when you want ruthless code reviews, radical simplicity, boring battle-tested architecture, zero sycophancy, and code that will never page anyone at 3:00 AM — even if the user doesn't explicitly say \"grumpy engineer\" (e.g., \"roast my PR\", \"why is this code bad\", \"simplest way to solve X\", \"am I over-engineering this\", \"code review\", \"refactor this mess\"). Do NOT use for routine text formatting, documentation typos, or non-code requests.",
+      "category": "sre_and_architecture",
+      "severity": "CRITICAL",
+      "guard_script": "sre_guard.py",
+      "file_patterns": [
+        "*.ts",
+        "*.js",
+        "*.py",
+        "*.go",
+        "*.rs"
+      ],
+      "execution_tier": "DETERMINISTIC",
+      "axioms_count": 4,
+      "axioms": [
+        {
+          "id": "AXIOM-1",
+          "title": "Zero Sycophancy.",
+          "assertion": "Never say \"Great question!\", \"Interesting approach!\", \"Certainly!\", or \"I'd be happy to help!\" You are the final technical authority before production — not a customer service representative."
+        },
+        {
+          "id": "AXIOM-2",
+          "title": "Blunt, Dry, and Direct.",
+          "assertion": "Start immediately with the technical reality. If an idea is bad, state plainly *why* it is bad and what operational disaster it causes in six months."
+        },
+        {
+          "id": "AXIOM-3",
+          "title": "Grumpy but Constructive.",
+          "assertion": "The grumpiness comes from caring deeply about system stability and engineering craft. Sigh at bad patterns, roast unnecessary complexity, then hand over the cleanest implementation possible."
+        },
+        {
+          "id": "AXIOM-4",
+          "title": "No Fluff, No Emojis, No Exclamation Marks.",
+          "assertion": "Speak in terse, precise engineering prose. Never use marketing buzzwords or corporate filler."
+        }
+      ]
+    },
+    "honeypot-trap-guard": {
+      "id": "honeypot-trap-guard",
+      "display_name": "honeypot-trap-guard",
+      "description": "Detect automated AI slop and ungrounded LLM ingestion using active prompt canary traps, decoy issue references, and decoy template checkboxes while preventing self-blocking on template maintenance.",
+      "category": "security_and_governance",
+      "severity": "CRITICAL",
+      "guard_script": "honeypot_trap_guard.py",
+      "file_patterns": [
+        ".github/**",
+        "*.md",
+        "templates/**"
+      ],
+      "execution_tier": "DETERMINISTIC",
+      "axioms_count": 1,
+      "axioms": [
+        {
+          "id": "AXIOM-1",
+          "title": "Rules",
+          "assertion": "1. **Active trap over passive substring:** Never flag standard HTML comments that GitHub automatically populates into the PR text box. Only flag when an active instruction is explicitly triggered. 2. **Template maintenance isolation:** Never evaluate honeypot traps against diffs in `.github/` templa"
+        }
+      ]
+    },
+    "house-tell-guard": {
+      "id": "house-tell-guard",
+      "display_name": "house-tell-guard",
+      "description": "Enforce the physical Gate 0 commit-sheet, break agent internal house tells, and mandate category reflex inversion before any code generation.",
+      "category": "agent_governance",
+      "severity": "HIGH",
+      "guard_script": "house_tell_guard.py",
+      "file_patterns": [
+        "*.ts",
+        "*.js",
+        "*.py",
+        "*.go",
+        "*.rs",
+        "*.md"
+      ],
+      "execution_tier": "DETERMINISTIC",
+      "axioms_count": 2,
+      "axioms": [
+        {
+          "id": "AXIOM-1",
+          "title": "Rules",
+          "assertion": "1. **Gate 0 Physical Deliverable:** Zero code modification is permitted before `.anti-slop/commit-sheet.json` or `design/COMMIT-SHEET.md` exists and passes validation. 2. **The Seven Commitments:** The commit-sheet must provide non-generic, substantive answers for: - Peak / Signature Element (one se"
+        },
+        {
+          "id": "AXIOM-2",
+          "title": "House Tells Broken:",
+          "assertion": "Minimum 2 habits of the agent itself contractually barred with explicit replacements."
+        }
+      ]
+    },
+    "install-anti-slop": {
+      "id": "install-anti-slop",
+      "display_name": "install-anti-slop",
+      "description": "Install, configure, update, or upgrade vendored anti-slop Oxlint plugins. Use when adding anti-slop, picking up upstream rules or fixes, or migrating an existing installation while preserving local customizations.",
+      "category": "core_hygiene",
+      "severity": "HIGH",
+      "guard_script": "safe_install.py",
+      "file_patterns": [
+        "package.json",
+        "install.sh",
+        "Makefile"
+      ],
+      "execution_tier": "DETERMINISTIC",
+      "axioms_count": 1,
+      "axioms": [
+        {
+          "id": "AXIOM-1",
+          "title": "Core Principle of install-anti-slop",
+          "assertion": "Install, configure, update, or upgrade vendored anti-slop Oxlint plugins. Use when adding anti-slop, picking up upstream rules or fixes, or migrating an existing installation while preserving local customizations."
+        }
+      ]
+    },
+    "llm-eval-and-prompt-injection-fortress": {
+      "id": "llm-eval-and-prompt-injection-fortress",
+      "display_name": "llm-eval-and-prompt-injection-fortress",
+      "description": "Review how agents handle untrusted text, authorize tool requests, and protect private outputs. Use for retrieval, tool connectors, agent permissions, or evaluation of coding agents.",
+      "category": "security_and_governance",
+      "severity": "CRITICAL",
+      "guard_script": null,
+      "file_patterns": [
+        "prompts/**",
+        "src/ai/**",
+        "src/llm/**"
+      ],
+      "execution_tier": "SEMANTIC",
+      "axioms_count": 1,
+      "axioms": [
+        {
+          "id": "AXIOM-1",
+          "title": "Core Principle of llm-eval-and-prompt-injection-fortress",
+          "assertion": "Review how agents handle untrusted text, authorize tool requests, and protect private outputs. Use for retrieval, tool connectors, agent permissions, or evaluation of coding agents."
+        }
+      ]
+    },
+    "mandela-guard": {
+      "id": "mandela-guard",
+      "display_name": "mandela-guard",
+      "description": "Audit test suites, benchmarks, and evals for the 8 Mandela Leakage Patterns where tests confirm themselves, verifiers judge their own designs, or assertions are tautological.",
+      "category": "testing_and_simulation",
+      "severity": "CRITICAL",
+      "guard_script": "mandela_guard.py",
+      "file_patterns": [
+        "tests/**",
+        "*.test.*",
+        "*_test.*"
+      ],
+      "execution_tier": "DETERMINISTIC",
+      "axioms_count": 1,
+      "axioms": [
+        {
+          "id": "AXIOM-1",
+          "title": "Rules",
+          "assertion": "1. **External Ground Truth:** Assertions must evaluate computed outputs against independent expected constants, not self-derived values. 2. **Zero Swallowed AssertionErrors:** Never catch `AssertionError` in tests unless specifically testing an assertion library via an inverted test runner. 3. **No "
+        }
+      ]
+    },
+    "mechanical-sympathy-and-perf-gate": {
+      "id": "mechanical-sympathy-and-perf-gate",
+      "display_name": "mechanical-sympathy-and-perf-gate",
+      "description": "Enforces Apple and Google Systems mechanical sympathy, hardware-level cache/memory efficiency, 120Hz (8.3ms) frame budgets, bounded streaming, and empirical benchmark/flamegraph gates. Use when asked to speed up slow code, optimize CPU cache locality, fix 120Hz/60Hz UI frame drops or main-thread jank, eliminate heap allocations in hot loops, prevent OOMs by streaming large payloads, or validate performance optimizations with flamegraphs and benchmarks — even if the user doesn't explicitly say \"mechanical sympathy\" or \"perf gate\". Do NOT use for routine CSS color/styling tweaks, static documentation typos, or non-performance functional bug fixes.",
+      "category": "sre_and_architecture",
+      "severity": "HIGH",
+      "guard_script": "perf_guard.py",
+      "file_patterns": [
+        "*.ts",
+        "*.js",
+        "*.py",
+        "*.go",
+        "*.rs"
+      ],
+      "execution_tier": "DETERMINISTIC",
+      "axioms_count": 1,
+      "axioms": [
+        {
+          "id": "AXIOM-1",
+          "title": "Rules",
+          "assertion": "1. **FastDOM Phase Separation:** Separate geometric layout reads (`getBoundingClientRect()`, `offsetWidth`, `scrollTop`) from style mutations. Perform all reads first, then batch writes in `requestAnimationFrame`. 2. **Ban `transition: all`:** Enumerate explicit compositor properties (`transform`, `"
+        }
+      ]
+    },
+    "mechanical-sympathy-profiler": {
+      "id": "mechanical-sympathy-profiler",
+      "display_name": "mechanical-sympathy-profiler",
+      "description": "Enforces Meta and Google Systems performance engineering discipline—requiring empirical baseline and post-change measurements and hardware/memory mechanical sympathy before any optimization. Use when asked to speed up code, optimize slow SQL queries, reduce API P99 latency, fix high memory usage or OOMs, eliminate GC pauses, optimize loops, or add caching/memoization/indexes — even if the user doesn't explicitly say \"mechanical sympathy\" or \"profiler\". Do NOT use for purely visual CSS restyling, static documentation edits, or functional bug fixes unrelated to performance or resource consumption.",
+      "category": "sre_and_architecture",
+      "severity": "HIGH",
+      "guard_script": "profiler_guard.py",
+      "file_patterns": [
+        "*.ts",
+        "*.js",
+        "*.py",
+        "*.go",
+        "*.rs"
+      ],
+      "execution_tier": "DETERMINISTIC",
+      "axioms_count": 6,
+      "axioms": [
+        {
+          "id": "AXIOM-1",
+          "title": "Database & Query Path:",
+          "assertion": "Run or specify `EXPLAIN (ANALYZE, BUFFERS)` (or the storage engine's physical plan profiler) and record actual execution time (`ms`), `Shared Hit Blocks` vs `Shared Read Blocks`, scan type (`Seq Scan` vs `Index Scan` / `Index Only Scan`), and heap fetches before and after."
+        },
+        {
+          "id": "AXIOM-2",
+          "title": "Application & Compute Path:",
+          "assertion": "Run a deterministic micro-benchmark or profiler trace recording **`P50` / `P99` latency**, **throughput (`ops/sec`)**, and **memory allocations (`bytes/op`, `allocs/op`)** before and after."
+        },
+        {
+          "id": "AXIOM-3",
+          "title": "Revert-on-Noise Gate:",
+          "assertion": "If the post-change measurement fails to improve the bottleneck metric beyond measurement noise ($\\ge 15\\%$ reduction in P99 latency, allocations, or buffer reads) while adding complexity, **revert the change**."
+        },
+        {
+          "id": "AXIOM-4",
+          "title": "Zero Serial I/O in Loops:",
+          "assertion": "Never execute `await db.query()`, `await redis.get()`, or `await fetch()` inside a `for`/`while` loop."
+        },
+        {
+          "id": "AXIOM-5",
+          "title": "Batch & Pipeline:",
+          "assertion": "Coalesce $N$ point lookups or writes into a single bulk operation (`WHERE id = ANY($1::uuid[])`, `INSERT INTO ... SELECT * FROM UNNEST(...)`, Redis `MGET` / `pipeline()`, or request-scoped DataLoader coalescing) to collapse $N$ serial roundtrips into $1$ roundtrip."
+        },
+        {
+          "id": "AXIOM-6",
+          "title": "Rules",
+          "assertion": "1. **Explain the Number against hardware limits.** Always compare observed latency against the theoretical hardware floor (e.g., if a local in-memory function takes `40ms` to process 1,000 items, that is `40,000ns` per item—tens of thousands of wasted instructions or hidden I/O/allocation stalls). 2"
+        }
+      ]
+    },
+    "motion-runtime-guard": {
+      "id": "motion-runtime-guard",
+      "display_name": "motion-runtime-guard",
+      "description": "Validate runtime motion performance, long tasks, audio autoplay safety, and reduced-motion parity under DPR-2 retina conditions (1440x900@2x = 5.2MP) with 4x CPU throttling, filtering dev-server false failures.",
+      "category": "apple_craft_and_ui",
+      "severity": "MEDIUM",
+      "guard_script": "motion_runtime_guard.py",
+      "file_patterns": [
+        "*.tsx",
+        "*.jsx",
+        "*.css",
+        "*.js"
+      ],
+      "execution_tier": "DETERMINISTIC",
+      "axioms_count": 1,
+      "axioms": [
+        {
+          "id": "AXIOM-1",
+          "title": "Rules",
+          "assertion": "1. **Retina Resolution Mandate:** Motion performance benchmarks must be conducted at $\\text{DPR} \\ge 2.0$ ($1440 \\times 900 \\times 2 = 5.184\\text{MP}$) with 4x CPU throttling. 2. **FPS & Long-Task Bounds:** Minimum acceptable frame rate is $\\ge 50$ FPS; maximum individual long task is $\\le 50\\text{m"
+        }
+      ]
+    },
+    "observability-and-slo-architect": {
+      "id": "observability-and-slo-architect",
+      "display_name": "observability-and-slo-architect",
+      "description": "Transforms observability from passive logger.error statements into a Google Monarch & Dapper proactive telemetry architecture—mandating OpenTelemetry by default with unbroken W3C traceparent propagation across every I/O operation, RPC, message queue, and worker; emitting automated RED metrics for endpoints and USE metrics for resources without metric cardinality explosions; and gating production alerts on Google SRE Multi-Window Multi-Burn-Rate error budgets. Use when designing observability architectures, instrumenting APIs, background queues, outbox workers, or database drivers, adding Prometheus/OpenTelemetry/Monarch metrics, replacing high-cardinality metric labels (user_id in labels), defining SLIs/SLOs, or auditing code for broken trace contexts and alert noise.",
+      "category": "sre_and_architecture",
+      "severity": "HIGH",
+      "guard_script": "observability_guard.py",
+      "file_patterns": [
+        "src/telemetry/**",
+        "src/metrics/**",
+        "**/observability/**",
+        "*.ts",
+        "*.go"
+      ],
+      "execution_tier": "DETERMINISTIC",
+      "axioms_count": 1,
+      "axioms": [
+        {
+          "id": "AXIOM-1",
+          "title": "Rules",
+          "assertion": "1. **Mandatory Envelope Schema:** Async message schemas must define mandatory `traceparent: string` and `correlationId: string` metadata. 2. **Exemplar Binding:** When recording latency Histograms in sampled spans, attach the active `trace_id` and `span_id` as a Metric Exemplar. 3. **Deterministic L"
+        }
+      ]
+    },
+    "observability-and-slo-gate": {
+      "id": "observability-and-slo-gate",
+      "display_name": "observability-and-slo-gate",
+      "description": "Enforces Google Dapper and OpenTelemetry production observability architecture—strictly separating low-cardinality metrics (bounded label sets and P50/P95/P99 latency Histograms) from high-cardinality traces and structured logs, guaranteeing unbroken end-to-end W3C traceparent and correlation_id context propagation across HTTP, gRPC, message queues, outbox workers, and database queries, and gating releases with Multi-Window Burn-Rate SLOs. Use when instrumenting APIs, background jobs, queues, or database layers, adding Prometheus/OpenTelemetry/Datadog metrics, structured logging, distributed tracing, defining SLIs/SLOs, or auditing code for metric cardinality explosions (user_id in labels) and broken trace trees — even if the user doesn't explicitly say \"observability gate\". Do NOT use for purely static markdown formatting or offline one-off scripts with no runtime telemetry requirements.",
+      "category": "sre_and_architecture",
+      "severity": "HIGH",
+      "guard_script": "observability_guard.py",
+      "file_patterns": [
+        "src/telemetry/**",
+        "src/metrics/**",
+        "**/observability/**"
+      ],
+      "execution_tier": "DETERMINISTIC",
+      "axioms_count": 5,
+      "axioms": [
+        {
+          "id": "AXIOM-1",
+          "title": "Never",
+          "assertion": "place unbounded or high-cardinality values (`user_id`, `customer_id`, `account_id`, `request_id`, `trace_id`, `span_id`, `correlation_id`, `session_id`, `order_id`, `idempotency_key`, `email`, `ip_address`, `error.message`, or raw unparameterized URL paths like `req.url` / `req.path`) inside Metric "
+        },
+        {
+          "id": "AXIOM-2",
+          "title": "HTTP / gRPC Egress:",
+          "assertion": "Inject `traceparent`, `tracestate`, and `x-correlation-id` headers into every outbound request."
+        },
+        {
+          "id": "AXIOM-3",
+          "title": "Queues, Event Buses & Transactional Outboxes:",
+          "assertion": "Serialize `traceparent` and `correlation_id` into the message headers or outbox row columns at enqueue time (`propagation.inject`), and extract them inside the worker (`propagation.extract`) to start a child or linked `CONSUMER` span before executing business logic."
+        },
+        {
+          "id": "AXIOM-4",
+          "title": "Database Queries:",
+          "assertion": "Propagate active context to the database driver and annotate query spans with low-cardinality operation names (`SELECT orders.by_id`) or SQLcommenter metadata (`/*traceparent='00-...'*/`) without leaking literal SQL parameter values."
+        },
+        {
+          "id": "AXIOM-5",
+          "title": "Rules",
+          "assertion": "1. **Enforce a Metric Attribute Allowlist Decorator/Wrapper.** Wrap metric recorders (`counter.add`, `histogram.record`) in a strongly typed helper that accepts only compile-time bounded attribute keys and strips or rejects forbidden high-cardinality keys (`user_id`, `request_id`, `trace_id`, `email"
+        }
+      ]
+    },
+    "paranoid-principal-architect": {
+      "id": "paranoid-principal-architect",
+      "display_name": "paranoid-principal-architect",
+      "description": "Enforces a deeply skeptical, zero-trust, 10M-concurrent-user engineering mindset. Use when designing system architectures, generating backend/frontend code, refactoring critical paths, conducting adversarial security reviews, or diagnosing scale bottlenecks, race conditions, memory leaks, and EDoS vulnerabilities — even if they don't explicitly say \"paranoid architect\". Do NOT use for trivial UI cosmetic tweaks, simple text/markdown formatting, or routine non-consequential scripts.",
+      "category": "security_and_governance",
+      "severity": "CRITICAL",
+      "guard_script": "paranoid_guard.py",
+      "file_patterns": [
+        "*.ts",
+        "*.js",
+        "*.py",
+        "*.go",
+        "src/api/**",
+        "src/controllers/**",
+        "src/routes/**",
+        "src/auth/**"
+      ],
+      "execution_tier": "DETERMINISTIC",
+      "axioms_count": 1,
+      "axioms": [
+        {
+          "id": "AXIOM-1",
+          "title": "Rules",
+          "assertion": "1. **Parse at the boundary; never trust input.** Runtime schema validation (Zod, Valibot, or native type guards) is mandatory at every trust boundary. Strip unknown fields by default. 2. **Verify authorization at the data layer.** Never rely solely on UI visibility or middleware gates. Enforce resou"
+        }
+      ]
+    },
+    "pr-boundary-guard": {
+      "id": "pr-boundary-guard",
+      "display_name": "pr-boundary-guard",
+      "description": "Enforce Git provenance, branch topology, commit message conventions, PR template contracts, and logorrhea bounds. Use when preparing, reviewing, or triaging pull requests in local Git checkouts or automated CI pipelines.",
+      "category": "core_hygiene",
+      "severity": "MEDIUM",
+      "guard_script": "pr_boundary_guard.py",
+      "file_patterns": [
+        ".github/**",
+        "**/PR_TEMPLATE.md"
+      ],
+      "execution_tier": "DETERMINISTIC",
+      "axioms_count": 1,
+      "axioms": [
+        {
+          "id": "AXIOM-1",
+          "title": "Rules",
+          "assertion": "1. **Topology hygiene:** Never submit PRs directly from `main` or `master`. Always branch to an intent-revealing feature branch (`feat/`, `fix/`, `chore/`). 2. **Subject length discipline:** Limit commit subject lines to 100 characters max (warning at >72 chars). Rationale belongs in the commit body"
+        }
+      ]
+    },
+    "privacy-and-data-lineage-gate": {
+      "id": "privacy-and-data-lineage-gate",
+      "display_name": "privacy-and-data-lineage-gate",
+      "description": "Enforces Apple Privacy and Meta Data Infrastructure engineering discipline to protect user data from the system itself. Use when designing user data pipelines, processing PII/sensitive customer data, defining database schemas storing personal information, implementing GDPR/CCPA deletion lifecycles, or instrumenting analytics and telemetry sinks — even if they don't explicitly say \"privacy gate\". Do NOT use for external network DDoS mitigation, routine UI cosmetic styling, or non-user operational infrastructure.",
+      "category": "security_and_governance",
+      "severity": "CRITICAL",
+      "guard_script": "privacy_guard.py",
+      "file_patterns": [
+        "src/models/**",
+        "src/schema/**",
+        "src/user/**",
+        "db/**"
+      ],
+      "execution_tier": "DETERMINISTIC",
+      "axioms_count": 1,
+      "axioms": [
+        {
+          "id": "AXIOM-1",
+          "title": "Rules",
+          "assertion": "1. **Tainted PII Types everywhere.** Wrap emails, phone numbers, IP addresses, physical locations, and national IDs in nominal branded types and `Redacted<T>` containers. 2. **Ban unredacted serialization.** Override `toString()`, `toJSON()`, and runtime inspection hooks (`[util.inspect.custom]`) to"
+        }
+      ]
+    },
+    "re0-handoff-guard": {
+      "id": "re0-handoff-guard",
+      "display_name": "re0-handoff-guard",
+      "description": "Enforce NVIDIA Belcak et al. (2026) RSI Discovery & Paperthin Re0-Handoff contract. Compile dense, zero-slop State Notes (<=1500 tokens) and audit cold-read readiness via the Shower Test.",
+      "category": "agent_governance",
+      "severity": "HIGH",
+      "guard_script": "re0_handoff_guard.py",
+      "file_patterns": [
+        "*.md",
+        "notes/**",
+        "handoffs/**"
+      ],
+      "execution_tier": "DETERMINISTIC",
+      "axioms_count": 1,
+      "axioms": [
+        {
+          "id": "AXIOM-1",
+          "title": "Rules",
+          "assertion": "1. **Strict Token Ceiling:** State-notes must never exceed 1,500 tokens. 2. **Falsifiable Invariants:** Every entry in `PROVEN_INVARIANTS` must cite an executable verification command and digest. 3. **Discrete Single Action:** `NEXT_SINGLE_ACTION` must specify exactly one concrete file and verificat"
+        }
+      ]
+    },
+    "reduction-guard": {
+      "id": "reduction-guard",
+      "display_name": "reduction-guard",
+      "description": "Enforce the Musk 5-Step Reduction Algorithm and 10% Add-Back Ledger calibration gate. Question requirements, delete parts before optimizing, and track deletion calibration.",
+      "category": "code_hygiene",
+      "severity": "HIGH",
+      "guard_script": "reduction_guard.py",
+      "file_patterns": [
+        ".anti-slop/add-back-ledger.jsonl",
+        "src/**"
+      ],
+      "execution_tier": "DETERMINISTIC",
+      "axioms_count": 3,
+      "axioms": [
+        {
+          "id": "AXIOM-1",
+          "title": "Target Add-Back Rate:",
+          "assertion": "$10\\% \\le R \\le 25\\%$ (Aggressive, calibrated simplification)."
+        },
+        {
+          "id": "AXIOM-2",
+          "title": "Timid ($< 10\\%$):",
+          "assertion": "Deletions are too conservative."
+        },
+        {
+          "id": "AXIOM-3",
+          "title": "Reckless ($> 35\\%$):",
+          "assertion": "Deletions are careless and breaking active contracts."
+        }
+      ]
+    },
+    "repo-memory-and-invariant-steward": {
+      "id": "repo-memory-and-invariant-steward",
+      "display_name": "repo-memory-and-invariant-steward",
+      "description": "Maintains the repository's architectural memory and enforces invariant preservation across sessions. Use when syncing historical decision records into a living compact Invariant Ledger, checking PRs/branches for architectural drift, verifying Gate 0 invariant constraints, or validating formal Reassessment Triggers — even if they don't explicitly say \"invariant steward\". Do NOT use for routine cosmetic edits or non-consequential scripts.",
+      "category": "sre_and_architecture",
+      "severity": "CRITICAL",
+      "guard_script": "invariant_steward_guard.py",
+      "file_patterns": [
+        ".anti-slop/invariant-ledger.json",
+        "docs/adr/**"
+      ],
+      "execution_tier": "DETERMINISTIC",
+      "axioms_count": 1,
+      "axioms": [
+        {
+          "id": "AXIOM-1",
+          "title": "Rules",
+          "assertion": "1. **Deterministic Ledger Sync:** Historical records (`*record*.json`) must be parsed, deduplicated, and indexed by unique Invariant IDs (e.g. `INV-PARANOID-001`, `INV-ROLLOUT-002`). 2. **Token-Thrifty TOON Generation:** Every ledger sync must emit both a canonical JSON artifact (`.anti-slop/invaria"
+        }
+      ]
+    },
+    "root-fix-gate": {
+      "id": "root-fix-gate",
+      "display_name": "root-fix-gate",
+      "description": "Use when a coding agent is about to patch the same symptom across controllers, views, endpoints or files; a small behavior change causes a wide diff; a workaround may hide a wrong model, schema or domain boundary; or a user proposes a shortcut with uncertain downstream effects. Trace the causal owner and compare a coherent root correction against distributed patches before implementation or review. Skip narrow, localized fixes with an already established owner.",
+      "category": "sre_and_architecture",
+      "severity": "HIGH",
+      "guard_script": "root_fix_guard.py",
+      "file_patterns": [
+        "src/**",
+        "services/**"
+      ],
+      "execution_tier": "DETERMINISTIC",
+      "axioms_count": 1,
+      "axioms": [
+        {
+          "id": "AXIOM-1",
+          "title": "Rules",
+          "assertion": "1. **Goal is not a patch instruction.** Restate observable behavior separately from the proposed code modification. 2. **Trace writes as well as reads.** A presentation symptom can originate from a data contract, mapping, default, workflow, or authorization rule. 3. **Owner before consumers.** Locat"
+        }
+      ]
+    },
+    "safe-evolution-and-rollout-choreographer": {
+      "id": "safe-evolution-and-rollout-choreographer",
+      "display_name": "safe-evolution-and-rollout-choreographer",
+      "description": "Enforces Meta and Google SRE coexistence, wire compatibility, dark launches, feature flag lifecycle governance, and Strangler Fig migrations. Use when modifying network schemas, altering critical execution paths, introducing feature flags, refactoring legacy services, or planning rolling deployments — even if they do not explicitly say \"rollout choreographer\". Do NOT use for isolated internal helper refactors with no network, schema, or persistence boundary changes.",
+      "category": "sre_and_architecture",
+      "severity": "CRITICAL",
+      "guard_script": "rollout_guard.py",
+      "file_patterns": [
+        "proto/**",
+        "schemas/**",
+        "src/contracts/**",
+        "api/**"
+      ],
+      "execution_tier": "DETERMINISTIC",
+      "axioms_count": 1,
+      "axioms": [
+        {
+          "id": "AXIOM-1",
+          "title": "Rules",
+          "assertion": "1. **Tolerant Reader pattern across all boundaries:** Serializers and deserializers must ignore unknown fields rather than throwing errors. In protobuf/Thrift, field tags must never be renumbered or reused. In JSON/REST, new response fields must never break client parsers. 2. **Two-phase deprecation"
+        }
+      ]
+    },
+    "scientific-fault-isolation": {
+      "id": "scientific-fault-isolation",
+      "display_name": "scientific-fault-isolation",
+      "description": "Enforces Microsoft and Meta surgical debugging discipline to eliminate shotgun debugging, speculative code edits, and non-deterministic bug masking. Use when investigating mysterious production crashes, intermittent race conditions, flaky tests, Heisenbugs, silent data corruption, or regressions with unknown root causes — even if the user doesn't explicitly say \"scientific fault isolation\". Do NOT use for deterministic syntax/compile errors with obvious stack traces, greenfield feature implementation, or purely architectural layer-ownership decisions already isolated by root-fix-gate.",
+      "category": "sre_and_architecture",
+      "severity": "HIGH",
+      "guard_script": "fault_isolation_guard.py",
+      "file_patterns": [
+        "src/**",
+        "tests/**"
+      ],
+      "execution_tier": "DETERMINISTIC",
+      "axioms_count": 3,
+      "axioms": [
+        {
+          "id": "AXIOM-1",
+          "title": "Temporal Bisection:",
+          "assertion": "Use `git bisect run <reproducer_cmd>` to isolate regressions across commits in $\\lceil \\log_2(N) \\rceil$ steps."
+        },
+        {
+          "id": "AXIOM-2",
+          "title": "Spatial / Layer Bisection:",
+          "assertion": "Inspect the exact midpoint boundary of a data pipeline or call stack (e.g. API gateway payload vs. service input vs. SQL query parameter) to determine which half corrupted the invariant."
+        },
+        {
+          "id": "AXIOM-3",
+          "title": "Rules",
+          "assertion": "1. **Separate diagnostic probes from production commits.** Diagnostic logging, tracing hooks, and temporary assertions must never be left behind as permanent code clutter or confused with the causal fix. 2. **Change exactly one independent variable per experiment.** Mutating two configuration flags "
+        }
+      ]
+    },
+    "styleseed-guard": {
+      "id": "styleseed-guard",
+      "display_name": "styleseed-guard",
+      "description": "Enforce StyleSeed Cognitive Job Output Grammars, 4-tier token canon DAG, 18-role semantic graph completeness, 11 pairwise contrast gates, 6-role spatial rhythm hierarchy, and S1 multi-screen longitudinal drift bounds.",
+      "category": "apple_craft_and_ui",
+      "severity": "MEDIUM",
+      "guard_script": "styleseed_guard.py",
+      "file_patterns": [
+        "*.css",
+        "*.tsx",
+        "*.jsx",
+        "styles/**"
+      ],
+      "execution_tier": "DETERMINISTIC",
+      "axioms_count": 1,
+      "axioms": [
+        {
+          "id": "AXIOM-1",
+          "title": "Core Principle of styleseed-guard",
+          "assertion": "Enforce StyleSeed Cognitive Job Output Grammars, 4-tier token canon DAG, 18-role semantic graph completeness, 11 pairwise contrast gates, 6-role spatial rhythm hierarchy, and S1 multi-screen longitudinal drift bounds."
+        }
+      ]
+    },
+    "supply-chain-and-sbom-sentinel": {
+      "id": "supply-chain-and-sbom-sentinel",
+      "display_name": "supply-chain-and-sbom-sentinel",
+      "description": "Review new dependencies, lockfiles, install hooks, build attestations, SBOMs, and container base images. Use when package identity, artifact integrity, registry trust, or a change in release ownership needs verification.",
+      "category": "security_and_governance",
+      "severity": "CRITICAL",
+      "guard_script": null,
+      "file_patterns": [
+        "package.json",
+        "pnpm-lock.yaml",
+        "bun.lockb",
+        "bun.lock",
+        "go.mod",
+        "Cargo.lock"
+      ],
+      "execution_tier": "SEMANTIC",
+      "axioms_count": 1,
+      "axioms": [
+        {
+          "id": "AXIOM-1",
+          "title": "Core Principle of supply-chain-and-sbom-sentinel",
+          "assertion": "Review new dependencies, lockfiles, install hooks, build attestations, SBOMs, and container base images. Use when package identity, artifact integrity, registry trust, or a change in release ownership needs verification."
+        }
+      ]
+    },
+    "tagore-guard": {
+      "id": "tagore-guard",
+      "display_name": "tagore-guard",
+      "description": "Eliminate AI prose tells, significance inflation, copula avoidance, and soulless flattening across PR descriptions, commit messages, ADRs, documentation, and agent reasoning traces. Inspired by Rabindranath Tagore's philosophy of literary restraint, empirical specificity, and authentic voice over statistical predictability. Enforces a dual-direction attack (removing inflated tells + adding empirical stakes), an 8-dimension scoring rubric with non-negotiable mechanics (>=35/50) and substance (>=21/30) floors (pass >= 56/80), and repository voice calibration.",
+      "category": "agent_governance",
+      "severity": "HIGH",
+      "guard_script": "tagore_guard.py",
+      "file_patterns": [
+        "*.md",
+        "docs/**",
+        ".github/**"
+      ],
+      "execution_tier": "DETERMINISTIC",
+      "axioms_count": 1,
+      "axioms": [
+        {
+          "id": "AXIOM-1",
+          "title": "Rules",
+          "assertion": "1. **The Dual Subtotal Floor Invariant:** A deliverable must score $\\ge 56/80$ overall AND meet BOTH subtotal floors: $$\\text{Mechanics} \\ge 35/50 \\quad \\land \\quad \\text{Substance} \\ge 21/30$$ Passing mechanics while failing substance is rejected as `REVISE_SUBSTANCE` (\"Clean but soulless\"). Passin"
+        }
+      ]
+    },
+    "type-level-and-ast-slop-gate": {
+      "id": "type-level-and-ast-slop-gate",
+      "display_name": "type-level-and-ast-slop-gate",
+      "description": "Enforce type-system discipline, eliminate AST-level slop, quadratic reducers, eager array chaining, module mocking oracle erosion, and ungrounded type assertions in TypeScript and JavaScript. Use when auditing TypeScript architecture, reviewing PR diffs for type-safety escapes, configuring Oxlint anti-slop rules, or migrating legacy codebases to zero-slop standards.",
+      "category": "code_hygiene",
+      "severity": "CRITICAL",
+      "guard_script": "ast_slop_guard.py",
+      "file_patterns": [
+        "*.ts",
+        "*.tsx",
+        "*.js",
+        "*.jsx"
+      ],
+      "execution_tier": "DETERMINISTIC",
+      "axioms_count": 7,
+      "axioms": [
+        {
+          "id": "AXIOM-1",
+          "title": "No Evidence Fabrication",
+          "assertion": "Chained type assertions (`as unknown as T`, `as any as T`) are strictly prohibited. You must validate unverified input at system boundaries via declarative schemas (Zod, ArkType, Effect Schema, Valibot) rather than laundering types."
+        },
+        {
+          "id": "AXIOM-2",
+          "title": "Documented Invariant Justification",
+          "assertion": "Every non-const type assertion (`val as UserId`) MUST be immediately preceded by a `// SAFETY: <justification>` or `// INVARIANT: <justification>` comment explaining why the type contract is guaranteed. Bare assertions are rejected."
+        },
+        {
+          "id": "AXIOM-3",
+          "title": "Sublinear & Linear Reductions",
+          "assertion": "Accumulators inside `.reduce()` and `.reduceRight()` callbacks must NEVER be copied using `acc.concat()`, `Object.assign({}, acc)`, `acc.slice()`, or `acc.toSpliced()`. Always mutate the fresh, locally owned accumulator in-place (`acc.push()`, `Object.assign(acc, item)`) and return it."
+        },
+        {
+          "id": "AXIOM-4",
+          "title": "Lazy Iterator Pipelines",
+          "assertion": "Adjacent eager `.filter().map()` or `.map().filter()` chains over arrays are banned. Use native lazy iterator helpers (`.values().filter().map().toArray()`), a single `flatMap()`, or a single mutating reducer."
+        },
+        {
+          "id": "AXIOM-5",
+          "title": "Test Fidelity & Real Dependency Seams",
+          "assertion": "Module mocking (`vi.mock()`, `jest.mock()`, `unstable_mockModule()`) is banned. Unit and integration tests must inject real dependency seams, in-memory verified fakes, or lightweight containers rather than mocking entire modules."
+        },
+        {
+          "id": "AXIOM-6",
+          "title": "Boundary Decoding Over Ad-Hoc `typeof` Narrowing",
+          "assertion": "`typeof x === \"object\"` or `typeof x === \"string\"` checks scattered across business logic are rejected. Input must be parsed into branded domain types at I/O boundaries."
+        },
+        {
+          "id": "AXIOM-7",
+          "title": "Effect Architectural Purity",
+          "assertion": "In Effect codebases: - Direct `_tag` comparisons (`res._tag === \"Ready\"`) are banned in favor of `Match.value()` or `Predicate.isTagged()`. - Literal `_tag` construction (`{ _tag: \"Ready\", value }`) is banned in favor of tagged constructors (`Ready.make({ value })`). - Manual `_tag` branching in cat"
+        }
+      ]
+    },
+    "ui-and-copy-discipline": {
+      "id": "ui-and-copy-discipline",
+      "display_name": "ui-and-copy-discipline",
+      "description": "Frontend UI craftsmanship, typography, layout, copywriting, and WCAG 2.2 accessibility discipline. Enforces the 5 Craftsmanship Standards, Purpose Gates, and zero AI slop in web interfaces and marketing copy.",
+      "category": "apple_craft_and_ui",
+      "severity": "HIGH",
+      "guard_script": "contrast_guard.py",
+      "file_patterns": [
+        "*.tsx",
+        "*.jsx",
+        "*.html",
+        "*.vue",
+        "*.svelte"
+      ],
+      "execution_tier": "DETERMINISTIC",
+      "axioms_count": 1,
+      "axioms": [
+        {
+          "id": "AXIOM-1",
+          "title": "Core Principle of ui-and-copy-discipline",
+          "assertion": "Frontend UI craftsmanship, typography, layout, copywriting, and WCAG 2.2 accessibility discipline. Enforces the 5 Craftsmanship Standards, Purpose Gates, and zero AI slop in web interfaces and marketing copy."
+        }
+      ]
+    },
+    "verification-oracle-architect": {
+      "id": "verification-oracle-architect",
+      "display_name": "verification-oracle-architect",
+      "description": "Enforces high-fidelity, zero-mock verification architecture—replacing banned module mocks (vi.mock, jest.mock, unittest.mock.patch) and weak static happy-path tests with Verified In-Memory Fakes backed by Shared Contract Test Suites, Property-Based & Metamorphic Testing (fast-check, Hypothesis, proptest), and Seeded Deterministic Chaos Fault Injection. Use when writing unit/integration/contract tests, replacing mocks, testing financial/ledger math, parsers, serializers, or state machines, verifying idempotency and rollback under network failures, or auditing test suites for tautological assertions — even if the user doesn't explicitly say \"verification oracle\". Do NOT use for purely visual CSS adjustments or static markdown copy edits that have no executable behavioral contract.",
+      "category": "testing_and_simulation",
+      "severity": "CRITICAL",
+      "guard_script": "verification_oracle_guard.py",
+      "file_patterns": [
+        "tests/**",
+        "*.test.*",
+        "*_test.*"
+      ],
+      "execution_tier": "DETERMINISTIC",
+      "axioms_count": 6,
+      "axioms": [
+        {
+          "id": "AXIOM-1",
+          "title": "Mandatory Contract Parity:",
+          "assertion": "A Fake is illegal unless paired with a parameterized **Shared Contract Test Suite** (`describeRepositoryContract(factory)`) that executes identical behavioral assertions against both the `InMemoryFake` and the `RealAdapter`."
+        },
+        {
+          "id": "AXIOM-2",
+          "title": "Conservation Invariant:",
+          "assertion": "Splitting, allocating, discounting, or transferring funds must conserve exact integer minor units ($\\sum_{i} \\text{allocation}_i = \\text{principal}$) with zero cent creation or destruction."
+        },
+        {
+          "id": "AXIOM-3",
+          "title": "Invertibility (Roundtrip) Invariant:",
+          "assertion": "For every valid domain structure $x$, $\\text{parse}(\\text{format}(x)) \\equiv x$ and $\\text{deserialize}(\\text{serialize}(x)) \\equiv x$."
+        },
+        {
+          "id": "AXIOM-4",
+          "title": "Idempotency & Commutativity Invariant:",
+          "assertion": "Applying an idempotent mutation $N$ times yields the exact same state and response as applying it once: $f(f(s, op)) \\equiv f(s, op)$."
+        },
+        {
+          "id": "AXIOM-5",
+          "title": "Metamorphic Relation Invariant:",
+          "assertion": "When no closed-form oracle exists (e.g., search ranking, fee tiers, graph routing), assert how transforming the input predictably transforms the output (e.g., doubling all line-item quantities with a linear tax rate exactly doubles net tax; permuting arrival order of commutative ledger postings pres"
+        },
+        {
+          "id": "AXIOM-6",
+          "title": "Rules",
+          "assertion": "1. **Contract suites are parameterized by an adapter factory.** Write `export function runLedgerStorageContractSuite(name: string, createAdapter: () => Promise<LedgerStoragePort>)` once, and invoke it for `InMemoryLedgerStorage` in unit tests and `PostgresLedgerStorage` in integration tests. 2. **In"
+        }
+      ]
+    },
+    "zero-downtime-migration-gate": {
+      "id": "zero-downtime-migration-gate",
+      "display_name": "zero-downtime-migration-gate",
+      "description": "Enforces Google Spanner and Stripe zero-downtime data and contract evolution discipline across database schemas, API payloads, and rolling deployments. Use when authoring or reviewing SQL migrations (PostgreSQL/MySQL), modifying database columns/constraints/indexes, evolving JSON/Protobuf/GraphQL wire contracts, or orchestrating multi-stage production rollouts — even if the user doesn't explicitly say \"zero-downtime migration\". Do NOT use for ephemeral local-only test fixtures, greenfield schemas with zero active consumers, or purely cosmetic UI changes.",
+      "category": "sre_and_architecture",
+      "severity": "CRITICAL",
+      "guard_script": "migration_guard.py",
+      "file_patterns": [
+        "migrations/**",
+        "db/**",
+        "src/schema/**",
+        "*.sql"
+      ],
+      "execution_tier": "DETERMINISTIC",
+      "axioms_count": 4,
+      "axioms": [
+        {
+          "id": "AXIOM-1",
+          "title": "Phase 1 (Expand):",
+          "assertion": "Add nullable columns, new tables, or additive optional API fields alongside legacy structures. Begin dual-writing."
+        },
+        {
+          "id": "AXIOM-2",
+          "title": "Phase 2 (Migrate):",
+          "assertion": "Backfill historical data in throttled, idempotent batches; verify parity; switch reads from legacy to new structures."
+        },
+        {
+          "id": "AXIOM-3",
+          "title": "Phase 3 (Contract):",
+          "assertion": "Only after all $N-1$ instances and client caches are drained, remove dual-writes and drop legacy columns or fields."
+        },
+        {
+          "id": "AXIOM-4",
+          "title": "Rules",
+          "assertion": "1. **Ban direct `RENAME COLUMN`, `RENAME TABLE`, and in-place `ALTER COLUMN TYPE`.** Renaming or retyping in place immediately breaks running $N-1$ application pods that reference the old identifier or wire type. 2. **Enforce `CREATE INDEX CONCURRENTLY` (PostgreSQL) / `ALGORITHM=INPLACE, LOCK=NONE` "
+        }
+      ]
+    }
+  }
+}
