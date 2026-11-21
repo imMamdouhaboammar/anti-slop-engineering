@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "anti-slop": {
+      "command": "node",
+      "args": ["bin/mcp-server.js"],
+      "cwd": ".",
+      "env": {
+        "ANTI_SLOP_HOME": "."
+      }
+    }
+  }
+}

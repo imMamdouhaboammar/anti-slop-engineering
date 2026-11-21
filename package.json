@@ -10,7 +10,8 @@
     "sre-guard": "bin/cli.js",
     "rust-guard": "bin/cli.js",
     "toil-guard": "bin/cli.js",
-    "exec-guard": "bin/cli.js"
+    "exec-guard": "bin/cli.js",
+    "anti-slop-mcp": "bin/mcp-server.js"
   },
   "repository": {
     "type": "git",
@@ -23,6 +24,11 @@
   "files": [
     "bin",
     "scripts",
+    "drivers",
+    "neural",
+    "hooks",
+    "agents",
+    "rules",
     "cases",
     "schemas",
     "skills",
@@ -36,6 +42,9 @@
     "references",
     "assets",
     "SKILL.md",
+    "plugin.json",
+    "mcp_config.json",
+    "hooks.json",
     "marketplace.json",
     ".skills.json",
     "skills.sh.json",
@@ -46,6 +55,8 @@
   ],
   "scripts": {
     "start": "bun bin/cli.js",
+    "mcp": "node bin/mcp-server.js",
+    "neural": "node bin/cli.js neural",
     "postinstall": "node bin/postinstall.js",
     "build": "bun bin/cli.js build",
     "rust": "bun bin/cli.js rust",

@@ -1,0 +1,21 @@
+{
+  "name": "anti-slop-engineering",
+  "displayName": "Anti-Slop Engineering",
+  "version": "1.12.0",
+  "description": "Enterprise-grade agentic guard suite, high-speed polyglot MCP tools, SRE/AST verification engines, and neural invariant governance for Antigravity.",
+  "author": {
+    "name": "Mamdouh Aboammar",
+    "url": "https://github.com/imMamdouhaboammar"
+  },
+  "homepage": "https://github.com/imMamdouhaboammar/anti-slop-engineering",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/imMamdouhaboammar/anti-slop-engineering"
+  },
+  "logo": "assets/mark.svg",
+  "suggestedPrompts": [
+    "Run full anti-slop audit across all codebase files and diffs",
+    "Check AST slop, comment budget, and SRE KISS/DRY/YAGNI violations",
+    "Validate invariant ledger, Re0 state notes, and test oracle integrity"
+  ]
+}

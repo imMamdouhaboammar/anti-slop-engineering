@@ -200,6 +200,11 @@ const executableAliases = {
   "ruff": "ruff",
   "clippy": "clippy",
   "lint-rust": "clippy",
+  "mcp": "mcp",
+  "mcp-server": "mcp",
+  "neural": "neural",
+  "route": "neural",
+  "graph": "neural",
 };
 const args = process.argv.slice(2);
 if (executableAliases[invokedAs]) args.unshift(executableAliases[invokedAs]);
@@ -566,6 +571,24 @@ if (cmd === "build") {
     process.exit(1);
   }
   spawnProcess("node", [installOxlintScript, ...args.slice(1)], "install_oxlint");
+} else if (cmd === "mcp" || cmd === "mcp-server") {
+  const mcpServerScript = resolve(rootDir, "bin", "mcp-server.js");
+  spawnProcess("node", [mcpServerScript, ...args.slice(1)], "mcp_server");
+} else if (cmd === "neural") {
+  const sub = args[1] || "route";
+  if (sub === "graph") {
+    const graphFile = resolve(rootDir, "neural", "graph.json");
+    if (existsSync(graphFile)) {
+      console.log(readFileSync(graphFile, "utf8"));
+    }
+  } else {
+    const routerScript = resolve(rootDir, "neural", "router.js");
+    const queryIntent = args.slice(2).join(" ") || "Audit codebase for slop";
+    import(routerScript).then(({ routeNeuralQuery }) => {
+      const res = routeNeuralQuery({ intent: queryIntent });
+      console.log(JSON.stringify(res, null, 2));
+    });
+  }
 } else if (cmd === "bump") {
   runPythonScript(bumpVersionScript, args.slice(1), "bump_version");
 } else if (args.includes("--help") || args.includes("-h")) {

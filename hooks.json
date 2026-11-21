@@ -1,0 +1,35 @@
+{
+  "anti-slop-lifecycle": {
+    "SessionStart": [
+      {
+        "type": "command",
+        "command": "node \"hooks/hook_dispatch.mjs\" SessionStart",
+        "timeout": 10
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "write_file|edit_file",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"hooks/hook_dispatch.mjs\" PreToolUse write",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "write_file|edit_file",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"hooks/hook_dispatch.mjs\" PostToolUse write",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

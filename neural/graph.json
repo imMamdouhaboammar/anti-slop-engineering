@@ -1,0 +1,174 @@
+{
+  "version": "1.0.0",
+  "generated_at": "2026-11-21T12:00:00Z",
+  "name": "anti-slop-neural-graph",
+  "description": "Topological connection graph linking invariants, guard subsystems, subagents, skills, MCP tools, and CLI targets.",
+  "invariants": [
+    {
+      "id": "INV-SRE-KISS-NESTING",
+      "category": "sre_and_toil",
+      "description": "Control flow nesting depth must not exceed 4 levels; functions must not exceed 80 lines.",
+      "guard": "sre_guard",
+      "agent": "sre-invariant-guardian",
+      "mcp_tool": "anti_slop_sre_guard",
+      "skill": "grumpy-senior-staff-engineer",
+      "file_patterns": ["**/*.ts", "**/*.js", "**/*.py", "**/*.go", "**/*.rs"]
+    },
+    {
+      "id": "INV-SRE-TOIL-ELIMINATION",
+      "category": "sre_and_toil",
+      "description": "No flat retries or blind sleep synchronization; exponential backoff with full jitter required.",
+      "guard": "sre_guard",
+      "agent": "sre-invariant-guardian",
+      "mcp_tool": "anti_slop_sre_guard",
+      "skill": "agency-sre-site-reliability-engineer",
+      "file_patterns": ["**/*.ts", "**/*.js", "**/*.py", "**/*.go", "**/*.rs"]
+    },
+    {
+      "id": "INV-AST-CHAINED-CASTS",
+      "category": "ast_and_types",
+      "description": "Chained type assertions (as unknown as T) and ungrounded casts without // SAFETY: are forbidden.",
+      "guard": "ast_slop_guard",
+      "agent": "ast-slop-sentinel",
+      "mcp_tool": "anti_slop_ast_guard",
+      "skill": "type-level-and-ast-slop-gate",
+      "file_patterns": ["**/*.ts", "**/*.tsx"]
+    },
+    {
+      "id": "INV-AST-EMPTY-SPREADS",
+      "category": "ast_and_types",
+      "description": "Conditional empty object spreads ...(c ? { x } : {}) are forbidden; declare explicit optionals.",
+      "guard": "ast_slop_guard",
+      "agent": "ast-slop-sentinel",
+      "mcp_tool": "anti_slop_ast_guard",
+      "skill": "type-level-and-ast-slop-gate",
+      "file_patterns": ["**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx"]
+    },
+    {
+      "id": "INV-AST-REDUCER-ACCUMULATOR",
+      "category": "ast_and_types",
+      "description": "Quadratic accumulator object copying inside .reduce() is forbidden; mutate or use Object.fromEntries.",
+      "guard": "ast_slop_guard",
+      "agent": "ast-slop-sentinel",
+      "mcp_tool": "anti_slop_ast_guard",
+      "skill": "type-level-and-ast-slop-gate",
+      "file_patterns": ["**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx"]
+    },
+    {
+      "id": "INV-COMMENT-CCR-BOUND",
+      "category": "code_clarity",
+      "description": "Comment-to-Code Ratio must remain <= 0.35; syntax play-by-play comments are forbidden.",
+      "guard": "comment_budget_guard",
+      "agent": "anti-slop-orchestrator",
+      "mcp_tool": "anti_slop_comment_guard",
+      "skill": "comment-budget-guard",
+      "file_patterns": ["**/*.*"]
+    },
+    {
+      "id": "INV-APPLE-CRAFT-CLS",
+      "category": "frontend_and_ux",
+      "description": "Cumulative Layout Shift must equal 0.000; pre-reserve aspect ratios and scrollbar-gutter: stable.",
+      "guard": "apple_craft_guard",
+      "agent": "apple-craft-physicist",
+      "mcp_tool": "anti_slop_audit",
+      "skill": "apple-craft-and-interaction-physics",
+      "file_patterns": ["**/*.tsx", "**/*.jsx", "**/*.css", "**/*.html"]
+    },
+    {
+      "id": "INV-CONTRAST-WCAG",
+      "category": "frontend_and_ux",
+      "description": "Normal text must satisfy WCAG 2.2 AA contrast >= 4.5:1; large text >= 3.0:1.",
+      "guard": "contrast_guard",
+      "agent": "apple-craft-physicist",
+      "mcp_tool": "anti_slop_contrast_guard",
+      "skill": "ui-and-copy-discipline",
+      "file_patterns": ["**/*.tsx", "**/*.jsx", "**/*.css", "**/*.html"]
+    },
+    {
+      "id": "INV-DEMOCK-NO-DUMMY-DB",
+      "category": "runtime_safety",
+      "description": "Test doubles, mock databases, and silent SQLite dummy fallbacks are forbidden on production paths.",
+      "guard": "demock_guard",
+      "agent": "anti-slop-orchestrator",
+      "mcp_tool": "anti_slop_demock_guard",
+      "skill": "demock-guard",
+      "file_patterns": ["src/**/*.ts", "lib/**/*.ts", "app/**/*.ts", "**/*.py"]
+    },
+    {
+      "id": "INV-MANDELA-NO-TAUTOLOGY",
+      "category": "test_integrity",
+      "description": "Tautological assertions, circular mock verifications, and swallowed test assertions are forbidden.",
+      "guard": "mandela_guard",
+      "agent": "mandela-leakage-hunter",
+      "mcp_tool": "anti_slop_mandela_guard",
+      "skill": "mandela-guard",
+      "file_patterns": ["test*/**", "**/*.test.*", "**/*.spec.*"]
+    },
+    {
+      "id": "INV-REDUCTION-ADD-BACK",
+      "category": "architecture_hygiene",
+      "description": "Delete code and processes before optimizing; track add-back rate between 10% and 25%.",
+      "guard": "reduction_guard",
+      "agent": "anti-slop-orchestrator",
+      "mcp_tool": "anti_slop_reduction_guard",
+      "skill": "reduction-guard",
+      "file_patterns": ["**/*.*"]
+    },
+    {
+      "id": "INV-RE0-SHOWER-TEST",
+      "category": "agentic_context",
+      "description": "Agent state notes must remain <= 1500 tokens with discrete NEXT_SINGLE_ACTION passing the Shower Test.",
+      "guard": "re0_handoff_guard",
+      "agent": "re0-context-architect",
+      "mcp_tool": "anti_slop_re0_handoff",
+      "skill": "re0-handoff-guard",
+      "file_patterns": ["**/*.md", "**/state-note*.json"]
+    },
+    {
+      "id": "INV-PARANOID-IDEMPOTENCY",
+      "category": "concurrency_and_scale",
+      "description": "State mutating endpoints must require Idempotency-Key header backed by atomic distributed store.",
+      "guard": "paranoid_guard",
+      "agent": "paranoid-principal-architect",
+      "mcp_tool": "anti_slop_audit",
+      "skill": "paranoid-principal-architect",
+      "file_patterns": ["src/api/**", "src/controllers/**", "src/routes/**"]
+    },
+    {
+      "id": "INV-OBSERVABILITY-CARDINALITY",
+      "category": "telemetry_and_slo",
+      "description": "Metric dimensions must remain bounded: dynamic IDs in label keys are strictly prohibited.",
+      "guard": "observability_guard",
+      "agent": "paranoid-principal-architect",
+      "mcp_tool": "anti_slop_audit",
+      "skill": "observability-and-slo-architect",
+      "file_patterns": ["src/telemetry/**", "src/metrics/**"]
+    }
+  ],
+  "agents": [
+    "anti-slop-orchestrator",
+    "ast-slop-sentinel",
+    "sre-invariant-guardian",
+    "apple-craft-physicist",
+    "paranoid-principal-architect",
+    "mandela-leakage-hunter",
+    "re0-context-architect"
+  ],
+  "mcp_tools": [
+    "anti_slop_audit",
+    "anti_slop_diff_guard",
+    "anti_slop_sre_guard",
+    "anti_slop_ast_guard",
+    "anti_slop_comment_guard",
+    "anti_slop_contrast_guard",
+    "anti_slop_demock_guard",
+    "anti_slop_mandela_guard",
+    "anti_slop_reduction_guard",
+    "anti_slop_re0_handoff",
+    "anti_slop_invariant_steward",
+    "anti_slop_attention_guard",
+    "anti_slop_neural_route",
+    "anti_slop_backprop",
+    "anti_slop_forensic_hunter"
+  ]
+}
