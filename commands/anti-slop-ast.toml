@@ -1,0 +1,2 @@
+description = "Audit TypeScript/JavaScript files for type assertions and AST slop"
+prompt = "Inspect the target TypeScript or JavaScript files for AST-level slop patterns: eliminate chained assertions (as unknown as T / as any as T), ungrounded casts without // SAFETY:, quadratic reducer accumulator copies, conditional empty spreads, and test-oracle erosion via module mocking."
