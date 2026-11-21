@@ -12,7 +12,7 @@
 [![skills.sh](https://skills.sh/b/imMamdouhaboammar/anti-slop-engineering)](https://skills.sh/imMamdouhaboammar/anti-slop-engineering)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-Certified%20Skill-D97706?style=flat-square&logo=anthropic&logoColor=white)](https://claude.ai)
 
-[Install](#install) · [What it catches](#what-it-catches) · [Engines](#engines) · [Decision Guard](#decision-guard) · [Root-Fix Gate](#root-fix-gate) · [Future-Scale Gate](#future-scale-gate) · [Paranoid Architect](#the-paranoid-principal-architect) · [Forensic Bug Hunter](#forensic-bug-hunter-scanner) · [Execution Guard](#in-flight-execution-guard) · [AST Slop Gate](#type-level--ast-slop-gate) · [Install Anti-Slop](#install-anti-slop-oxlint--skill) · [Agent skill](#agent-skill) · [Anti-pattern catalog](#anti-pattern-catalog-217-patterns)
+[Install](#install) · [Antigravity plugin and MCP](#antigravity-agentic-plugin-and-mcp-architecture) · [Multi-Agent Portability](#multi-agent-portability--host-adapters) · [What it catches](#what-it-catches) · [Engines](#engines) · [Decision Guard](#decision-guard) · [Root-Fix Gate](#root-fix-gate) · [Future-Scale Gate](#future-scale-gate) · [Paranoid Architect](#the-paranoid-principal-architect) · [Forensic Bug Hunter](#forensic-bug-hunter-scanner) · [Execution Guard](#in-flight-execution-guard) · [AST Slop Gate](#type-level--ast-slop-gate) · [Agent skill](#agent-skill) · [Anti-pattern catalog](#anti-pattern-catalog-217-patterns)
 
 </div>
 
@@ -20,7 +20,7 @@
 
 AI coding agents ship at speed. They also systematically produce the same failure modes: skipped tests, dead code branches, flat retry loops, silent exception swallows, UI copy that reads like internal notes, and code structures that look correct but drift from the original intent. Anti-Slop Engineering is a multi-layer guard system that intercepts those patterns across your diff, your codebase, and your agent's decision loop — with zero dependencies on external services or proprietary APIs.
 
-It runs as a zero-install CLI, a native Rust/Go microservice pair, and a portable agent skill that drops into Claude Code, Gemini CLI, Cursor, Codex, and Windsurf. It enforces Google SRE principles (KISS, DRY, YAGNI, Fix Issues at Scale) through static analysis, not style preference.
+It runs as a zero-install CLI, a native Rust/Go microservice pair, an Antigravity Agentic Plugin with 15 native MCP tools and 7 specialized subagents, and a portable agent skill across 15 AI coding environments. It enforces Google SRE principles (KISS, DRY, YAGNI, Fix Issues at Scale) through static analysis, not style preference.
 
 ---
 
@@ -84,6 +84,81 @@ pipx install git+https://github.com/imMamdouhaboammar/anti-slop-engineering.git
 | `bunx anti-slop-engineering check-all` | **Full Repository Quality Suite**: Runs `make check-all` (linting, Python unit tests, Bun security tests, Rust cargo test & clippy, and Go SRE tests). | Full CI-level verification across all polyglot targets. |
 
 > **Note on Makefile vs CLI:** In `Makefile`, `make check` runs developer checks (`lint + test-verbose + guard + sre`), while CLI `anti-slop-engineering check` is the narrow git diff triage. For repository-wide verification, use `make check-all` or `bunx anti-slop-engineering check-all`.
+
+---
+
+## Antigravity agentic plugin and MCP architecture
+
+Anti-Slop Engineering operates as a native agentic plugin within the Antigravity ecosystem (`plugin.json`, `mcp_config.json`, `hooks.json`). It exposes 15 dedicated MCP tools via `bin/mcp-server.js` and 7 domain-specialized subagents in `agents/`.
+
+### Native MCP Tools
+
+| Tool | Purpose | Key Inputs |
+|---|---|---|
+| `anti_slop_audit` | Unified multi-guard triage runner compiling Markdown audit dossiers | `base`, `strict`, `restricted_env` |
+| `anti_slop_diff_guard` | Pre-commit git diff analyzer detecting scope creep, unverified additions, and token leakage | `base`, `staged`, `path` |
+| `anti_slop_sre_guard` | Google SRE engine enforcing KISS nesting ($\le 4$), DRY deduplication, and YAGNI pruning | `base`, `strict`, `path` |
+| `anti_slop_ast_guard` | Oxlint AST engine eliminating type-widening, chained assertions, and empty spreads | `base`, `path` |
+| `anti_slop_comment_guard` | Comment budget validator enforcing CCR $\le 0.35$ and banning syntax narration | `base`, `path` |
+| `anti_slop_contrast_guard` | WCAG 2.2 color contrast calculator and CSS color scanner | `foreground`, `background`, `scan_path` |
+| `anti_slop_demock_guard` | Runtime verification guard catching test mocks on production paths and phantom fallbacks | `base`, `path` |
+| `anti_slop_mandela_guard` | Test-oracle auditor eliminating self-grading assertions, circular mocks, and swallowed errors | `test_path`, `json` |
+| `anti_slop_reduction_guard` | Musk 5-step reduction analyzer maintaining `.anti-slop/add-back-ledger.jsonl` | `action`, `file` |
+| `anti_slop_re0_handoff` | NVIDIA Re0 context reset auditor verifying $\le 1,500$ token state notes and Shower Test | `action`, `state_note_path` |
+| `anti_slop_invariant_steward` | Architectural memory ledger maintaining `.anti-slop/invariant-ledger.json` | `action`, `base`, `file` |
+| `anti_slop_attention_guard` | Cognitive load auditor enforcing terminal blocking placement and deliverable purity | `file`, `text` |
+| `anti_slop_neural_route` | Graph router directing tasks to optimal specialist subagents and guards | `task_description` |
+| `anti_slop_backprop` | Rule backpropagation engine translating downstream test failures into upstream invariants | `finding` |
+| `anti_slop_forensic_hunter` | Heuristic vulnerability and bug scanner inspecting security boundaries | `target_dir` |
+
+### Specialized Subagents
+
+| Subagent | Role | Specialty |
+|---|---|---|
+| `anti-slop-orchestrator` | Lead autonomous coordinator | Multi-pass audits, topological blast radius, and backpropagation |
+| `apple-craft-physicist` | Apple HIG and interaction physicist | 120Hz compositor physics, CLS $= 0.000$, and WCAG 2.2 contrast |
+| `ast-slop-sentinel` | AST and type-level slop slayer | Chained type assertions, empty spreads, and quadratic reducers |
+| `mandela-leakage-hunter` | Test oracle integrity specialist | Eliminates self-grading tests, circular mocks, and swallowed assertions |
+| `paranoid-principal-architect` | Zero-trust & 10M concurrent user architect | Boundary schema parsing, distributed idempotency, and constant-time crypto |
+| `re0-context-architect` | NVIDIA Re0 context economics architect | Bounded state notes ($\le 1,500$ tokens) and Cold-Read Shower Test |
+| `sre-invariant-guardian` | Google SRE & toil elimination guardian | KISS nesting $\le 4$, function length $\le 80$ lines, and jittered backoff |
+
+---
+
+## Multi-Agent Portability & Host Adapters
+
+Anti-Slop Engineering maintains canonical skills in `skills/` and rules in `rules/AGENTS.md`, while thin adapters provide native integration across 15 AI agent environments:
+
+| Host Environment | Configuration & Manifest Files | Integration Tier |
+|---|---|---|
+| **Antigravity** | `plugin.json`, `mcp_config.json`, `hooks.json`, `agents/` | Native Agentic Plugin & MCP Server |
+| **Claude Code & Desktop** | `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, `commands/` | Full Plugin with Session Hooks |
+| **OpenAI Codex** | `.codex-plugin/plugin.json`, `hooks/claude-codex-hooks.json`, `skills/` | Full Plugin with Lifecycle Hooks |
+| **OpenCode & Kilo Code** | `opencode.json`, `.opencode/plugins/anti-slop.mjs`, `.opencode/command/` | Dual V1/V2 Server Plugin |
+| **Gemini CLI & Qwen Code** | `gemini-extension.json`, `rules/AGENTS.md`, `commands/*.toml` | Context Extension & Commands |
+| **Cursor IDE** | `.cursor/rules/anti-slop.mdc`, `hooks/cursor-hooks.json`, `scripts/cursor-hooks.js` | MDC Rules & Merged Hooks |
+| **Windsurf** | `.windsurf/rules/anti-slop.md` | Cascade Instruction Tier |
+| **Cline** | `.clinerules/anti-slop.md` | Instruction Tier |
+| **Kimi Code** | `.kimi-plugin/plugin.json`, `rules/AGENTS.md` | Native Plugin |
+| **Devin CLI** | `.devin-plugin/plugin.json`, `skills/` | Native Plugin |
+| **Qoder** | `.qoder-plugin/plugin.json`, `.qoder/rules/anti-slop.md`, `hooks/qoder-hooks.json` | Full Plugin with Event Hooks |
+| **Pi & Oh My Pi (omp)** | `pi-extension/index.js`, `hooks/` | Runtime Extension (`before_agent_start`) |
+| **Hermes Agent** | `plugin.yaml`, `__init__.py` | Native Plugin (`pre_llm_call`) |
+| **OpenClaw (ClawHub)** | `.openclaw/skills/`, `scripts/build-openclaw-skills.js` | Skill Distribution Package |
+| **GitHub Copilot CLI** | `.github/copilot-instructions.md`, `hooks/copilot-hooks.json` | Repository Instructions & Hooks |
+
+### Universal slash commands
+
+| Command | Action |
+|---|---|
+| `/anti-slop` | Run fast pre-commit diff triage across current branch changes |
+| `/anti-slop-audit` | Run full multi-guard audit across Diff, SRE, AST, Contrast, and Invariant guards |
+| `/anti-slop-sre` | Run Google SRE checks for KISS nesting, DRY deduplication, and YAGNI compliance |
+| `/anti-slop-ast` | Run AST-level type checks for ungrounded casts and chained type assertions |
+| `/anti-slop-contrast` | Verify WCAG 2.2 AA contrast ratios on UI colors and CSS tokens |
+| `/anti-slop-steward` | Inspect and sync architectural invariants against `.anti-slop/invariant-ledger.json` |
+
+See [`INSTALL.md`](INSTALL.md) for step-by-step setup instructions for each environment, and [`docs/agent-portability.md`](docs/agent-portability.md) for architectural details.
 
 ---
 
@@ -626,15 +701,20 @@ bunx anti-slop-engineering tagore --profile
 
 The agent skill wires Anti-Slop Engineering into your AI coding agent's context. Once installed, code changes are guided by the Seven Gates, the 217-pattern anti-pattern catalog, and the Google SRE enforcement rules.
 
-**Supported environments:**
+**Supported environments (see [INSTALL.md](INSTALL.md) for full guide):**
 
-| Environment | Skill directory |
+| Environment | Skill & Configuration Paths |
 |---|---|
-| Claude Code and Desktop | `~/.claude/skills/anti-slop-engineering` |
-| Antigravity / Gemini CLI | `~/.gemini/config/skills/anti-slop-engineering` |
-| Codex / OpenCode | `~/.codex/skills/anti-slop-engineering` |
-| Universal Agent Kernel | `~/.agents/skills/anti-slop-engineering` |
-| Cursor / Windsurf | `.cursor/rules/anti-slop.mdc` or `.cursor/skills/` |
+| Antigravity | `plugin.json`, `mcp_config.json`, `agents/`, `hooks.json` |
+| Claude Code & Desktop | `~/.claude/skills/anti-slop-engineering`, `.claude-plugin/plugin.json` |
+| OpenAI Codex | `~/.codex/skills/anti-slop-engineering`, `.codex-plugin/plugin.json` |
+| OpenCode & Kilo Code | `opencode.json`, `.opencode/plugins/anti-slop.mjs` |
+| Gemini CLI & Qwen Code | `~/.gemini/config/skills/anti-slop-engineering`, `gemini-extension.json` |
+| Cursor IDE & Windsurf | `.cursor/rules/anti-slop.mdc`, `.windsurf/rules/anti-slop.md` |
+| Cline & Devin CLI | `.clinerules/anti-slop.md`, `.devin-plugin/plugin.json` |
+| Kimi & Qoder | `.kimi-plugin/plugin.json`, `.qoder-plugin/plugin.json` |
+| Pi, Hermes & Copilot | `pi-extension/index.js`, `plugin.yaml`, `.github/copilot-instructions.md` |
+| Universal Agent Kernel & OpenClaw | `~/.agents/skills/anti-slop-engineering`, `.openclaw/skills/` |
 
 ```bash
 npx skills add imMamdouhaboammar/anti-slop-engineering

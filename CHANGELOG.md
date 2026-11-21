@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.13.0] - 2026-11-21
+
+### Added
+
+- Antigravity Agentic Plugin architecture (`plugin.json`, `mcp_config.json`, `hooks.json`) featuring a native Model Context Protocol (MCP) server with 15 specialized tools and 7 autonomous subagents (#260).
+- Universal multi-agent portability and host adapters supporting 15 AI agent environments: Antigravity, Claude Code, OpenAI Codex, OpenCode, Kilo Code, Gemini CLI, Qwen Code, Cursor, Windsurf, Cline, Kimi Code, Devin CLI, Qoder, Pi/omp, Hermes, OpenClaw, and GitHub Copilot (#261).
+- Universal slash commands (`/anti-slop`, `/anti-slop-audit`, `/anti-slop-sre`, `/anti-slop-ast`, `/anti-slop-contrast`, `/anti-slop-steward`) with cross-platform TOML and Markdown definitions (#261).
+- OpenClaw skill compiler and cross-platform agent activation hooks (`hooks/anti-slop-activate.*`, `hooks/anti-slop-instructions.*`, `hooks/anti-slop-runtime.*`, `hooks/anti-slop-subagent.*`) generating ClawHub-compliant skill bundles in `.openclaw/skills/` (#261).
+- Multi-agent adapter integration test suite (`tests/adapters-integration.test.js`) (#261).
+
+### Fixed
+
+- Remediated Oxlint AST and linter diagnostics across runtime hooks and drivers, eliminating runtime `typeof` checks and unused error bindings (#260, #261).
+- Hardened path traversal defenses and TOCTOU file race checks in OpenClaw skill builder and runtime hook readers against Bug Killer security audits (#260, #261).
+
 ## [1.12.0] - 2026-11-20
 
 ### Added

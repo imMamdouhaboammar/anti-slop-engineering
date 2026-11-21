@@ -1,7 +1,7 @@
 {
   "name": "anti-slop-engineering",
   "displayName": "Anti-Slop Engineering",
-  "version": "1.12.0",
+  "version": "1.13.0",
   "description": "Enterprise-grade agentic guard suite, high-speed polyglot MCP tools, SRE/AST verification engines, and neural invariant governance for Antigravity.",
   "author": {
     "name": "Mamdouh Aboammar",

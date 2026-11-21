@@ -17,8 +17,9 @@ describe("Multi-Agent Adapters Integration Test Suite", () => {
       expect(fs.existsSync(pluginPath)).toBe(true);
 
       const content = JSON.parse(fs.readFileSync(pluginPath, "utf8"));
+      const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"));
       expect(content.name).toBe("anti-slop-engineering");
-      expect(content.version).toBe("1.12.0");
+      expect(content.version).toBe(pkg.version);
       expect(Array.isArray(content.hooks)).toBe(true);
 
       for (const hookRef of content.hooks) {

@@ -28,7 +28,7 @@ from scripts.git_changeset import validate_base_ref
 
 _WORD = re.compile(r"\b[\w'-]+\b")
 _ANCHOR_LINE = re.compile(
-    r"^\s*(?:[-*→#>]|\d+\s*[.)→])",
+    r"^\s*(?:[-*→#>|]|\d+\s*[.)→])",
     re.M,
 )
 _BOLD = re.compile(r"\*\*.+?\*\*", re.S)

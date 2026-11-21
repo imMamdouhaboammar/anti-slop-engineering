@@ -18,7 +18,7 @@ from scripts.diff_lifecycle import load_hooks, run_hook
 from scripts.git_changeset import collect_changes, repository_root
 from scripts.retry_heuristics import INLINE_FLAT_RETRY, flat_retry_lines
 
-__version__ = '1.12.0'
+__version__ = '1.13.0'
 
 
 PATTERNS = [
@@ -41,12 +41,12 @@ PATTERNS = [
     ('AI_MARKETING_HYPE_COPY', 'review', r'(?i)<(?:p|span|h[1-6]|div|button)[^>]*>[^<]*(?:\b(?:unleash the (?:full )?power of ai|revolutionize your (?:workflow|business|experience)|next-gen(?:eration)? ai(?:-powered)? platform|supercharge your (?:productivity|development)|all-in-one ai solution)\b)[^<]*</'),
 ]
 COMPILED = [(rule_key, rule_lvl, re.compile(rule_str)) for rule_key, rule_lvl, rule_str in PATTERNS]
-TEST_PATH = re.compile(r'(?i)(?:^|/)(?:tests?|__tests__|specs?)(?:/|$)|(?:^|/)(?:test_[^/]+\.py|[^/]+[._](?:test|spec)\.[a-z0-9]+)$')
-GENERATED_PATH = re.compile(r'(?i)(?:^|/)(?:node_modules|vendor|dist|build|\.next|coverage|generated)(?:/|$)|(?:\.min\.js|\.lock)$')
-DOC_PATH = re.compile(r'(?i)(?:\.(?:md|markdown|rst|txt|adoc)$|(?:^|/)(?:docs?|documentation|\.github/ISSUE_TEMPLATE)/)')
-UI_PATH = re.compile(r'(?i)\.(?:tsx|jsx|html|vue|svelte|astro)$')
-SPECULATIVE_DOC_PATH = re.compile(r'(?i)(?:^|/)docs/.*(?:submission|dossier|reviewer_packet).*\.md$')
-HALLUCINATED_DOC_URL = re.compile(r'(?i)(?:https?://(?:platform|developers)\.openai\.com/plugins|\[[^\]]*\]\([^)]*(?:platform|developers)\.openai\.com/plugins[^)]*\))')
+TEST_PATH = re.compile(r'(?:^|/)(?:tests?|__tests__|specs?)(?:/|$)|(?:^|/)(?:test_[^/]+\.py|[^/]+[._](?:test|spec)\.[a-z0-9]+)$', re.IGNORECASE)
+GENERATED_PATH = re.compile(r'(?:^|/)(?:node_modules|vendor|dist|build|\.next|coverage|generated)(?:/|$)|(?:\.min\.js|\.lock)$', re.IGNORECASE)
+DOC_PATH = re.compile(r'(?:\.(?:md|markdown|rst|txt|adoc)$|(?:^|/)(?:docs?|documentation|\.github/ISSUE_TEMPLATE)/)', re.IGNORECASE)
+UI_PATH = re.compile(r'\.(?:tsx|jsx|html|vue|svelte|astro)$', re.IGNORECASE)
+SPECULATIVE_DOC_PATH = re.compile(r'(?:^|/)docs/.*(?:submission|dossier|reviewer_packet).*\.md$', re.IGNORECASE)
+HALLUCINATED_DOC_URL = re.compile(r'(?:https?://(?:platform|developers)\.openai\.com/plugins|\[[^\]]*\]\([^)]*(?:platform|developers)\.openai\.com/plugins[^)]*\))', re.IGNORECASE)
 META_PREAMBLE_AND_AFFORDANCE_NARRATION = re.compile(
     r'(?i)(?:'
     r'\b(?:without leaving (?:this|the) page|دون مغادرة الصفحة|شاهد (?:التجربة|الفيديو|هنا)|'
