@@ -3,13 +3,11 @@
 // Copyright (c) 2026 Mamdouh Aboammar <mamdouhfces1997@gmail.com> and contributors
 
 import process from "node:process";
-import { resolve, dirname } from "node:path";
+import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { existsSync, readFileSync } from "node:fs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const rootDir = resolve(__dirname, "..");
 
 const event = process.argv[2] || "unknown";
 const phase = process.argv[3] || "";
@@ -26,7 +24,7 @@ process.stdin.on("end", () => {
   if (input.trim()) {
     try {
       payload = JSON.parse(input.trim());
-    } catch (parseErr) {
+    } catch {
       payload = { raw: input.trim() };
     }
   }

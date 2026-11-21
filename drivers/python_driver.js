@@ -50,7 +50,7 @@ export function runPythonGuard(scriptName, args = [], options = {}) {
       let parsed = null;
       try {
         parsed = JSON.parse(bufOut.trim());
-      } catch (parseErr) {
+      } catch {
         parsed = null;
       }
       resolvePromise({ exitCode: code ?? 1, stdout: bufOut, stderr: bufErr, json: parsed });

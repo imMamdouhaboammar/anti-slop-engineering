@@ -15,7 +15,8 @@ const TEMPLATE = path.join(ROOT, 'hooks', 'cursor-hooks.json');
 const ANTI_SLOP_HOOK = /[\\/]hooks[\\/]anti-slop-[\w-]+\.(?:c?js|mjs)(?=["'\s]|$)/;
 
 function isAntiSlopHook(entry) {
-  return Boolean(entry && typeof entry.command === 'string' && ANTI_SLOP_HOOK.test(entry.command));
+  const cmd = String(entry?.command || '');
+  return Boolean(cmd && ANTI_SLOP_HOOK.test(cmd));
 }
 
 function hooksPath(scope) {
@@ -31,11 +32,11 @@ function readConfig(file) {
   } catch (e) {
     if (e.code !== 'ENOENT') throw e;
   }
-  if (!config || typeof config !== 'object' || Array.isArray(config)) {
+  if (!config || Array.isArray(config) || Object.prototype.toString.call(config) !== '[object Object]') {
     throw new Error(file + ' must contain a JSON object; nothing was changed');
   }
   if (config.hooks === undefined) config.hooks = {};
-  if (!config.hooks || typeof config.hooks !== 'object' || Array.isArray(config.hooks)) {
+  if (!config.hooks || Array.isArray(config.hooks) || Object.prototype.toString.call(config.hooks) !== '[object Object]') {
     throw new Error(file + ': hooks must be an object; nothing was changed');
   }
   for (const [event, entries] of Object.entries(config.hooks)) {

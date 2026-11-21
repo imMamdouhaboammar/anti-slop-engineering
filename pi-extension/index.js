@@ -8,7 +8,7 @@ const require = createRequire(import.meta.url);
 const { getAntiSlopInstructions } = require("../hooks/anti-slop-instructions.js");
 
 export default function activate(pi) {
-  if (!pi || typeof pi.on !== "function") return;
+  if (!pi?.on) return;
 
   pi.on("session_start", async (_event, ctx) => {
     if (ctx?.ui?.notify) {
@@ -19,7 +19,7 @@ export default function activate(pi) {
   pi.on("before_agent_start", async (event) => {
     const instructions = getAntiSlopInstructions();
     const sections = event?.systemPromptOptions?.sections;
-    if (sections && typeof sections === "object") {
+    if (sections && !Array.isArray(sections) && Object.prototype.toString.call(sections) === '[object Object]') {
       sections.anti_slop = instructions;
       return;
     }
