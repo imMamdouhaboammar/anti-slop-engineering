@@ -769,10 +769,11 @@ export function planWrites({ targets, scope, skills }) {
     const entries = pointerSkillPaths(targets, installedSelection, (t, skill) => {
       const installed = path.join(t.path, skill, 'SKILL.md')
       if (fs.existsSync(installed)) return installed
-      return skills.includes(skill) ? path.join(sourceForSkill(skill, source), 'SKILL.md') : null
+      return skill === CORE_SKILL || skills.includes(skill) ? path.join(sourceForSkill(skill, source), 'SKILL.md') : null
     })
     for (const [name, skillPaths] of entries) {
       const file = path.join(process.cwd(), name)
+      assertSafeFilePath(file)
       let existing = ''
       let exists = true
       try {
@@ -782,7 +783,7 @@ export function planWrites({ targets, scope, skills }) {
         exists = false
       }
       const { body, eol } = computeBlockBody(existing, pointerBlock(installedSelection, skillPaths))
-      const action = exists ? writeAction(file, body + eol) : 'create'
+      const action = exists ? (existing === body + eol ? 'no-op' : 'update') : 'create'
       const tracked = exists && isTrackedFile(file)
       pointers.push({ file, action, tracked, requiresConsent: action === 'update' && tracked })
     }
