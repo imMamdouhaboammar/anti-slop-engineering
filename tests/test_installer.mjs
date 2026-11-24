@@ -203,7 +203,7 @@ test('Installer: planWrites classifies selection writes without writing', () => 
     assert.equal(plan.selections.length, 1)
     assert.equal(plan.selections[0].file, selectionFile)
     assert.equal(plan.selections[0].action, 'create')
-    assert.equal(fs.existsSync(selectionFile), false)
+    assert.throws(() => fs.readFileSync(selectionFile, 'utf8'), { code: 'ENOENT' })
 
     const state = { format: 1, version: VERSION, scope: 'global', agents: ['codex'], skills: [CORE_SKILL] }
     fs.writeFileSync(selectionFile, JSON.stringify(state, null, 2) + '\n')
