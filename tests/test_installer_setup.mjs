@@ -726,6 +726,25 @@ for (const [agent, settings, tool] of additionalHookPreviews) {
   })
 }
 
+
+test('hook preview on Windows reports the platform instead of the checkout', () => {
+  inClaudeWorkspace((dir) => {
+    const shim = path.join(dir, 'win32-shim.cjs')
+    fs.writeFileSync(shim, 'Object.defineProperty(process, "platform", { value: "win32" })\n')
+    const shimBin = path.join(dir, 'shim-bin')
+    fs.mkdirSync(shimBin)
+    const python3 = spawnSync('/bin/sh', ['-c', 'command -v python3'], { encoding: 'utf8' }).stdout.trim()
+    fs.symlinkSync(python3, path.join(shimBin, 'python'))
+    const result = spawnSync(process.execPath, [cli, 'setup', '--agent=codex', '--skills=core', '--codex-hooks', '--dry-run', '--json'], {
+      cwd: dir, encoding: 'utf8', env: { ...process.env, HOME: dir, CI: 'true', NODE_OPTIONS: '--require ' + shim, PATH: shimBin + path.delimiter + process.env.PATH }, timeout: 12000,
+    })
+    assert.notEqual(result.status, 0, result.stdout)
+    assert.match(result.stderr, /not supported on Windows/)
+    assert.doesNotMatch(result.stderr, /no \.git directory/)
+    assert.equal(fs.existsSync(path.join(dir, '.codex')), false)
+  })
+})
+
 test('Removal preserves an unowned empty directory in the skill tree', () => {
   inClaudeWorkspace((dir) => {
     const run = (args) => runClaudePreview(dir, ['--agent=codex', '--json', ...args])
