@@ -325,11 +325,21 @@ function readSelection(target) {
   return state
 }
 
+function buildSelectionState(target, scope, skills, skillExists) {
+  const previous = readSelection(target)
+  const combined = new Set([...(previous?.skills || []), ...skills, CORE_SKILL])
+  const selected = [...combined].filter((id) => skillExists(id))
+  if (!selected.includes(CORE_SKILL)) {
+    selected.unshift(CORE_SKILL)
+  }
+  return { format: 1, version: VERSION, scope,
+    agents: target.agents.map((agent) => agent.id), skills: selected }
+}
+
 function writeSelections(targets, scope, skills) {
   const source = skillSourceDir()
   const states = []
   for (const target of targets) {
-    const previous = readSelection(target)
     const coreSkillPath = path.join(target.path, CORE_SKILL, 'SKILL.md')
     if (!fs.existsSync(coreSkillPath) && source) {
       try {
@@ -339,13 +349,8 @@ function writeSelections(targets, scope, skills) {
         // repair attempt
       }
     }
-    const combined = new Set([...(previous?.skills || []), ...skills, CORE_SKILL])
-    const selected = [...combined].filter((id) => fs.existsSync(path.join(target.path, id, 'SKILL.md')))
-    if (!selected.includes(CORE_SKILL)) {
-      selected.unshift(CORE_SKILL)
-    }
-    const state = { format: 1, version: VERSION, scope,
-      agents: target.agents.map((agent) => agent.id), skills: selected }
+    const state = buildSelectionState(target, scope, skills,
+      (id) => fs.existsSync(path.join(target.path, id, 'SKILL.md')))
     const file = path.join(target.path, SELECTION_FILE)
     const temporary = `${file}.${process.pid}.${randomUUID()}.tmp`
     try {
@@ -646,16 +651,7 @@ function scanMarkers(lines) {
   return { starts, ends }
 }
 
-export function writeBlock(entry, block) {
-  assertSafeFilePath(entry)
-  let existing = ''
-  let exists = true
-  try {
-    existing = fs.readFileSync(entry, 'utf8')
-  } catch (err) {
-    if (err && err.code !== 'ENOENT') throw err
-    exists = false
-  }
+function computeBlockBody(existing, block) {
   const crlf = (existing.match(/\r\n/g) || []).length
   const eol = crlf > (existing.match(/\n/g) || []).length - crlf ? '\r\n' : '\n'
   const lines = existing ? existing.split(/\r?\n/) : []
@@ -678,6 +674,20 @@ export function writeBlock(entry, block) {
     .join(eol)
     .replace(/^\r?\n+/, '')
     .trimEnd()
+  return { body, eol }
+}
+
+export function writeBlock(entry, block) {
+  assertSafeFilePath(entry)
+  let existing = ''
+  let exists = true
+  try {
+    existing = fs.readFileSync(entry, 'utf8')
+  } catch (err) {
+    if (err && err.code !== 'ENOENT') throw err
+    exists = false
+  }
+  const { body, eol } = computeBlockBody(existing, block)
 
   const helper = path.join(rootDir, 'scripts', 'safe_install.py')
   const expected = exists ? createHash('sha256').update(existing).digest('hex') : 'absent'
@@ -694,7 +704,7 @@ export function writeBlock(entry, block) {
   throw new Error('Python 3 is required for safe agent instruction updates')
 }
 
-export function updatePointers({ targets, skills }) {
+function pointerSkillPaths(targets, skills, skillFile) {
   const entries = new Map()
   const validSkills = new Set(listAvailableSkills())
   for (const t of targets) {
@@ -702,13 +712,22 @@ export function updatePointers({ targets, skills }) {
       if (!entries.has(a.entry)) entries.set(a.entry, new Map())
       const skillPaths = entries.get(a.entry)
       for (const skill of skills) {
-        const file = path.join(t.path, skill, 'SKILL.md')
-        if (!validSkills.has(skill) || skillPaths.has(skill) || !fs.existsSync(file)) continue
+        const file = skillFile(t, skill)
+        if (!file || !validSkills.has(skill) || skillPaths.has(skill)) continue
         if (readSkillMetadata(file)?.name !== skill) continue
-        skillPaths.set(skill, path.relative(process.cwd(), file).split(path.sep).join('/'))
+        const installed = path.join(t.path, skill, 'SKILL.md')
+        skillPaths.set(skill, path.relative(process.cwd(), installed).split(path.sep).join('/'))
       }
     }
   }
+  return entries
+}
+
+export function updatePointers({ targets, skills }) {
+  const entries = pointerSkillPaths(targets, skills, (t, skill) => {
+    const file = path.join(t.path, skill, 'SKILL.md')
+    return fs.existsSync(file) ? file : null
+  })
 
   const written = []
   for (const [name, skillPaths] of entries) {
@@ -717,6 +736,59 @@ export function updatePointers({ targets, skills }) {
     written.push(entry)
   }
   return written
+}
+
+function isTrackedFile(file) {
+  const result = spawnSync('git', ['ls-files', '--error-unmatch', '--', path.resolve(file)],
+    { cwd: process.cwd(), encoding: 'utf8' })
+  return result.status === 0
+}
+
+function writeAction(file, nextContent) {
+  let existing
+  try {
+    existing = fs.readFileSync(file, 'utf8')
+  } catch (err) {
+    if (err && err.code === 'ENOENT') return 'create'
+    throw err
+  }
+  return existing === nextContent ? 'no-op' : 'update'
+}
+
+export function planWrites({ targets, scope, skills }) {
+  const selections = targets.map((target) => {
+    const state = buildSelectionState(target, scope, skills,
+      (id) => skills.includes(id) || fs.existsSync(path.join(target.path, id, 'SKILL.md')))
+    const file = path.join(target.path, SELECTION_FILE)
+    return { file, action: writeAction(file, JSON.stringify(state, null, 2) + '\n'), state }
+  })
+  const pointers = []
+  if (scope === 'project') {
+    const installedSelection = [...new Set(selections.flatMap((s) => s.state.skills))]
+    const source = skillSourceDir()
+    const entries = pointerSkillPaths(targets, installedSelection, (t, skill) => {
+      const installed = path.join(t.path, skill, 'SKILL.md')
+      if (fs.existsSync(installed)) return installed
+      return skill === CORE_SKILL || skills.includes(skill) ? path.join(sourceForSkill(skill, source), 'SKILL.md') : null
+    })
+    for (const [name, skillPaths] of entries) {
+      const file = path.join(process.cwd(), name)
+      assertSafeFilePath(file)
+      let existing = ''
+      let exists = true
+      try {
+        existing = fs.readFileSync(file, 'utf8')
+      } catch (err) {
+        if (err && err.code !== 'ENOENT') throw err
+        exists = false
+      }
+      const { body, eol } = computeBlockBody(existing, pointerBlock(installedSelection, skillPaths))
+      const action = exists ? (existing === body + eol ? 'no-op' : 'update') : 'create'
+      const tracked = exists && isTrackedFile(file)
+      pointers.push({ file, action, tracked, requiresConsent: action === 'update' && tracked })
+    }
+  }
+  return { selections: selections.map(({ file, action }) => ({ file, action })), pointers }
 }
 
 export function updateAll({ locations = ['project', 'global'] } = {}) {
@@ -1019,6 +1091,7 @@ Options:
   --remove <skill>    Remove one installed optional skill (core cannot be removed); use --dry-run to preview
   --all               Select every available optional skill
   --overwrite         Refresh managed files, preserving local edits and conflicts
+  --update-instructions  Allow a noninteractive install to update existing tracked instruction files (AGENTS.md, CLAUDE.md, GEMINI.md)
   --dry-run           Simulate installation without writing files
   --claude-hooks      With --dry-run, preview local Claude hooks from this checkout
   --codex-hooks       With --dry-run, preview local Codex hooks from this checkout
@@ -1065,6 +1138,7 @@ Options:
   const presetArg = optionValue(args, ['preset', 'pack'])
   const skillsArg = args.includes('--all') ? 'all' : optionValue(args, ['skills', 'plugins', 'modules'])
   const overwrite = args.includes('--overwrite')
+  const updateInstructions = args.includes('--update-instructions')
   const dryRun = args.includes('--dry-run')
   const jsonMode = args.includes('--json')
   const selectionOnly = args.includes('--selection-only')
@@ -1162,11 +1236,18 @@ Options:
 
   if (dryRun) {
     const operations = installSkills({ skills: selectedSkills, targets, overwrite, dryRun: true })
-    const plan = { scope: resolvedScope, agents: selectedAgents, skills: selectedSkills, targets: targets.map((t) => t.path), operations }
+    const writes = planWrites({ targets, scope: resolvedScope, skills: selectedSkills })
+    const plan = { scope: resolvedScope, agents: selectedAgents, skills: selectedSkills, targets: targets.map((t) => t.path), operations, selections: writes.selections, pointers: writes.pointers }
     if (hookPreview) plan.hookPlan = previewAgentHooks(hookPreview, resolvedScope, selectedAgents, enforcementArg)
     if (jsonMode) console.log(JSON.stringify(plan, null, 2))
     else console.log('Dry-run installation plan:', plan)
     return 0
+  }
+
+  const writes = planWrites({ targets, scope: resolvedScope, skills: selectedSkills })
+  const consentNeeded = writes.pointers.filter((pointer) => pointer.requiresConsent)
+  if (consentNeeded.length && !interactive && !updateInstructions) {
+    throw new Error(`Refusing to update tracked instruction file(s) without explicit consent: ${consentNeeded.map((pointer) => pointer.file).join(', ')}. Re-run with --update-instructions to allow the update, or run the installer interactively.`)
   }
 
   const installed = installSkills({ skills: selectedSkills, targets, overwrite: overwrite || interactive })

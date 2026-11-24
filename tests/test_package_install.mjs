@@ -87,3 +87,55 @@ test("packaged CLI installs offline with or without native compilers on PATH", (
     assert.equal(existsSync(marker), false);
   }
 });
+
+test("packaged CLI requires consent before updating a tracked instruction file", (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "anti-slop-package-consent-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const archive = join(dir, "package.tgz");
+  output(run("bun", ["pm", "pack", "--filename", archive, "--quiet"], { cwd: root }));
+  const npm = output(run("/bin/sh", ["-c", "command -v npm"])).trim();
+
+  const project = join(dir, "project");
+  mkdirSync(project, { recursive: true });
+  writeFileSync(join(project, "package.json"), '{"name":"anti-slop-consent","private":true}\n');
+  const entry = join(project, "AGENTS.md");
+  const original = "# Project\n\nHand-written instructions.\n";
+  writeFileSync(entry, original);
+  const git = (args) => output(run("git", args, { cwd: project }));
+  git(["init", "-q", "."]);
+  git(["config", "user.email", "test@example.com"]);
+  git(["config", "user.name", "Test"]);
+  git(["add", "AGENTS.md"]);
+  git(["commit", "-qm", "init"]);
+
+  const options = {
+    cwd: project,
+    env: {
+      ...process.env,
+      HOME: project,
+      CI: "true",
+      npm_config_cache: join(project, "cache"),
+      npm_config_userconfig: join(project, ".npmrc"),
+    },
+  };
+  output(run(npm, ["install", "--offline", "--no-audit", "--no-fund", "--foreground-scripts", archive], options));
+  const cli = join(project, "node_modules", ".bin", packageName);
+
+  const dry = JSON.parse(output(run(cli, ["setup", "--agent=codex", "--skills=core", "--dry-run", "--json"], options)));
+  assert.equal(dry.pointers.length, 1);
+  assert.equal(dry.pointers[0].action, "update");
+  assert.equal(dry.pointers[0].tracked, true);
+  assert.equal(dry.pointers[0].requiresConsent, true);
+  assert.equal(readFileSync(entry, "utf8"), original);
+
+  const blocked = run(cli, ["setup", "--agent=codex", "--skills=core", "--json"], options);
+  assert.equal(blocked.status, 1);
+  assert.match(blocked.stderr, /--update-instructions/);
+  assert.equal(readFileSync(entry, "utf8"), original);
+  assert.equal(existsSync(join(project, ".codex")), false);
+
+  output(run(cli, ["setup", "--agent=codex", "--skills=core", "--update-instructions", "--json"], options));
+  const updated = readFileSync(entry, "utf8");
+  assert.match(updated, /anti-slop-engineering:start/);
+  assert.match(updated, /Hand-written instructions\./);
+});

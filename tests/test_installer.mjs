@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Mamdouh Aboammar <mamdouhfces1997@gmail.com> and contributors
 
 import assert from 'node:assert/strict'
+import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -9,10 +10,13 @@ import { test } from 'node:test'
 import {
   AGENTS,
   CORE_SKILL,
+  VERSION,
   installSkills,
   listAvailableSkills,
+  planWrites,
   resolveTargets,
   updateAll,
+  updatePointers,
   writeBlock,
 } from '../scripts/installer.mjs'
 
@@ -183,6 +187,63 @@ test('Installer: updateAll reports preserved customization conflicts', () => {
     assert.equal(report.results.length, 1)
     assert.deepEqual(report.results[0].changes.conflicted, ['SKILL.md'])
     assert.equal(fs.readFileSync(path.join(target.path, CORE_SKILL, 'SKILL.md'), 'utf8'), '# private edits\n')
+  } finally {
+    process.chdir(original)
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('Installer: planWrites classifies selection writes without writing', () => {
+  const tmpDir = makeTempDir('anti-slop-plan-selection-')
+  try {
+    const target = { path: tmpDir, agents: [{ id: 'codex' }] }
+    const selectionFile = path.join(tmpDir, '.anti-slop-selection.json')
+    const plan = planWrites({ targets: [target], scope: 'global', skills: [CORE_SKILL] })
+    assert.deepEqual(plan.pointers, [])
+    assert.equal(plan.selections.length, 1)
+    assert.equal(plan.selections[0].file, selectionFile)
+    assert.equal(plan.selections[0].action, 'create')
+    assert.throws(() => fs.readFileSync(selectionFile, 'utf8'), { code: 'ENOENT' })
+
+    const state = { format: 1, version: VERSION, scope: 'global', agents: ['codex'], skills: [CORE_SKILL] }
+    fs.writeFileSync(selectionFile, JSON.stringify(state, null, 2) + '\n')
+    assert.equal(planWrites({ targets: [target], scope: 'global', skills: [CORE_SKILL] }).selections[0].action, 'no-op')
+
+    fs.writeFileSync(selectionFile, JSON.stringify({ ...state, version: '0.0.0' }, null, 2) + '\n')
+    assert.equal(planWrites({ targets: [target], scope: 'global', skills: [CORE_SKILL] }).selections[0].action, 'update')
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true })
+  }
+})
+
+test('Installer: planWrites flags tracked instruction updates as requiring consent', () => {
+  const root = makeTempDir('anti-slop-plan-pointer-')
+  const original = process.cwd()
+  try {
+    process.chdir(root)
+    const git = (args) => spawnSync('git', args, { cwd: root, encoding: 'utf8' })
+    git(['init', '-q', '.'])
+    git(['config', 'user.email', 'test@example.com'])
+    git(['config', 'user.name', 'Test'])
+    const entry = path.join(root, 'AGENTS.md')
+    fs.writeFileSync(entry, '# Project\n\nHand-written instructions.\n')
+    git(['add', 'AGENTS.md'])
+
+    const target = resolveTargets('project', ['codex'])[0]
+    const plan = planWrites({ targets: [target], scope: 'project', skills: [CORE_SKILL] })
+    assert.equal(plan.pointers.length, 1)
+    assert.equal(plan.pointers[0].file, entry)
+    assert.equal(plan.pointers[0].action, 'update')
+    assert.equal(plan.pointers[0].tracked, true)
+    assert.equal(plan.pointers[0].requiresConsent, true)
+    assert.equal(fs.readFileSync(entry, 'utf8'), '# Project\n\nHand-written instructions.\n')
+    assert.equal(fs.existsSync(path.join(root, '.codex')), false)
+
+    installSkills({ skills: [CORE_SKILL], targets: [target], overwrite: true })
+    updatePointers({ targets: [target], skills: [CORE_SKILL] })
+    const settled = planWrites({ targets: [target], scope: 'project', skills: [CORE_SKILL] })
+    assert.equal(settled.pointers[0].action, 'no-op')
+    assert.equal(settled.pointers[0].requiresConsent, false)
   } finally {
     process.chdir(original)
     fs.rmSync(root, { recursive: true, force: true })
