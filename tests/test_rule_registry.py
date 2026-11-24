@@ -128,6 +128,19 @@ class RuleRegistryTests(unittest.TestCase):
         self.assertNotIn("out-of-scope", report["counts"])
         self.assertNotIn("planned", report["counts"])
 
+
+    def test_category_evidence_requirements_are_defined_before_any_assignment(self):
+        report = rule_registry.build_coverage({})
+        requirements = report["category_evidence_requirements"]
+        self.assertIn("tracked issue", requirements["planned"])
+        self.assertIn("fixture", requirements["planned"])
+        self.assertIn("recorded decision", requirements["out-of-scope"])
+        self.assertIn("rationale", requirements["out-of-scope"])
+        statuses = {pattern["status"] for pattern in report["patterns"].values()}
+        self.assertNotIn("planned", statuses)
+        self.assertNotIn("out-of-scope", statuses)
+        self.assertEqual(sum(report["counts"].values()), report["total_patterns"])
+
     def test_precision_denominator_is_reported_alongside_precision(self):
         detector = "sre_guard:SCALE_MISLEADING_HEALTH_CHECK"
         receipt = {detector: {"tp": 1, "fp": 1, "tn": 1, "fn": 0}}
