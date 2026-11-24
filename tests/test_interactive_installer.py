@@ -270,6 +270,82 @@ class InteractiveInstallerTests(unittest.TestCase):
         data = json.loads(proc.stdout.decode())
         self.assertEqual(data["skills"], ["anti-slop-engineering"])
 
+    def pick_enforcement(self, pick):
+        self.read_until("Enforcement mode (Codex hooks)")
+        os.write(self.master, b"e\n")
+        self.read_until("Enforcement mode [")
+        os.write(self.master, pick + b"\n")
+
+    def install_core_after(self, phrase):
+        self.read_until(phrase)
+        os.write(self.master, b"1\n")
+        self.read_until("Confirm installation")
+        os.write(self.master, b"y\n")
+        return self.process.wait(timeout=15)
+
+    def adapter_install(self):
+        adapter = REPO / "scripts/codex_hooks.py"
+        result = subprocess.run(
+            [shutil.which("python3"), str(adapter), "install", "--project", str(self.project), "--yes"],
+            capture_output=True, text=True, timeout=15,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_skills_only_selection_removes_adapter_hooks_and_preserves_unrelated(self):
+        import json
+
+        self.adapter_install()
+        settings = self.project / ".codex/hooks.json"
+        document = json.loads(settings.read_text())
+        unrelated = {"matcher": "Bash", "hooks": [{"type": "command", "command": "echo unrelated"}]}
+        document["hooks"]["PreToolUse"].append(unrelated)
+        settings.write_text(json.dumps(document))
+
+        self.pick_enforcement(b"4")
+        self.assertEqual(self.install_core_after("No agent hooks are configured"), 0)
+        remaining = json.loads(settings.read_text())
+        self.assertEqual(remaining["hooks"]["PreToolUse"], [unrelated])
+        self.assertNotIn("PostToolUse", remaining.get("hooks", {}))
+        self.assertTrue((self.project / ".codex/skills/anti-slop-engineering/SKILL.md").is_file())
+
+        before = settings.read_bytes()
+        import fcntl
+        import pty
+        import struct
+        import termios
+
+        os.close(self.master)
+        self.master, slave = pty.openpty()
+        fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 24, 42, 0, 0))
+        self.process = subprocess.Popen(
+            [shutil.which("node"), str(REPO / "scripts/installer.mjs"), "--agent=codex"],
+            stdin=slave, stdout=slave, stderr=slave, cwd=self.project,
+            env={**os.environ, "HOME": str(self.project), "CI": "", "NO_COLOR": "1"},
+        )
+        os.close(slave)
+        self.pick_enforcement(b"4")
+        self.assertEqual(self.install_core_after("No agent hooks are configured"), 0)
+        self.assertEqual(settings.read_bytes(), before)
+
+    def test_skills_only_selection_on_fresh_project_writes_no_hook_file(self):
+        self.pick_enforcement(b"skills-only")
+        self.assertEqual(self.install_core_after("Enforcement (skills-only)"), 0)
+        self.assertFalse((self.project / ".codex/hooks.json").exists())
+        self.assertTrue((self.project / ".codex/skills/anti-slop-engineering/SKILL.md").is_file())
+
+    def test_unsupported_mode_selection_applies_nothing(self):
+        self.pick_enforcement(b"1")
+        self.assertEqual(self.install_core_after("does not claim strict failure blocking"), 0)
+        self.assertFalse((self.project / ".codex/hooks.json").exists())
+        self.assertTrue((self.project / ".codex/skills/anti-slop-engineering/SKILL.md").is_file())
+
+    def test_cancelling_after_enforcement_selection_writes_nothing(self):
+        self.pick_enforcement(b"4")
+        self.read_until("Core only")
+        os.write(self.master, b"q\n")
+        self.assertNotEqual(self.process.wait(timeout=8), 0)
+        self.assertFalse((self.project / ".codex").exists())
+
 
 @unittest.skipUnless(os.name == "posix" and shutil.which("node"), "PTY and Node are required")
 class InteractiveEnforcementTests(unittest.TestCase):

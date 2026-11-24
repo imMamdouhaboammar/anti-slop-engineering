@@ -856,6 +856,7 @@ export async function promptForSkills(modules, targets, input = process.stdin, o
   let activeScope = setup.scope
   let activeAgents = setup.agents
   let activeTargets = targets
+  let activeEnforcement = setup.enforcement || null
   try {
     while (true) {
       output.write('\nAnti-Slop Engineering setup (Core is required)\n')
@@ -863,6 +864,7 @@ export async function promptForSkills(modules, targets, input = process.stdin, o
       output.write('  p. Role presets\n')
       output.write('  g. Domain packs\n')
       if (setup.allowTargetChange) output.write('  t. Change agents/scope\n')
+      if (activeScope === 'project' && activeAgents.includes('codex')) output.write('  e. Enforcement mode (Codex hooks)\n')
       output.write('  q. Cancel\n')
       const mode = (await ask('Choose installation: '))?.trim().toLowerCase()
       if (mode == null || mode === 'q') return null
@@ -886,6 +888,33 @@ export async function promptForSkills(modules, targets, input = process.stdin, o
         activeScope = scopeInput || activeScope
         activeAgents = nextAgents
         activeTargets = resolveTargets(activeScope, activeAgents)
+        continue
+      }
+      if (mode === 'e' && activeScope === 'project' && activeAgents.includes('codex')) {
+        output.write('\nCodex hook enforcement (the plan shows the effective capability):\n')
+        ENFORCEMENT_MODES.forEach((name, index) => output.write(`  ${index + 1}. ${name}\n`))
+        output.write('  0. None (adapter default)\n')
+        output.write(`  Current: ${activeEnforcement || 'none'}\n`)
+        const pick = (await ask('Enforcement mode [1-4, name, 0 none, Enter keep]: '))?.trim().toLowerCase()
+        if (pick == null) return null
+        if (pick) {
+          const chosen = pick === '0' || pick === 'none' ? null
+            : /^\d+$/.test(pick) ? ENFORCEMENT_MODES[Number(pick) - 1]
+            : ENFORCEMENT_MODES.includes(pick) ? pick : undefined
+          if (chosen === undefined) {
+            output.write(`Unknown enforcement mode: ${pick}; keeping previous selection\n`)
+            continue
+          }
+          activeEnforcement = chosen
+          if (chosen) {
+            const plan = enforcementPlan('codex', chosen)
+            output.write(`  Enforcement (${plan.requested}): ${plan.capability}\n`)
+            if (plan.reason) output.write(`  Reason: ${plan.reason}\n`)
+            if (!plan.supported) output.write('  This mode will not be applied; the installation continues without it.\n')
+          } else {
+            output.write('  Enforcement: none (adapter default)\n')
+          }
+        }
         continue
       }
       if (!['1', '2', '3', 'p', 'g'].includes(mode)) {
@@ -969,8 +998,8 @@ export async function promptForSkills(modules, targets, input = process.stdin, o
       output.write(`\nInstallation plan:\n  Required: ${CORE_SKILL}\n`)
       output.write(`  Optional: ${skills.filter((skill) => skill !== CORE_SKILL).join(', ') || '(none)'}\n`)
       activeTargets.forEach((target) => output.write(`  Target: ${target.path}\n`))
-      if (setup.enforcement && activeScope === 'project' && activeAgents.includes('codex')) {
-        const hookPlan = previewAgentHooks('codex', activeScope, activeAgents, setup.enforcement)
+      if (activeEnforcement && activeScope === 'project' && activeAgents.includes('codex')) {
+        const hookPlan = previewAgentHooks('codex', activeScope, activeAgents, activeEnforcement)
         output.write(`  Codex hook settings: ${hookPlan.settings}\n`)
         if (hookPlan.requires) output.write(`  Requires: ${hookPlan.requires}\n`)
         output.write(`  Enforcement (${hookPlan.enforcement.requested}): ${hookPlan.enforcement.capability}\n`)
@@ -989,7 +1018,7 @@ export async function promptForSkills(modules, targets, input = process.stdin, o
       if (confirmation == null || confirmation === 'q') return null
       if (confirmation === 'b') continue
       if (confirmation === 'y' || confirmation === 'yes') {
-        return { skills, targets: activeTargets, scope: activeScope, agents: activeAgents }
+        return { skills, targets: activeTargets, scope: activeScope, agents: activeAgents, enforcement: activeEnforcement }
       }
       output.write('Installation cancelled before any files were changed\n')
       return null
@@ -1070,6 +1099,23 @@ function previewAgentHooks(agent, scope, agents, enforcement = null) {
     throw new Error(preview.stderr?.trim() || preview.error?.message || label + ' hook preview failed')
   }
   return { ...JSON.parse(preview.stdout), stages, requires, enforcement: enforcementPlan(agent, enforcement) }
+}
+
+function applyCodexEnforcement(mode) {
+  const plan = enforcementPlan('codex', mode)
+  if (!plan.supported) return { applied: false, requested: mode, reason: plan.reason }
+  // The verified skills-only state is "no adapter hooks configured", so
+  // applying it removes the adapter's own hook groups through the adapter's
+  // configure path, which preserves unrelated hooks.
+  const adapter = path.join(rootDir, 'scripts', 'codex_hooks.py')
+  const result = spawnSync('python3', [adapter, 'uninstall', '--project', fs.realpathSync(process.cwd()), '--yes'], {
+    encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'pipe'],
+  })
+  if (result.error || result.status !== 0) {
+    throw new Error(result.stderr?.trim() || result.error?.message || 'Codex hook configuration failed')
+  }
+  const outcome = JSON.parse(result.stdout)
+  return { applied: true, requested: mode, effective: plan.effective, settings: outcome.settings, status: outcome.status }
 }
 
 export async function runInstallerCLI(args = process.argv.slice(2)) {
@@ -1211,6 +1257,7 @@ Options:
 
   const interactiveInput = canPrompt && (terminalInput || (process.stdin.isTTY && process.stdin))
   const interactive = Boolean(interactiveInput)
+  let wizardEnforcement = null
   if (interactive) {
     try {
       const response = await promptForSkills(listAvailableModules(), targets, interactiveInput, promptOutput,
@@ -1223,6 +1270,7 @@ Options:
       targets = response.targets
       resolvedScope = response.scope
       selectedAgents = response.agents
+      wizardEnforcement = response.enforcement ?? null
     } finally {
       terminalInput?.destroy()
     }
@@ -1258,8 +1306,19 @@ Options:
   const installedSelection = [...new Set(selections.flatMap((state) => state.skills))]
   const pointers = resolvedScope === 'project' ? updatePointers({ targets, skills: installedSelection }) : []
 
+  let enforcementOutcome = null
+  if (wizardEnforcement && resolvedScope === 'project' && selectedAgents.includes('codex')) {
+    try {
+      enforcementOutcome = applyCodexEnforcement(wizardEnforcement)
+    } catch (error) {
+      throw new Error(`Skills were installed, but applying the Codex enforcement selection failed: ${error.message}`)
+    }
+  }
+
   if (jsonMode) {
-    console.log(JSON.stringify({ installed, pointers, selections, version: VERSION }, null, 2))
+    const payload = { installed, pointers, selections, version: VERSION }
+    if (enforcementOutcome) payload.enforcement = enforcementOutcome
+    console.log(JSON.stringify(payload, null, 2))
   } else {
     const changed = installed.filter((item) => item.installed?.length || item.updated?.length)
     console.log(`\n✅ Installed or updated ${changed.length} skill entries across ${targets.length} agent target(s).`)
@@ -1273,6 +1332,11 @@ Options:
     }
     if (pointers.length > 0) {
       console.log(`  Instruction pointers written: ${pointers.join(', ')}`)
+    }
+    if (enforcementOutcome?.applied) {
+      console.log(`  Enforcement (${wizardEnforcement}) applied: ${enforcementOutcome.settings} (${enforcementOutcome.status})`)
+    } else if (enforcementOutcome) {
+      console.log(`  Enforcement (${wizardEnforcement}) not applied: ${enforcementOutcome.reason}`)
     }
   }
   return 0
