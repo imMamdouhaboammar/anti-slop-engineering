@@ -194,6 +194,32 @@ class EngineParityContractTests(unittest.TestCase):
                 self.assertIn(entry["severity"], {"blocker", "review"})
         self.assertIn("blocker_error_swallow", covered_fixtures)
 
+    def test_finding_contract_v1_covers_shared_rules_and_registry(self):
+        contract = self.contracts["finding_contract"]
+        self.assertEqual(contract["version"], 1)
+        self.assertEqual(contract["changeset_version"], 1)
+        self.assertEqual(
+            contract["fields"],
+            ["catalog_id", "severity", "file", "line", "producer", "code"],
+        )
+        producers = set(contract["producers"])
+        severities = set(contract["severity_values"])
+        for rule in self.contracts["shared_rules"]:
+            for entry in [rule["owner"], *rule["fallbacks"]]:
+                self.assertIn(entry["engine"], producers)
+                self.assertIn(entry["severity"], severities)
+        registry_producers = {
+            "diff_guard": "python-diff",
+            "sre_guard": "python-sre",
+            "go": "go-audit",
+            "rust": "rust-triage",
+        }
+        self.assertEqual(set(registry_producers.values()), producers)
+        for registered in rule_registry.RULES:
+            self.assertIn(registered.engine, registry_producers)
+            metadata = rule_registry.finding_metadata(registered.engine_code, registered.engine)
+            self.assertTrue(metadata["mapped"], registered)
+
     def test_python_core_retains_required_git_checks_without_native_binaries(self):
         expected = self.contracts["fixtures"]["blocker_error_swallow"]["shared"]
         repo_dir, _ = self._create_repo({"worker.py": "def work():\n    return job.run()\n"})

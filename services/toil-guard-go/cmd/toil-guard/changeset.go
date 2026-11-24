@@ -34,10 +34,23 @@ type changeSetEvidence struct {
 }
 
 type changeSetFile struct {
-	Status  string         `json:"status"`
-	OldPath *changeSetPath `json:"old_path"`
-	NewPath *changeSetPath `json:"new_path"`
-	NewMode *string        `json:"new_mode"`
+	Status  string          `json:"status"`
+	Score   *int            `json:"score"`
+	OldPath *changeSetPath  `json:"old_path"`
+	NewPath *changeSetPath  `json:"new_path"`
+	OldMode *string         `json:"old_mode"`
+	NewMode *string         `json:"new_mode"`
+	Added   *int            `json:"added"`
+	Deleted *int            `json:"deleted"`
+	Binary  bool            `json:"binary"`
+	Hunks   []changeSetHunk `json:"hunks"`
+}
+
+type changeSetHunk struct {
+	OldStart int `json:"old_start"`
+	OldCount int `json:"old_count"`
+	NewStart int `json:"new_start"`
+	NewCount int `json:"new_count"`
 }
 
 type changeSetPath struct {

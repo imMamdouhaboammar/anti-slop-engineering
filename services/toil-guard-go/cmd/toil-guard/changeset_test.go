@@ -595,3 +595,58 @@ func assertQuotedBinaryAudit(t *testing.T, docs string) {
 		t.Fatalf("unexpected quoted-path finding set: %+v", report)
 	}
 }
+
+func TestGoldenChangeSetSemantics(t *testing.T) {
+	golden, err := filepath.Abs("../../../../tests/fixtures/engine-parity/changeset_golden.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(golden)
+	if os.IsNotExist(err) {
+		t.Skip("golden change-set fixture is unavailable")
+	} else if err != nil {
+		t.Fatal(err)
+	}
+	var doc changeSetEvidence
+	if err := json.Unmarshal(data, &doc); err != nil {
+		t.Fatal(err)
+	}
+	if doc.Version != 1 || doc.Snapshot != "commit" {
+		t.Fatalf("golden envelope = version %d snapshot %q, want 1/commit", doc.Version, doc.Snapshot)
+	}
+	byNew := map[string]changeSetFile{}
+	byOld := map[string]changeSetFile{}
+	for _, file := range doc.Files {
+		if file.NewPath != nil {
+			byNew[file.NewPath.Text] = file
+		}
+		if file.OldPath != nil {
+			byOld[file.OldPath.Text] = file
+		}
+	}
+	renamed := byNew["new name.txt"]
+	if renamed.Status != "R" || renamed.OldPath == nil || renamed.OldPath.Text != "old name.txt" ||
+		renamed.Score == nil || *renamed.Score != 100 {
+		t.Fatalf("renamed record = %+v, want R100 old name.txt -> new name.txt", renamed)
+	}
+	binary := byNew["assets/data.bin"]
+	if binary.Status != "M" || !binary.Binary || binary.Added != nil || binary.Deleted != nil || len(binary.Hunks) != 0 {
+		t.Fatalf("binary record = %+v, want M binary with null counts and no hunks", binary)
+	}
+	deleted := byOld["gone.txt"]
+	if deleted.Status != "D" || deleted.NewPath != nil {
+		t.Fatalf("deleted record = %+v, want D with null new_path", deleted)
+	}
+	added := byNew["added.py"]
+	if added.Status != "A" || added.OldPath != nil {
+		t.Fatalf("added record = %+v, want A with null old_path", added)
+	}
+	modified := byNew["src/worker.py"]
+	wantHunk := changeSetHunk{OldStart: 4, OldCount: 0, NewStart: 5, NewCount: 1}
+	if modified.Status != "M" || modified.Binary || len(modified.Hunks) != 1 || modified.Hunks[0] != wantHunk {
+		t.Fatalf("modified record = %+v, want M with hunk %+v", modified, wantHunk)
+	}
+	if _, ok := byNew["keep.txt"]; ok {
+		t.Fatal("untouched keep.txt must not appear in the golden change set")
+	}
+}
