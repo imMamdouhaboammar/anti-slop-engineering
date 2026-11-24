@@ -12,6 +12,10 @@ CATALOG_PATH = ROOT / "references" / "anti-pattern-catalog.md"
 EVIDENCE_RUBRIC = "references/engineering-judgment.md"
 REGISTRY_VERSION = 1
 OUTCOMES = ("tp", "fp", "tn", "fn")
+CATEGORY_EVIDENCE_REQUIREMENTS = {
+    "planned": "A tracked issue or roadmap entry naming the detector, its engine, and the positive/negative fixture pair it will be verified with, recorded by a maintainer before the label is assigned.",
+    "out-of-scope": "A recorded decision by a maintainer, with rationale, that the pattern is a review hypothesis no detector should implement (for example a process or design concern rather than a code pattern).",
+}
 SEVERITY_GUIDANCE = {
     "OPS-01": "Escalate when evidence shows the swallowed error hides a required operation or trust-boundary failure.",
     "SEC-12": "Confirm the switch-off reaches a real TLS or auth path before requesting a fix. The token also matches inside warning strings and comments.",
@@ -192,6 +196,7 @@ def build_coverage(observations):
         "total_patterns": len(patterns),
         "counts": counts,
         "categories_without_evidence": ["out-of-scope", "planned"],
+        "category_evidence_requirements": CATEGORY_EVIDENCE_REQUIREMENTS,
         "patterns": patterns,
         "detectors": {
             rule.evidence_key: {"catalog_id": rule.catalog_id, "source": rule.source}

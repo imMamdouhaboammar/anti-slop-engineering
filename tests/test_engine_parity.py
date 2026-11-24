@@ -559,6 +559,17 @@ class EngineParityContractTests(unittest.TestCase):
                     self._assert_catalog_normalization(engine, output, field)
         return codes
 
+    def _add_ops_fixture_observations(self, rule, outputs, outcomes):
+        """Score the Go OPS-01 cases from #224 with independent expectations."""
+        for extra in ("swallow_go_bad", "swallow_catch_bad", "swallow_allman_bad"):
+            self.assertIn(rule.engine_code, outputs[extra, rule.engine],
+                          f"{rule.evidence_key} stopped detecting {extra}")
+            outcomes["tp"] += 1
+        for extra in ("swallow_go_handled", "swallow_catch_handled", "swallow_catch_method"):
+            self.assertNotIn(rule.engine_code, outputs[extra, rule.engine],
+                             f"{rule.evidence_key} flags {extra}")
+            outcomes["tn"] += 1
+
     def _add_skip_fixture_observations(self, rule, outputs, outcomes):
         self.assertIn(rule.engine_code, outputs["skip_js", rule.engine])
         self.assertNotIn(rule.engine_code, outputs["skip_outside_tests", rule.engine])
@@ -594,6 +605,12 @@ class EngineParityContractTests(unittest.TestCase):
         cases = {
             "swallow_bad": "def work(job):\n    try:\n        job.run()\n    except Exception: pass\n",
             "swallow_handled": "def work(job):\n    try:\n        job.run()\n    except Exception as error:\n        raise RuntimeError('job failed') from error\n",
+            "swallow_go_bad": ("worker.go", "package main\n\nfunc IgnoreFailures() {\n    if err != nil { }\n}\n"),
+            "swallow_catch_bad": ("worker.ts", "try {\n  work();\n} catch (e) {\n}\n"),
+            "swallow_allman_bad": ("worker.ts", "try {\n  work();\n}\ncatch (e) {\n}\n"),
+            "swallow_go_handled": ("worker.go", "package main\n\nfunc Handle() error {\n    if err != nil {\n        return err\n    }\n    return nil\n}\n"),
+            "swallow_catch_handled": ("worker.ts", "try {\n  work();\n} catch (e) {\n  console.error(e);\n}\n"),
+            "swallow_catch_method": ("worker.ts", "class Handler {\n  run() {\n    work();\n  }\n  catch(e) {\n  }\n}\n"),
             "nested_bad": "def choose(x):\n    if x > 0:\n        if x < 100:\n            if x % 2 == 0:\n                if x != 4:\n                    return x\n    return 0\n",
             "nested_clear": "def choose(x):\n    if x <= 0 or x >= 100:\n        return 0\n    return x if x % 2 == 0 and x != 4 else 0\n",
             "flag_bad": "def read(job):\n    if False:\n        return job.read()\n    return None\n",
@@ -672,6 +689,8 @@ class EngineParityContractTests(unittest.TestCase):
                 if rule.catalog_id == "SRE-12":
                     self.assertNotIn(rule.engine_code, outputs["health_inline_probe", rule.engine])
                     outcomes["tn"] += 1
+                if rule.catalog_id == "OPS-01" and rule.engine == "go":
+                    self._add_ops_fixture_observations(rule, outputs, outcomes)
                 if rule.catalog_id == "TST-03":
                     self._add_skip_fixture_observations(rule, outputs, outcomes)
                 if rule.catalog_id == "SEC-12":
