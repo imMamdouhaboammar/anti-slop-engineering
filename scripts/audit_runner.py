@@ -1651,6 +1651,7 @@ def generate_audit_markdown(
         f"- **Guards Requiring Input:** {guard_buckets['requires_input']}",
         f"- **Guards Skipped / Inapplicable:** {guard_buckets['skipped'] + guard_buckets['not_applicable']}",
         f"- **Guards Errors:** {guard_buckets['errors']}",
+        "- **Guard Buckets:** evaluated = ran against the change; requiring input = needs a JSON record file (see the `--*-record` options) or manual evidence before it can run; skipped = did not run in this mode; inapplicable = the change has no targets for the guard.",
         f"- **Status:** {status or ('BLOCKED' if blockers > 0 else 'PASS')}",
         "",
         "| Scope | Findings | Blockers | Status |",

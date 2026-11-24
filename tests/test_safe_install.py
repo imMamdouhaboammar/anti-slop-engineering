@@ -26,6 +26,20 @@ class SafeFileInstallTests(unittest.TestCase):
     def install(self):
         return safe_install.install_tree(self.source, self.dest)
 
+
+    def test_installed_skill_version_matches_version_file(self):
+        (self.source / "SKILL.md").write_text(
+            '---\nname: demo\nmetadata:\n  version: "0.0.1"\n---\nbody\n',
+            encoding="utf-8")
+        safe_install.install_tree(self.source, self.dest, version="9.9.9")
+        installed = (self.dest / "SKILL.md").read_text(encoding="utf-8")
+        self.assertIn('version: "9.9.9"', installed)
+        self.assertEqual(
+            (self.dest / "VERSION").read_text(encoding="utf-8").strip(), "9.9.9")
+        self.assertIn(
+            'version: "0.0.1"',
+            (self.source / "SKILL.md").read_text(encoding="utf-8"))
+
     def test_batch_preview_matches_single_plans_without_creating_destinations(self):
         other = self.dest.with_name("second")
         command = [sys.executable, str(Path(safe_install.__file__)), "--preview-batch"]

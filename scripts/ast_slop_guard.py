@@ -495,8 +495,9 @@ def build_report(findings, mode, target):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='AST & Type Slop Guard for anti-slop-engineering.')
-    parser.add_argument('path', nargs='?', default=None, help='File or directory to scan directly.')
+    parser = argparse.ArgumentParser(prog='anti-slop-engineering ast', description='AST & Type Slop Guard for anti-slop-engineering.')
+    parser.add_argument('paths', nargs='*', default=None, help='Files or directories to scan directly.')
+    parser.add_argument('--files', nargs='*', default=None, help='Explicit file paths or directories to analyze.')
     parser.add_argument('--repo', default='.', help='Git repository path (default: current dir).')
     parser.add_argument('--base', default=None, help='Git base ref to diff against (e.g. HEAD or origin/main).')
     parser.add_argument('--json', action='store_true', help='Output JSON report.')
@@ -504,7 +505,8 @@ def main():
     parser.add_argument('--version', action='version', version=f'%(prog)s {__version__}')
     args = parser.parse_args()
 
-    if args.base is not None or not args.path:
+    targets = list(args.paths or []) + list(args.files or [])
+    if args.base is not None or not targets:
         base = args.base if args.base is not None else 'HEAD'
         try:
             findings = scan_diff(args.repo, base)
@@ -515,14 +517,20 @@ def main():
                 print(f'ERROR: {error}', file=sys.stderr)
             sys.exit(1)
         report = build_report(findings, 'diff', base)
-    else:
-        target = pathlib.Path(args.path)
+    elif len(targets) == 1:
+        target = pathlib.Path(targets[0])
         if target.is_dir():
             findings = scan_directory(target)
             report = build_report(findings, 'directory', target)
         else:
             findings = scan_file(target)
             report = build_report(findings, 'file', target)
+    else:
+        findings = []
+        for item in targets:
+            target = pathlib.Path(item)
+            findings.extend(scan_directory(target) if target.is_dir() else scan_file(target))
+        report = build_report(findings, 'files', ', '.join(targets))
 
     if args.json:
         print(json.dumps(report, indent=2))

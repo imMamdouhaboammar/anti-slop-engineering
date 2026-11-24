@@ -7,6 +7,7 @@ import errno
 import hashlib
 import json
 import os
+import re
 import secrets
 import shutil
 import stat
@@ -107,7 +108,31 @@ def collect_source(source, destination, version=None, excludes=None):
             )
     if version is not None:
         files["VERSION"] = ((version + "\n").encode(), 0o644)
+        if "SKILL.md" in files:
+            content, mode = files["SKILL.md"]
+            files["SKILL.md"] = (_stamp_skill_version(content, version), mode)
     return files
+
+
+def _stamp_skill_version(content, version):
+    """Align an installed SKILL.md front-matter version with the VERSION file.
+
+    Only the copy being installed is rewritten; the source tree is untouched.
+    Files without a quoted front-matter version are copied unchanged.
+    """
+    text = content.decode("utf-8")
+    if not text.startswith("---\n"):
+        return content
+    end = text.find("\n---", 4)
+    if end == -1:
+        return content
+    head = re.sub(
+        r'(?m)^(\s*version:\s*)"[^"]*"',
+        lambda match: f'{match.group(1)}"{version}"',
+        text[:end],
+        count=1,
+    )
+    return (head + text[end:]).encode("utf-8")
 
 
 def load_manifest(destination):

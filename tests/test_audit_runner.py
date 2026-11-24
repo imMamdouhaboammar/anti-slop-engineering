@@ -1083,3 +1083,12 @@ class ScopeAwareSummaryTests(unittest.TestCase):
                     patch("sys.stdout", new_callable=lambda: __import__("io").StringIO()),
                 ):
                     self.assertEqual(audit_runner.run_audit(mode="during"), expected_exit)
+
+
+class GuardBucketLegendTests(unittest.TestCase):
+    def test_markdown_summary_defines_guard_buckets(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            markdown = generate_audit_markdown(
+                [], Path(tmp) / "audit-001.md", guards={}, mode="during")
+        self.assertIn("Guard Buckets:", markdown)
+        self.assertIn("requiring input = needs a JSON record file", markdown)
