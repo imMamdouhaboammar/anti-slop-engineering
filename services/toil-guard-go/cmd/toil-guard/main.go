@@ -95,6 +95,8 @@ func executeAudit(args []string, stdout, stderr io.Writer) int {
 		}
 	})
 	switch {
+	case !evidenceRequested && fs.NArg() == 0:
+		fileMap, err = collectDefaultGitFiles(*base, stderr)
 	case !evidenceRequested:
 		fileMap, err = collectAuditFiles(fs.Args(), *base)
 	case *worktreeChanges == "" || *indexChanges == "" || fs.NArg() != 0:

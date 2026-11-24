@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -648,5 +650,47 @@ func TestGoldenChangeSetSemantics(t *testing.T) {
 	}
 	if _, ok := byNew["keep.txt"]; ok {
 		t.Fatal("untouched keep.txt must not appear in the golden change set")
+	}
+}
+
+func TestDefaultChangeSetCollectorMatchesLegacyOnRealGitFixture(t *testing.T) {
+	_, nested := setupEvidenceGitFixture(t)
+	t.Chdir(nested)
+	legacy, err := collectGitDiffFiles("HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	migrated, err := collectChangeSetDefaultFiles("HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !maps.Equal(legacy, migrated) {
+		t.Fatalf("default change-set collector differs from legacy:\nlegacy=%v\nmigrated=%v", legacy, migrated)
+	}
+	if len(migrated) != 5 {
+		t.Fatalf("expected the fixture's five auditable files, got %d: %v", len(migrated), migrated)
+	}
+}
+
+func TestDefaultCollectorFallsBackToLegacyWithNote(t *testing.T) {
+	_, nested := setupEvidenceGitFixture(t)
+	t.Chdir(nested)
+	failing := func(string) (map[string]string, error) {
+		return nil, errors.New("change-set collection exploded")
+	}
+	var stderr bytes.Buffer
+	files, err := collectDefaultGitFilesWith("HEAD", &stderr, failing)
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy, err := collectGitDiffFiles("HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !maps.Equal(legacy, files) {
+		t.Fatalf("fallback did not return the legacy result: %v", files)
+	}
+	if !strings.Contains(stderr.String(), "falling back") || !strings.Contains(stderr.String(), "change-set collection exploded") {
+		t.Fatalf("fallback was not explicit on stderr: %q", stderr.String())
 	}
 }
