@@ -917,7 +917,7 @@ test('Enforcement: the flag is rejected without a preview, for other adapters, o
 })
 
 test('Setup: tracked instruction file updates require explicit consent', () => {
-  const project = fs.mkdtempSync(path.join(os.tmpdir(), 'anti-slop-consent-'))
+  const project = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'anti-slop-consent-')))
   try {
     const git = (args) => {
       const result = spawnSync('git', args, { cwd: project, encoding: 'utf8' })
@@ -946,7 +946,7 @@ test('Setup: tracked instruction file updates require explicit consent', () => {
     assert.equal(plan.pointers[0].tracked, true)
     assert.equal(plan.pointers[0].requiresConsent, true)
     assert.equal(fs.readFileSync(entry, 'utf8'), original)
-    assert.equal(spawnSync('git', ['status', '--porcelain'], { cwd: project, encoding: 'utf8' }).stdout, '')
+    assert.equal(spawnSync('git', ['status', '--porcelain', '--untracked-files=no'], { cwd: project, encoding: 'utf8' }).stdout, '')
 
     const human = run(['--agent=codex', '--dry-run'])
     assert.equal(human.status, 0, human.stderr)

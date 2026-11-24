@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.0] - 2026-11-24
+
+### Added
+
+- Canonical `Finding` contract v1, golden change-set fixture, and Go `toil-guard` default changeset migration (#276, #288).
+- Canonical rule ownership registering `python-sre` as `SRE-05` dead-flag owner (#277).
+- Scope-aware audit summary for Markdown, JSON, and console reports (#278).
+- Catalog evidence coverage receipt and category evidence scoring (#283).
+- Ecosystem version evidence oracle with registry policy fixtures (#285).
+- Opt-in Rust installed-API evidence receipt (#286).
+- Version-aware advisories for Tailwind v4 directives and redundant `dotenv` dependencies (#287).
+- Interactive wizard selection and application of Codex hook enforcement modes (#289).
+
+### Fixed
+
+- Require explicit user consent (`--update-instructions`) before modifying tracked instruction files, with dry-run visibility (#275).
+- Suppress database `.exec()` calls (PGlite/SQLite) in `DYNAMIC_EXECUTION_CANDIDATE` while keeping ambiguous receiver and shell execution checks (#279).
+- Write audit dossiers under `.git/` by default with explicit `--out` support (#280).
+- Align CLI program names, AST multi-file surface, and installed skill version parity (#281).
+- Separate Windows and non-checkout hook preview diagnostics (#282).
+- Minimize isolated-run environment and document mutation execution boundaries (#284).
+- Reconcile workspace hygiene, `.gitignore` exclusions, and bounded unattended command rules (#274).
+
 ## [1.13.0] - 2026-11-21
 
 ### Added
