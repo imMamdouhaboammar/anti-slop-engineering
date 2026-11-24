@@ -1316,8 +1316,9 @@ Options:
   }
 
   if (jsonMode) {
-    console.log(JSON.stringify({ installed, pointers, selections, version: VERSION,
-      ...(enforcementOutcome ? { enforcement: enforcementOutcome } : {}) }, null, 2))
+    const payload = { installed, pointers, selections, version: VERSION }
+    if (enforcementOutcome) payload.enforcement = enforcementOutcome
+    console.log(JSON.stringify(payload, null, 2))
   } else {
     const changed = installed.filter((item) => item.installed?.length || item.updated?.length)
     console.log(`\n✅ Installed or updated ${changed.length} skill entries across ${targets.length} agent target(s).`)
