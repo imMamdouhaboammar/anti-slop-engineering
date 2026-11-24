@@ -98,6 +98,19 @@ class DiffGuardTests(unittest.TestCase):
         self.assertEqual([hit['line'] for hit in hits], [4])
         self.assertEqual(result.returncode, 0)
 
+    def test_dead_flag_in_test_file_is_not_flagged(self):
+        (self.repo / 'tests' / 'test_calc.py').write_text(
+            'def test_value():\n    if False:\n        assert value() == 1\n')
+        result, report = self.check()
+        self.assertEqual(result.returncode, 0)
+        self.assertNotIn('SRE_YAGNI_DEAD_FLAG', [x['id'] for x in report['findings']])
+
+    def test_dead_flag_in_source_file_is_flagged(self):
+        (self.repo / 'src' / 'calc.py').write_text(
+            'def value():\n    if False:\n        return 0\n    return 1\n')
+        result, report = self.check()
+        self.assertIn('SRE_YAGNI_DEAD_FLAG', [x['id'] for x in report['findings']])
+
     def test_flags_existing_test_modification_without_blocking_it(self):
         (self.repo / 'tests' / 'test_calc.py').write_text('def test_value():\n    assert value() == 2\n')
         result, report = self.check()

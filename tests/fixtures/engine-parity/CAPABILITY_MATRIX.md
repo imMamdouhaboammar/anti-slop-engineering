@@ -67,3 +67,11 @@ Canonical owner: python-sre (`SCALE_UNBOUNDED_CONCURRENCY`, review). Fallback: p
 - No detection or severity divergence: both guards run the identical fan-out pattern (`Promise.all(... .map(...))`, `asyncio.gather(*...)`) and report review at the same line for Python and JavaScript fan-out. Ownership gives the combined audit one canonical entry per location; before this registration the combined audit emitted both entries at every shared location.
 - Scope: python-diff skips this rule under `references/` paths; python-sre reports fan-out there, and its entry stands alone in the combined audit with no suppressed duplicate. Both guards stay silent on the same fan-out in a test path and on bounded fan-out (fixed argument lists with no splat or map).
 - No Go or Rust producer is registered for SRE-09.
+
+## Recorded SRE-05 differences
+
+Canonical owner: python-sre (`YAGNI_DEAD_SPECULATIVE_FLAG`, blocker). Fallback: python-diff (`SRE_YAGNI_DEAD_FLAG`, blocker). Both report the canonical fixture (`dead_flag.diff`) at line 2. Preserved differences, measured on disposable fixtures for this registration:
+
+- No detection or severity divergence on dead branches: both guards run the identical pattern (`if False:`, `if (false)`, `if (0)`) and report blocker at the same line. Ownership gives the combined audit one canonical entry per location; before this registration the combined audit emitted both entries (two blockers) at every shared location.
+- Scope: both guards report dead branches under `references/` paths, and both stay silent on a live `if True:` branch.
+- The Go producer registered for SRE-05 (`SRE-YAGNI-SPECULATIVE`, review) reports speculative comments (`TODO(future)`, `placeholder for future`, `not implemented yet`), not dead branches; it does not fire on the canonical fixture and shares no comparable location with the dead-flag pair, so it stays outside this ownership entry. The Python guards report the same comment surface under their own unregistered codes (`SRE_YAGNI_SPECULATIVE_CODE`, `YAGNI_SPECULATIVE_COMMENT`), which remain unmapped in the combined audit.
