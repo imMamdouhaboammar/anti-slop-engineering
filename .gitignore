@@ -137,3 +137,5 @@ services/toil-guard-go/bin/
 /.anti-slop/checkpoint-override.json
 /.anti-slop/checkpoint-state-*
 /.anti-slop/scratch/
+/Failure-lessons/
+/docs/session-learnings/

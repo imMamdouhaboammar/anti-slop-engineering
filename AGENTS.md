@@ -71,7 +71,7 @@ Anti-Slop Engineering is an open-source playbook, agent skill, and lightweight t
 1. Before editing a repository with an upstream remote, inspect the working tree, fetch the upstream, and compare local and upstream commits. Reconcile divergence on the appropriate branch without discarding local work or rewriting published history. When offline, record the unverified remote state.
 2. For supported blocking lifecycle hooks, verify the host's actual pre-tool denial behavior. Advisory hooks must be identified as advisory; do not claim enforcement from simulated events or passive logs.
 3. Discover applicable repository instructions, installed skills, and available tool capabilities before implementation. Use authorized tools only and verify their results.
-4. Run unattended commands with bounded, non-interactive input where supported. Do not use force flags to suppress safety checks; delete branches or worktrees only after verifying their work is preserved.
+4. Run unattended commands with bounded, non-interactive input and a time limit where supported, cleaning up any child processes on timeout. Do not use force flags to suppress safety checks; delete branches or worktrees only after verifying their work is preserved.
 
 <!-- gate0-preflight:end -->
 
