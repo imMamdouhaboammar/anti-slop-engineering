@@ -969,3 +969,117 @@ class CatalogDuplicateSuppressionTests(unittest.TestCase):
         self.assertEqual(fans[0]["guard"], "sre_guard")
         self.assertEqual(fans[0]["file"], "references/fanout.py")
         self.assertNotIn("suppressed_duplicates", fans[0])
+
+
+class ScopeAwareSummaryTests(unittest.TestCase):
+    """Scope-aware audit summary: per-scope verdicts, exclusive guard buckets."""
+
+    def _finding(self, guard, severity):
+        return {
+            "id": f"{guard}-1", "guard": guard, "rule": "R", "severity": severity,
+            "file": "src/app.py", "line": 1, "message": "m", "snippet": "s",
+            "remediation": "r",
+        }
+
+    def _guard(self, status, **extra):
+        entry = {"status": status, "title": "G", "findings_count": 0, "error": None}
+        entry.update(extra)
+        return entry
+
+    def test_clean_diff_with_workspace_blocker(self):
+        findings = [self._finding("styleseed_guard", "BLOCKER"),
+                    self._finding("diff_guard", "MEDIUM")]
+        guards = {"styleseed_guard": self._guard("BLOCKED"),
+                  "diff_guard": self._guard("FINDINGS")}
+        summary = audit_runner.build_audit_summary(findings, guards)
+        self.assertEqual(summary["total_findings"], 2)
+        self.assertEqual(summary["blockers_count"], 1)
+        self.assertEqual(summary["scopes"]["diff"]["findings"], 1)
+        self.assertEqual(summary["scopes"]["diff"]["blockers"], 0)
+        self.assertEqual(summary["scopes"]["diff"]["status"], "PASS")
+        self.assertEqual(summary["scopes"]["workspace"]["blockers"], 1)
+        self.assertEqual(summary["scopes"]["workspace"]["status"], "BLOCKED")
+        self.assertEqual(summary["diff_status"], "PASS")
+        # Legacy overall verdict is preserved: a blocker in any scope blocks.
+        self.assertEqual(summary["status"], "BLOCKED")
+
+    def test_real_diff_blocker_blocks_diff_scope(self):
+        findings = [self._finding("sre_guard", "BLOCKER")]
+        guards = {"sre_guard": self._guard("BLOCKED")}
+        summary = audit_runner.build_audit_summary(findings, guards)
+        self.assertEqual(summary["scopes"]["diff"]["status"], "BLOCKED")
+        self.assertEqual(summary["diff_status"], "BLOCKED")
+        self.assertEqual(summary["status"], "BLOCKED")
+
+    def test_guard_buckets_are_mutually_exclusive_and_reconcile(self):
+        guards = {
+            "diff_guard": self._guard("PASS"),
+            "sre_guard": self._guard("BLOCKED"),
+            "decision_guard": self._guard("SKIPPED", skip_type="requires-input"),
+            "house_tell_guard": self._guard("SKIPPED", skip_type="not-applicable"),
+            "contrast_guard": self._guard("SKIPPED", skip_type="optional-target-absent"),
+            "tagore_guard": self._guard("ERROR", error="boom"),
+        }
+        summary = audit_runner.build_audit_summary([], guards)
+        buckets = summary["guards_summary"]
+        self.assertEqual(buckets["total_registered"], 6)
+        self.assertEqual(buckets["evaluated"], 2)
+        self.assertEqual(buckets["requires_input"], 1)
+        self.assertEqual(buckets["not_applicable"], 1)
+        self.assertEqual(buckets["skipped"], 1)
+        self.assertEqual(buckets["errors"], 1)
+        self.assertEqual(
+            buckets["evaluated"] + buckets["requires_input"]
+            + buckets["not_applicable"] + buckets["skipped"] + buckets["errors"],
+            buckets["total_registered"],
+        )
+        self.assertEqual(summary["status"], "ERROR")
+
+    def test_scope_findings_sum_to_total(self):
+        findings = [self._finding("diff_guard", "HIGH"),
+                    self._finding("contrast_guard", "LOW"),
+                    self._finding("decision_guard", "MEDIUM")]
+        summary = audit_runner.build_audit_summary(findings, {})
+        scoped = sum(s["findings"] for s in summary["scopes"].values())
+        self.assertEqual(scoped, summary["total_findings"])
+        self.assertEqual(summary["scopes"]["record"]["findings"], 1)
+
+    def test_markdown_summary_shows_scope_table_and_buckets(self):
+        findings = [self._finding("styleseed_guard", "BLOCKER")]
+        guards = {
+            "styleseed_guard": self._guard("BLOCKED", input_type="workspace_scan"),
+            "diff_guard": self._guard("PASS", input_type="git_diff"),
+            "decision_guard": self._guard(
+                "SKIPPED", skip_type="requires-input", input_type="record_audit",
+                input_flag="--decision-record", reason="Requires record"),
+        }
+        tmp_file = Path(__file__).resolve().parent / "tmp_audit_scopes.md"
+        try:
+            content = generate_audit_markdown(findings, tmp_file, guards=guards, mode="during")
+            self.assertIn("| Scope | Findings | Blockers | Status |", content)
+            self.assertIn("| workspace | 1 | 1 | BLOCKED |", content)
+            self.assertIn("| diff | 0 | 0 | PASS |", content)
+            self.assertIn("- **Guards Requiring Input:** 1", content)
+            self.assertIn("- **Guards Errors:** 0", content)
+        finally:
+            if tmp_file.exists():
+                tmp_file.unlink()
+
+    def test_run_audit_exit_codes_are_pinned(self):
+        scenarios = [
+            ([self._finding("styleseed_guard", "BLOCKER")],
+             {"styleseed_guard": self._guard("BLOCKED")}, 1),
+            ([self._finding("sre_guard", "BLOCKER")],
+             {"sre_guard": self._guard("BLOCKED")}, 1),
+            ([], {"diff_guard": self._guard("PASS")}, 0),
+            ([], {"diff_guard": self._guard("ERROR", error="boom")}, 2),
+        ]
+        for findings, guards, expected_exit in scenarios:
+            with tempfile.TemporaryDirectory() as tmp:
+                with (
+                    patch.object(audit_runner, "AUDIT_DIR", Path(tmp)),
+                    patch.object(audit_runner, "collect_audit_findings",
+                                 return_value=(findings, guards)),
+                    patch("sys.stdout", new_callable=lambda: __import__("io").StringIO()),
+                ):
+                    self.assertEqual(audit_runner.run_audit(mode="during"), expected_exit)
