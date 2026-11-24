@@ -131,7 +131,7 @@ def audit_patch_lines(added_lines):
             if key in ('DEV_NOTE_IN_UI', 'PATRONIZING_UI_COPY', 'GENERIC_AI_GRADIENT_CLICHE', 'AI_MARKETING_HYPE_COPY') and not UI_PATH.search(path):
                 continue
             if key in ('TRIVIAL_COMMENT_NARRATION', 'DECORATIVE_COMMENT_BANNER', 'SRE_SCALE_SLEEP_BAND_AID', 'SRE_SCALE_FLAT_RETRY',
-                       'SRE_YAGNI_SPECULATIVE_CODE', 'SRE_SCALE_UNBOUNDED_CONCURRENCY') and (
+                       'SRE_YAGNI_SPECULATIVE_CODE', 'SRE_YAGNI_DEAD_FLAG', 'SRE_SCALE_UNBOUNDED_CONCURRENCY') and (
                 TEST_PATH.search(path) or re.search(r'(?i)(?:^|/)references/', path)
             ):
                 continue

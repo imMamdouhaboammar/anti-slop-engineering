@@ -737,6 +737,36 @@ class CatalogDuplicateSuppressionTests(unittest.TestCase):
               "severity": "HIGH"}],
         )
 
+    def test_dead_flag_pair_collapses_to_owner(self):
+        fallback = self._finding(
+            "diff_guard", "SRE_YAGNI_DEAD_FLAG", "SRE-05", "HIGH", line=2)
+        owner = self._finding(
+            "sre_guard", "YAGNI_DEAD_SPECULATIVE_FLAG", "SRE-05", "HIGH", line=2)
+        result = audit_runner._suppress_catalog_duplicates([fallback, owner])
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["guard"], "sre_guard")
+        self.assertEqual(
+            result[0]["suppressed_duplicates"],
+            [{"guard": "diff_guard", "rule": "SRE_YAGNI_DEAD_FLAG",
+              "severity": "HIGH"}],
+        )
+
+    def test_dead_flag_fallback_is_kept_without_owner(self):
+        fallback = self._finding(
+            "diff_guard", "SRE_YAGNI_DEAD_FLAG", "SRE-05", "HIGH", line=2)
+        result = audit_runner._suppress_catalog_duplicates([fallback])
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["guard"], "diff_guard")
+        self.assertNotIn("suppressed_duplicates", result[0])
+
+    def test_dead_flag_at_distinct_lines_is_not_suppressed(self):
+        owner = self._finding(
+            "sre_guard", "YAGNI_DEAD_SPECULATIVE_FLAG", "SRE-05", "HIGH", line=2)
+        fallback = self._finding(
+            "diff_guard", "SRE_YAGNI_DEAD_FLAG", "SRE-05", "HIGH", line=9)
+        result = audit_runner._suppress_catalog_duplicates([owner, fallback])
+        self.assertEqual(len(result), 2)
+
     def test_isolated_sre09_fallback_is_retained(self):
         fallback = self._finding(
             "diff_guard", "SRE_SCALE_UNBOUNDED_CONCURRENCY", "SRE-09", "HIGH")
@@ -905,6 +935,24 @@ class CatalogDuplicateSuppressionTests(unittest.TestCase):
             fans[0]["suppressed_duplicates"],
             [{"guard": "diff_guard", "rule": "SRE_SCALE_UNBOUNDED_CONCURRENCY",
               "severity": "HIGH"}],
+        )
+
+    def test_combined_audit_suppresses_dead_flag_duplicate(self):
+        base = "VALUE = 1\n"
+        dead = "VALUE = 1\nif False:\n    legacy()\n"
+        exit_code, report = self._combined_audit(base, dead)
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(report["status"], "BLOCKED")
+        self.assertEqual(report["blockers_count"], 1)
+        flags = [f for f in report["findings"] if f.get("catalog_id") == "SRE-05"]
+        self.assertEqual(len(flags), 1)
+        self.assertEqual(flags[0]["guard"], "sre_guard")
+        self.assertEqual(flags[0]["severity"], "BLOCKER")
+        self.assertEqual(flags[0]["line"], 2)
+        self.assertEqual(
+            flags[0]["suppressed_duplicates"],
+            [{"guard": "diff_guard", "rule": "SRE_YAGNI_DEAD_FLAG",
+              "severity": "BLOCKER"}],
         )
 
     def test_combined_audit_keeps_owner_only_concurrency_under_references(self):

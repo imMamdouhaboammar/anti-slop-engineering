@@ -448,6 +448,65 @@ class EngineParityContractTests(unittest.TestCase):
                     self.assertNotIn(identity, registered)
         self.assertEqual(declared, registered)
 
+    def test_dead_flag_shared_contract_matches_native_severity(self):
+        shared = self.contracts["fixtures"]["dead_flag"]["shared"]
+        repo_dir, _ = self._create_repo({"worker.py": "VALUE = 1\n"})
+        source = repo_dir / "worker.py"
+        dead = "VALUE = 1\nif False:\n    legacy()\n"
+        live = "VALUE = 1\nif True:\n    legacy()\n"
+        for text, expected in ((dead, True), (live, False)):
+            source.write_text(text, encoding="utf-8")
+            runs = [
+                (self._run_diff_guard(repo_dir), "diff_guard_id", "id"),
+                (self._run_sre_guard(repo_dir), "sre_guard_id", "id"),
+            ]
+            lines = {}
+            for run, fixture_key, report_key in runs:
+                expected_exit = shared[fixture_key + "_exit"] if expected else 0
+                self.assertEqual(run.returncode, expected_exit, run.stderr)
+                entries = [
+                    entry for entry in json.loads(run.stdout)["findings"]
+                    if entry[report_key] == shared[fixture_key]
+                ]
+                if expected:
+                    self.assertEqual([entry["severity"].lower() for entry in entries],
+                                     [shared[fixture_key + "_severity"]] * len(entries))
+                    lines[fixture_key] = [entry["line"] for entry in entries]
+                else:
+                    self.assertEqual(entries, [])
+            if expected:
+                self.assertEqual(lines["diff_guard_id"], [2])
+                self.assertEqual(lines["sre_guard_id"], lines["diff_guard_id"])
+
+    def test_dead_flag_ownership_declares_only_the_comparable_producers(self):
+        engine_names = {
+            "diff_guard": "python-diff",
+            "sre_guard": "python-sre",
+            "go": "go-audit",
+            "rust": "rust-triage",
+        }
+        registered = {
+            (engine_names[rule.engine], rule.engine_code)
+            for rule in rule_registry.RULES
+            if rule.catalog_id == "SRE-05"
+        }
+        declared = set()
+        for rule in self.contracts["shared_rules"]:
+            for entry in [rule["owner"], *rule["fallbacks"]]:
+                identity = (entry["engine"], entry["id"])
+                if rule["rule_id"] == "dead_flag":
+                    declared.add(identity)
+                else:
+                    self.assertNotIn(identity, registered)
+        self.assertEqual(declared, {
+            ("python-sre", "YAGNI_DEAD_SPECULATIVE_FLAG"),
+            ("python-diff", "SRE_YAGNI_DEAD_FLAG"),
+        })
+        # The Go producer registered for SRE-05 reports speculative comments,
+        # not dead branches, so it shares no comparable location with the
+        # dead-flag pair and stays outside this ownership entry.
+        self.assertEqual(registered - declared, {("go-audit", "SRE-YAGNI-SPECULATIVE")})
+
     def test_registry_owner_matches_contracts_owner_for_shared_rules(self):
         engine_names = {
             "diff_guard": "python-diff",

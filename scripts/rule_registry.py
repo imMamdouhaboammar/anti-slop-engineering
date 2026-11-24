@@ -53,7 +53,7 @@ RULES = (
     Rule("sre_guard", "KISS_DEEP_NESTING", "SRE-01", SRE_SOURCE, owner=True),
     Rule("go", "SRE-KISS-NESTING", "SRE-01", "services/toil-guard-go/pkg/sre/complexity.go"),
     Rule("diff_guard", "SRE_YAGNI_DEAD_FLAG", "SRE-05", DIFF_SOURCE),
-    Rule("sre_guard", "YAGNI_DEAD_SPECULATIVE_FLAG", "SRE-05", SRE_SOURCE),
+    Rule("sre_guard", "YAGNI_DEAD_SPECULATIVE_FLAG", "SRE-05", SRE_SOURCE, owner=True),
     Rule("go", "SRE-YAGNI-SPECULATIVE", "SRE-05", GO_TOIL_SOURCE),
     Rule("diff_guard", "SRE_SCALE_SLEEP_BAND_AID", "SRE-07", DIFF_SOURCE),
     Rule("sre_guard", "SCALE_SLEEP_BAND_AID", "SRE-07", SRE_SOURCE, owner=True),

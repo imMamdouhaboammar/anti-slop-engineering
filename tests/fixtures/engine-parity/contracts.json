@@ -163,6 +163,24 @@
           "fixture_key": "diff_guard_id"
         }
       ]
+    },
+    {
+      "rule_id": "dead_flag",
+      "fixture": "dead_flag",
+      "owner": {
+        "engine": "python-sre",
+        "id": "YAGNI_DEAD_SPECULATIVE_FLAG",
+        "severity": "blocker",
+        "fixture_key": "sre_guard_id"
+      },
+      "fallbacks": [
+        {
+          "engine": "python-diff",
+          "id": "SRE_YAGNI_DEAD_FLAG",
+          "severity": "blocker",
+          "fixture_key": "diff_guard_id"
+        }
+      ]
     }
   ],
   "pairs": {
@@ -294,6 +312,17 @@
         "sre_guard_id": "SCALE_UNBOUNDED_CONCURRENCY",
         "sre_guard_id_exit": 0,
         "sre_guard_id_severity": "review"
+      }
+    },
+    "dead_flag": {
+      "diff": "dead_flag.diff",
+      "shared": {
+        "diff_guard_id": "SRE_YAGNI_DEAD_FLAG",
+        "diff_guard_id_exit": 2,
+        "diff_guard_id_severity": "blocker",
+        "sre_guard_id": "YAGNI_DEAD_SPECULATIVE_FLAG",
+        "sre_guard_id_exit": 2,
+        "sre_guard_id_severity": "blocker"
       }
     }
   }
