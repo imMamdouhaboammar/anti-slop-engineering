@@ -66,6 +66,8 @@ Piped Bash installation interactively prompts for plugin selection when a termin
 
 Installers running from a Git checkout copy tracked files from the working tree. Local agent settings, credentials and audit notes stay in the checkout.
 
+Hook previews (`--codex-hooks`, `--claude-hooks`, `--gemini-hooks`) require a durable POSIX checkout of this repository: the preview runs the hook adapters from the checkout, so an npm/Bun package install cannot preview hooks. From a package install, the skills install normally — add `--enforcement=skills-only` to install them without hooks — or clone the repository and run the same command from the checkout. Hook previews are not supported on Windows (the adapters are POSIX-only).
+
 **Python CLI (pipx / uv):**
 
 ```bash

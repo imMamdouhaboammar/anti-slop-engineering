@@ -139,3 +139,40 @@ test("packaged CLI requires consent before updating a tracked instruction file",
   assert.match(updated, /anti-slop-engineering:start/);
   assert.match(updated, /Hand-written instructions\./);
 });
+
+test("packaged npm install gives an actionable hook diagnostic and a skills-only path", (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "anti-slop-package-hooks-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const archive = join(dir, "package.tgz");
+  output(run("bun", ["pm", "pack", "--filename", archive, "--quiet"], { cwd: root }));
+  const project = join(dir, "project");
+  mkdirSync(project, { recursive: true });
+  writeFileSync(join(project, "package.json"), '{"name":"anti-slop-hooks","private":true}\n');
+  const npm = output(run("/bin/sh", ["-c", 'which -a npm 2>/dev/null | grep -v "$HOME/.local/bin" | grep -v "$HOME/.bun/bin" | head -n 1 || command -v npm'])).trim();
+  const options = {
+    cwd: project,
+    env: {
+      ...process.env,
+      HOME: project,
+      CI: "",
+      NODE_ENV: "",
+      npm_config_cache: join(project, "cache"),
+      npm_config_userconfig: join(project, ".npmrc"),
+    },
+  };
+  output(run(npm, ["install", "--offline", "--no-audit", "--no-fund", "--foreground-scripts", archive], options));
+  const cli = join(project, "node_modules", ".bin", packageName);
+  const base = ["install", "--agent=codex", "--skills=core", "--scope=project", "--codex-hooks", "--dry-run", "--json"];
+
+  const hooks = run(cli, [...base, "--enforcement=advisory"], options);
+  assert.notEqual(hooks.status, 0, hooks.stdout);
+  const diagnostic = hooks.stdout + hooks.stderr;
+  assert.match(diagnostic, /no \.git directory/);
+  assert.match(diagnostic, /git clone https:\/\/github\.com\/imMamdouhaboammar\/anti-slop-engineering/);
+  assert.match(diagnostic, /skills-only/);
+  assert.equal(existsSync(join(project, ".codex")), false);
+
+  const skillsOnly = JSON.parse(output(run(cli, [...base, "--enforcement=skills-only"], options)));
+  assert.equal(skillsOnly.hookPlan.status, "skills_only");
+  assert.equal(existsSync(join(project, ".codex")), false);
+});

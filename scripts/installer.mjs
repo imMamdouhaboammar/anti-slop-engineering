@@ -1056,8 +1056,11 @@ function previewAgentHooks(agent, scope, agents, enforcement = null) {
       enforcement: enforcementPlan(agent, enforcement),
     }
   }
-  if (process.platform === 'win32' || !fs.existsSync(path.join(rootDir, '.git'))) {
-    throw new Error(label + ' hook preview requires a durable POSIX checkout; see ' + docs)
+  if (process.platform === 'win32') {
+    throw new Error(label + ' hook preview is not supported on Windows: the hook adapters are POSIX-only. Run it from a POSIX checkout (Linux, macOS, or WSL), or use --enforcement=skills-only to install the skills without hooks. See ' + path.join(rootDir, docs))
+  }
+  if (!fs.existsSync(path.join(rootDir, '.git'))) {
+    throw new Error(label + ' hook preview requires a durable checkout of the anti-slop-engineering repository: the package at ' + rootDir + ' has no .git directory, so it is an npm install or an extracted tarball, not a checkout. Run it from a checkout instead: git clone https://github.com/imMamdouhaboammar/anti-slop-engineering, then node anti-slop-engineering/bin/cli.js install --agent=' + agent + ' --skills=core --scope=project --' + agent + '-hooks --dry-run. Or keep this installation and use --enforcement=skills-only to install the skills without hooks. See ' + path.join(rootDir, docs))
   }
   const adapter = path.join(rootDir, 'scripts', agent + '_hooks.py')
   const preview = spawnSync('python3', [adapter, 'install', '--dry-run'], {
