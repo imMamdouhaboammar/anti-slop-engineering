@@ -1,5 +1,6 @@
 import json
 import os
+from unittest import mock
 from pathlib import Path
 import subprocess
 import sys
@@ -169,3 +170,47 @@ class TargetedMutationTests(unittest.TestCase):
         self.assertEqual(report["score"], {"killed": 0, "evaluated": 1})
         self.assertEqual(self.git("diff", "HEAD"), before)
         self.assertEqual(self.git("status", "--porcelain"), before_status)
+
+
+class ExecutionBoundaryTests(TargetedMutationTests):
+    def test_parent_environment_secrets_do_not_reach_test_processes(self):
+        self.test_file.write_text(
+            "import os\nimport unittest\nfrom scripts.selector import select\n\n"
+            "class SelectorTests(unittest.TestCase):\n"
+            "    def test_case(self):\n"
+            "        self.assertNotIn('ANTI_SLOP_BOUNDARY_SENTINEL', os.environ)\n"
+            "        self.assertEqual(select(True, False), 4)\n", encoding="utf-8",
+        )
+        with mock.patch.dict(os.environ, {"ANTI_SLOP_BOUNDARY_SENTINEL": "leaked"}):
+            result, report = self.run_mutation()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(report["score"], {"killed": 1, "evaluated": 2})
+
+    def test_home_and_relative_writes_stay_inside_the_disposable_tree(self):
+        self.test_file.write_text(
+            "import unittest\nfrom pathlib import Path\nfrom scripts.selector import select\n\n"
+            "class SelectorTests(unittest.TestCase):\n"
+            "    def test_case(self):\n"
+            "        (Path.home() / 'mutation-home-sentinel.txt').write_text('x', encoding='utf-8')\n"
+            "        Path('mutation-cwd-sentinel.txt').write_text('x', encoding='utf-8')\n"
+            "        self.assertEqual(select(True, False), 4)\n", encoding="utf-8",
+        )
+        result, report = self.run_mutation()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(report["baseline"], "passed")
+        self.assertFalse((self.repo / "mutation-cwd-sentinel.txt").exists())
+        self.assertFalse((Path.home() / "mutation-home-sentinel.txt").exists())
+
+    def test_crashing_test_module_is_inconclusive_and_outside_the_score(self):
+        self.test_file.write_text("raise RuntimeError('import boom')\n", encoding="utf-8")
+        result, report = self.run_mutation()
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(report["status"], "inconclusive")
+        self.assertEqual(report["score"], {"killed": 0, "evaluated": 0})
+
+    def test_report_states_the_execution_boundary(self):
+        _, report = self.run_mutation()
+        boundary = report["execution_boundary"]
+        self.assertIn("not inherited", boundary["environment"])
+        self.assertIn("not an operating-system sandbox", boundary["filesystem"])
+        self.assertIn("external-action", boundary["network"])

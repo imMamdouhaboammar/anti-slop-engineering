@@ -758,10 +758,45 @@ def _python_test_evidence(report: Path, exit_code):
     return None, cases
 
 
+EXECUTION_BOUNDARY = {
+    "environment": "Minimized allowlist: interpreter, locale and toolchain-cache variables only; parent credentials and other parent state are not inherited. HOME and the temp directories are redirected into the disposable run tree.",
+    "working_directory": "A disposable copy of the tracked tree; a run never writes into the real checkout.",
+    "filesystem": "This is not an operating-system sandbox: a test running with the user's permissions can still write through absolute paths outside the disposable tree.",
+    "network": "Not restricted by this tool. A test that needs an external action must declare the `# targeted-mutation: external-action` marker and is excluded before any execution.",
+    "resources": "Each run is bounded by a timeout; timed-out and crashed runs are inconclusive and stay outside the score denominator.",
+}
+
+_ISOLATED_ENV_ALLOWLIST = (
+    "PATH", "LANG", "LANGUAGE", "LC_ALL", "LC_CTYPE", "LC_COLLATE",
+    "SYSTEMROOT", "WINDIR", "COMSPEC", "PATHEXT",
+    "GOPATH", "GOCACHE", "GOROOT", "CARGO_HOME", "RUSTUP_HOME",
+)
+
+
+def _isolated_env(cwd: Path):
+    """Build the minimized environment for an isolated test run.
+
+    Only the allowlisted variables are inherited; HOME and the temp
+    directories point into fresh directories beside the disposable
+    checkout, so relative and home-relative writes stay in the run tree.
+    """
+    env = {name: os.environ[name] for name in _ISOLATED_ENV_ALLOWLIST if name in os.environ}
+    home = cwd.parent / "home"
+    tmp = cwd.parent / "tmp"
+    home.mkdir(parents=True, exist_ok=True)
+    tmp.mkdir(parents=True, exist_ok=True)
+    env["HOME"] = str(home)
+    env["USERPROFILE"] = str(home)
+    env["TMPDIR"] = str(tmp)
+    env["TEMP"] = str(tmp)
+    env["TMP"] = str(tmp)
+    env["PYTHONPATH"] = str(cwd)
+    return env
+
+
 def _execute_test_isolated(test_file: str, cwd: Path, custom_cmd=None, timeout: int = 30):
     cmd = detect_test_cmd(test_file, custom_cmd)
-    env = os.environ.copy()
-    env["PYTHONPATH"] = str(cwd)
+    env = _isolated_env(cwd)
     ext = Path(test_file).suffix.lower()
     native_go = not custom_cmd and ext == ".go"
     native_bun = not custom_cmd and cmd[:2] == ["bun", "test"]
@@ -890,6 +925,7 @@ def run_counterfactual_proof(
         "base_ref": base,
         "test_files": resolved_tests,
         "results": results,
+        "execution_boundary": EXECUTION_BOUNDARY,
     }
 
 
