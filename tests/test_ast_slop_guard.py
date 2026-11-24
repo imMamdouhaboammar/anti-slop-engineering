@@ -554,5 +554,58 @@ class AstSlopGuardTests(unittest.TestCase):
         )
 
 
+class AstCliSurfaceTests(unittest.TestCase):
+    """User-facing CLI surface: prog name and common file selection."""
+
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.repo = pathlib.Path(self.temp_dir.name)
+
+    def tearDown(self):
+        self.temp_dir.cleanup()
+
+    def run_guard(self, *args):
+        cmd = [sys.executable, str(SCRIPT), *args]
+        return subprocess.run(cmd, text=True, capture_output=True)
+
+    def _write(self, name):
+        target = self.repo / name
+        target.write_text('export const value: number = 1;\n', encoding='utf-8')
+        return target
+
+    def test_help_uses_user_facing_prog_name(self):
+        result = self.run_guard('--help')
+        self.assertEqual(result.returncode, 0)
+        self.assertIn('usage: anti-slop-engineering ast', result.stdout)
+        self.assertNotIn('ast_slop_guard.py', result.stdout)
+
+    def test_multiple_positional_files_are_scanned(self):
+        first = self._write('a.ts')
+        second = self._write('b.ts')
+        result = self.run_guard(str(first), str(second), '--json')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        report = json.loads(result.stdout)
+        self.assertEqual(report['mode'], 'files')
+        self.assertIn('a.ts', report['target'])
+        self.assertIn('b.ts', report['target'])
+
+    def test_files_flag_matches_positional_surface(self):
+        first = self._write('a.ts')
+        second = self._write('b.ts')
+        result = self.run_guard('--files', str(first), str(second), '--json')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        report = json.loads(result.stdout)
+        self.assertEqual(report['mode'], 'files')
+        self.assertIn('a.ts', report['target'])
+        self.assertIn('b.ts', report['target'])
+
+    def test_single_positional_file_behavior_unchanged(self):
+        only = self._write('a.ts')
+        result = self.run_guard(str(only), '--json')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        report = json.loads(result.stdout)
+        self.assertEqual(report['mode'], 'file')
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -297,7 +297,7 @@ def scan(repo, base, max_lines=400, *, hooks_dir=None):
 
 
 def main():
-    p = argparse.ArgumentParser(description=__doc__)
+    p = argparse.ArgumentParser(prog='anti-slop-engineering diff', description=__doc__)
     p.add_argument('--version', action='version', version=f'%(prog)s {__version__}')
     p.add_argument('--repo', default='.', help='Path to Git repository')
     p.add_argument('--base', default='HEAD', help='Existing commit to compare against, ideally merge-base with target branch')

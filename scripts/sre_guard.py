@@ -526,6 +526,7 @@ def scan_paths(paths, max_nesting=4, min_dup_lines=4, max_function_lines=80):
 
 def main():
     p = argparse.ArgumentParser(
+        prog='anti-slop-engineering sre',
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter
     )

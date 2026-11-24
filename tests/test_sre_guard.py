@@ -529,5 +529,15 @@ class SreGuardTests(unittest.TestCase):
         self.assertIn('YAGNI_SPECULATIVE_COMMENT', [f['id'] for f in report['findings']])
 
 
+class SreCliSurfaceTests(unittest.TestCase):
+    def test_help_uses_user_facing_prog_name(self):
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT), '--help'],
+            text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0)
+        self.assertIn('usage: anti-slop-engineering sre', result.stdout)
+        self.assertNotIn('sre_guard.py', result.stdout)
+
+
 if __name__ == '__main__':
     unittest.main()

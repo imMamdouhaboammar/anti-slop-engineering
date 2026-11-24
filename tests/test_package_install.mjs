@@ -176,3 +176,53 @@ test("packaged npm install gives an actionable hook diagnostic and a skills-only
   assert.equal(skillsOnly.hookPlan.status, "skills_only");
   assert.equal(existsSync(join(project, ".codex")), false);
 });
+
+test("packaged CLI keeps version parity and user-facing guard surfaces", (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "anti-slop-package-consistency-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const archive = join(dir, "package.tgz");
+  output(run("bun", ["pm", "pack", "--filename", archive, "--quiet"], { cwd: root }));
+  const project = join(dir, "project");
+  mkdirSync(project, { recursive: true });
+  writeFileSync(join(project, "package.json"), '{"name":"anti-slop-consistency","private":true}\n');
+  const npm = output(run("/bin/sh", ["-c", 'which -a npm 2>/dev/null | grep -v "$HOME/.local/bin" | grep -v "$HOME/.bun/bin" | head -n 1 || command -v npm'])).trim();
+  const options = {
+    cwd: project,
+    env: {
+      ...process.env,
+      HOME: project,
+      CI: "",
+      NODE_ENV: "",
+      npm_config_cache: join(project, "cache"),
+      npm_config_userconfig: join(project, ".npmrc"),
+    },
+  };
+  output(run(npm, ["install", "--offline", "--no-audit", "--no-fund", "--foreground-scripts", archive], options));
+  const installed = join(project, "node_modules", packageName);
+  const cli = join(project, "node_modules", ".bin", packageName);
+  const { version } = JSON.parse(readFileSync(join(installed, "package.json"), "utf8"));
+
+  output(run(cli, ["setup", "--agent=codex", "--skills=core", "--json"], options));
+  const skillDir = join(project, ".codex", "skills", packageName);
+  assert.equal(readFileSync(join(skillDir, "VERSION"), "utf8").trim(), version);
+  const skillMd = readFileSync(join(skillDir, "SKILL.md"), "utf8");
+  assert.ok(skillMd.includes(`version: "${version}"`), "installed SKILL.md version must match package.json");
+
+  const sreHelp = output(run(cli, ["sre", "--help"], options));
+  assert.match(sreHelp, /usage: anti-slop-engineering sre/);
+  assert.doesNotMatch(sreHelp, /sre_guard\.py/);
+  const astHelp = output(run(cli, ["ast", "--help"], options));
+  assert.match(astHelp, /usage: anti-slop-engineering ast/);
+  assert.doesNotMatch(astHelp, /ast_slop_guard\.py/);
+
+  writeFileSync(join(project, "a.ts"), "export const a: number = 1;\n");
+  writeFileSync(join(project, "b.ts"), "export const b: number = 2;\n");
+  const multi = JSON.parse(output(run(cli, ["ast", "a.ts", "b.ts", "--json"], options)));
+  assert.equal(multi.mode, "files");
+  assert.match(multi.target, /a\.ts/);
+  assert.match(multi.target, /b\.ts/);
+
+  const invalid = run(cli, ["ast", "--nonsense"], options);
+  assert.equal(invalid.status, 2);
+  assert.match(invalid.stderr, /usage: anti-slop-engineering ast/);
+});
