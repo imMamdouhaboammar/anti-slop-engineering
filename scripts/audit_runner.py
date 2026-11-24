@@ -1544,22 +1544,96 @@ def _render_detailed_dossiers(
     return lines
 
 
+SCOPE_BY_INPUT_TYPE = {
+    "git_diff": "diff",
+    "pr_metadata": "diff",
+    "workspace_scan": "workspace",
+    "ledger_record": "record",
+    "record_audit": "record",
+}
+
+
+def guard_scope(guard_name: Optional[str]) -> str:
+    """Map a guard to its audit scope via the registry input type."""
+    spec = GUARD_REGISTRY.get(guard_name or "", {})
+    return SCOPE_BY_INPUT_TYPE.get(spec.get("input_type", ""), "other")
+
+
+def _guard_bucket(entry: Dict[str, Any]) -> str:
+    """Classify one guard into exactly one summary bucket."""
+    if entry.get("status") == "ERROR" or entry.get("error"):
+        return "errors"
+    if entry.get("status") in ("PASS", "FINDINGS", "BLOCKED"):
+        return "evaluated"
+    if entry.get("skip_type") == "requires-input" or entry.get("status") == "requires-input":
+        return "requires_input"
+    if entry.get("skip_type") == "not-applicable" or entry.get("status") == "not-applicable":
+        return "not_applicable"
+    return "skipped"
+
+
+def build_audit_summary(
+    findings: List[Dict[str, Any]],
+    guards: Optional[Dict[str, Dict[str, Any]]],
+) -> Dict[str, Any]:
+    """One scope-aware summary shared by the Markdown, JSON and console reports.
+
+    Totals keep their legacy all-scope meaning. Each scope reports its own
+    findings, blockers and verdict; the overall status stays legacy (any
+    blocker in any scope blocks, any guard error errors), so no existing
+    blocker is silently downgraded.
+    """
+    guards = guards or {}
+    scopes: Dict[str, Dict[str, Any]] = {
+        name: {"findings": 0, "blockers": 0, "status": "PASS"}
+        for name in ("diff", "workspace", "record")
+    }
+    for finding in findings:
+        bucket = scopes.setdefault(
+            guard_scope(finding.get("guard")),
+            {"findings": 0, "blockers": 0, "status": "PASS"},
+        )
+        bucket["findings"] += 1
+        if finding.get("severity") == "BLOCKER":
+            bucket["blockers"] += 1
+    for bucket in scopes.values():
+        bucket["status"] = "BLOCKED" if bucket["blockers"] else "PASS"
+
+    guard_buckets = {
+        "total_registered": len(guards),
+        "evaluated": 0,
+        "requires_input": 0,
+        "skipped": 0,
+        "not_applicable": 0,
+        "errors": 0,
+    }
+    for entry in guards.values():
+        guard_buckets[_guard_bucket(entry)] += 1
+
+    blockers = sum(1 for f in findings if f.get("severity") == "BLOCKER")
+    return {
+        "total_findings": len(findings),
+        "blockers_count": blockers,
+        "high": sum(1 for f in findings if f.get("severity") == "HIGH"),
+        "medium": sum(1 for f in findings if f.get("severity") == "MEDIUM"),
+        "low": sum(1 for f in findings if f.get("severity") == "LOW"),
+        "guards_summary": guard_buckets,
+        "scopes": scopes,
+        "diff_status": scopes["diff"]["status"],
+        "status": "ERROR" if guard_buckets["errors"] else ("BLOCKED" if blockers else "PASS"),
+    }
+
+
 def generate_audit_markdown(
     findings: List[Dict[str, Any]], audit_file: Path,
     status: Optional[str] = None, guards: Optional[Dict[str, Dict[str, Any]]] = None,
     mode: Optional[str] = None,
 ) -> str:
     today = datetime.date.today().isoformat()
-    total = len(findings)
-    blockers = sum(1 for f in findings if f.get("severity") == "BLOCKER")
-    high = sum(1 for f in findings if f.get("severity") == "HIGH")
-    medium = sum(1 for f in findings if f.get("severity") == "MEDIUM")
-    low = sum(1 for f in findings if f.get("severity") == "LOW")
-
-    evaluated_count = sum(1 for g in (guards or {}).values() if g.get("status") in ("PASS", "FINDINGS", "BLOCKED"))
-    requires_input_count = sum(1 for g in (guards or {}).values() if g.get("skip_type") == "requires-input" or g.get("status") == "requires-input")
-    skipped_count = sum(1 for g in (guards or {}).values() if g.get("status") == "SKIPPED" and g.get("skip_type") not in ("requires-input", "not-applicable"))
-    not_applicable_count = sum(1 for g in (guards or {}).values() if g.get("skip_type") == "not-applicable" or g.get("status") == "not-applicable")
+    summary = build_audit_summary(findings, guards)
+    total = summary["total_findings"]
+    blockers = summary["blockers_count"]
+    guard_buckets = summary["guards_summary"]
 
     lines = [
         f"# Anti-Slop Engineering Audit Report — {audit_file.stem}",
@@ -1570,15 +1644,25 @@ def generate_audit_markdown(
         "",
         f"- **Total Findings:** {total}",
         f"- **Blockers:** {blockers}",
-        f"- **High Severity:** {high}",
-        f"- **Medium Severity:** {medium}",
-        f"- **Low Severity:** {low}",
-        f"- **Guards Evaluated:** {evaluated_count}",
-        f"- **Guards Requiring Input:** {requires_input_count}",
-        f"- **Guards Skipped / Inapplicable:** {skipped_count + not_applicable_count}",
+        f"- **High Severity:** {summary['high']}",
+        f"- **Medium Severity:** {summary['medium']}",
+        f"- **Low Severity:** {summary['low']}",
+        f"- **Guards Evaluated:** {guard_buckets['evaluated']}",
+        f"- **Guards Requiring Input:** {guard_buckets['requires_input']}",
+        f"- **Guards Skipped / Inapplicable:** {guard_buckets['skipped'] + guard_buckets['not_applicable']}",
+        f"- **Guards Errors:** {guard_buckets['errors']}",
         f"- **Status:** {status or ('BLOCKED' if blockers > 0 else 'PASS')}",
         "",
+        "| Scope | Findings | Blockers | Status |",
+        "| :--- | ---: | ---: | :--- |",
     ]
+    for scope_name in ("diff", "workspace", "record", "other"):
+        scope = summary["scopes"].get(scope_name)
+        if scope is None:
+            continue
+        lines.append(
+            f"| {scope_name} | {scope['findings']} | {scope['blockers']} | {scope['status']} |")
+    lines.append("")
 
     if guards:
         lines.extend(_render_guards_coverage_table(guards))
@@ -1615,9 +1699,9 @@ def run_audit(
         template_file=template_file, canary_token=canary_token,
         records=records, installed_skills=installed_skills, restricted_env=restricted_env, **extra_records
     )
-    blockers = sum(1 for finding in findings if finding["severity"] == "BLOCKER")
-    has_error = any(result.get("status") == "ERROR" or result.get("error") for result in guards.values())
-    status = "ERROR" if has_error or audit_error else ("BLOCKED" if blockers else "PASS")
+    summary = build_audit_summary(findings, guards)
+    blockers = summary["blockers_count"]
+    status = "ERROR" if audit_error else summary["status"]
     audit_file = None
     effective_mode = mode if mode is not None else load_settings().get("mode", "during")
     try:
@@ -1637,14 +1721,9 @@ def run_audit(
         "audit_file": str(audit_file) if audit_file is not None else None,
         "total_findings": len(findings),
         "blockers_count": blockers,
-        "guards_summary": {
-            "total_registered": len(guards),
-            "evaluated": sum(1 for g in guards.values() if g.get("status") in ("PASS", "FINDINGS", "BLOCKED")),
-            "requires_input": sum(1 for g in guards.values() if g.get("skip_type") == "requires-input" or g.get("status") == "requires-input"),
-            "skipped": sum(1 for g in guards.values() if g.get("status") == "SKIPPED" and g.get("skip_type") not in ("requires-input", "not-applicable")),
-            "not_applicable": sum(1 for g in guards.values() if g.get("skip_type") == "not-applicable" or g.get("status") == "not-applicable"),
-            "errors": sum(1 for g in guards.values() if g.get("status") == "ERROR"),
-        },
+        "guards_summary": summary["guards_summary"],
+        "scopes": summary["scopes"],
+        "diff_status": summary["diff_status"],
         "findings": findings,
         "guards": guards,
         "status": status,
@@ -1661,7 +1740,12 @@ def run_audit(
               f"{report['guards_summary']['requires_input']} require input, "
               f"{report['guards_summary']['skipped'] + report['guards_summary']['not_applicable']} skipped/inapplicable")
         print(f"   Total Findings:  {len(findings)}")
+        scopes = summary["scopes"]
+        print(f"   Scope Findings:  diff {scopes['diff']['findings']} · "
+              f"workspace {scopes['workspace']['findings']} · record {scopes['record']['findings']}")
         print(f"   Status:          {status} ({blockers} blockers)")
+        print(f"   Scope Status:    diff {scopes['diff']['status']} · "
+              f"workspace {scopes['workspace']['status']} · record {scopes['record']['status']}")
         for name, result in guards.items():
             if result.get("status") == "ERROR":
                 print(f"   ERROR {name}: {result.get('error')}", file=sys.stderr)
