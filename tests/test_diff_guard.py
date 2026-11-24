@@ -111,6 +111,66 @@ class DiffGuardTests(unittest.TestCase):
         result, report = self.check()
         self.assertIn('SRE_YAGNI_DEAD_FLAG', [x['id'] for x in report['findings']])
 
+    def _dynamic_execution_lines(self, report):
+        return [x['line'] for x in report['findings'] if x['id'] == 'DYNAMIC_EXECUTION_CANDIDATE']
+
+    def test_pglite_exec_is_not_flagged(self):
+        target = self.repo / 'tests' / 'postgres-pglite.test.ts'
+        target.write_text(
+            "import { PGlite } from '@electric-sql/pglite'\n"
+            "const db = new PGlite()\n"
+            "for (const stmt of getMigrationStatements()) await db.exec(stmt);\n")
+        git(self.repo, 'add', '.')
+        result, report = self.check()
+        self.assertEqual(self._dynamic_execution_lines(report), [])
+
+    def test_sqlite_database_exec_is_not_flagged(self):
+        target = self.repo / 'tests' / 'db.test.ts'
+        target.write_text(
+            "import Database from 'better-sqlite3'\n"
+            "const db = new Database(':memory:')\n"
+            "db.exec('CREATE TABLE t (x)');\n")
+        git(self.repo, 'add', '.')
+        result, report = self.check()
+        self.assertEqual(self._dynamic_execution_lines(report), [])
+
+    def test_database_exec_suppressed_but_ambiguous_receiver_flagged(self):
+        target = self.repo / 'src' / 'jobs.ts'
+        target.write_text(
+            "import { PGlite } from '@electric-sql/pglite'\n"
+            "const db = new PGlite()\n"
+            "await db.exec(stmt);\n"
+            "runner.exec(cmd);\n")
+        git(self.repo, 'add', '.')
+        result, report = self.check()
+        self.assertEqual(self._dynamic_execution_lines(report), [4])
+
+    def test_child_process_module_alias_exec_is_flagged(self):
+        target = self.repo / 'src' / 'run.ts'
+        target.write_text(
+            "const cp = require('node:child_process')\n"
+            "cp.exec('ls -la');\n")
+        git(self.repo, 'add', '.')
+        result, report = self.check()
+        self.assertEqual(self._dynamic_execution_lines(report), [2])
+
+    def test_ambiguous_receiver_exec_is_flagged(self):
+        target = self.repo / 'src' / 'runner.ts'
+        target.write_text("export function go(runner, cmd) {\n  return runner.exec(cmd);\n}\n")
+        git(self.repo, 'add', '.')
+        result, report = self.check()
+        self.assertEqual(self._dynamic_execution_lines(report), [2])
+
+    def test_python_bare_exec_eval_and_shell_true_are_flagged(self):
+        (self.repo / 'src' / 'calc.py').write_text(
+            'import subprocess\n'
+            'def value(code, expr, cmd):\n'
+            '    exec(code)\n'
+            '    eval(expr)\n'
+            '    return subprocess.run(cmd, shell=True)\n')
+        result, report = self.check()
+        self.assertEqual(self._dynamic_execution_lines(report), [3, 4, 5])
+
     def test_flags_existing_test_modification_without_blocking_it(self):
         (self.repo / 'tests' / 'test_calc.py').write_text('def test_value():\n    assert value() == 2\n')
         result, report = self.check()
