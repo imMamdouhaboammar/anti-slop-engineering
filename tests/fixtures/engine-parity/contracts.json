@@ -296,5 +296,27 @@
         "sre_guard_id_severity": "review"
       }
     }
+  },
+  "finding_contract": {
+    "version": 1,
+    "fields": [
+      "catalog_id",
+      "severity",
+      "file",
+      "line",
+      "producer",
+      "code"
+    ],
+    "severity_values": [
+      "blocker",
+      "review"
+    ],
+    "producers": [
+      "python-diff",
+      "python-sre",
+      "rust-triage",
+      "go-audit"
+    ],
+    "changeset_version": 1
   }
 }

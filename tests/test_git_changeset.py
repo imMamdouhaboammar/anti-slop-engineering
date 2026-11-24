@@ -155,3 +155,84 @@ class ChangeSetTests(unittest.TestCase):
         with self.assertRaises(RuntimeError) as ctx:
             validate_base_ref(self.repo, "NOPE_INVALID_REF")
         self.assertIn("NOPE_INVALID_REF", str(ctx.exception))
+
+
+GOLDEN_PATH = REPO_ROOT / "tests" / "fixtures" / "engine-parity" / "changeset_golden.json"
+
+
+def build_golden_scenario(repo):
+    """Create the canonical two-commit scenario the golden fixture freezes."""
+
+    def git(*args):
+        return subprocess.check_output(["git", "-C", str(repo), *args], text=True)
+
+    git("init", "-q")
+    git("config", "user.email", "fixture@example.invalid")
+    git("config", "user.name", "Fixture")
+    (repo / "src").mkdir()
+    (repo / "assets").mkdir()
+    (repo / "src" / "worker.py").write_text(
+        "import time\n\n\ndef work():\n    return 1\n", encoding="utf-8"
+    )
+    (repo / "old name.txt").write_text("stable rename content\n", encoding="utf-8")
+    (repo / "assets" / "data.bin").write_bytes(b"\x00one")
+    (repo / "gone.txt").write_text("removed in target\n", encoding="utf-8")
+    (repo / "keep.txt").write_text("untouched\n", encoding="utf-8")
+    git("add", "--", ".")
+    git("commit", "-qm", "golden base")
+    (repo / "src" / "worker.py").write_text(
+        "import time\n\n\ndef work():\n    time.sleep(5)\n    return 1\n", encoding="utf-8"
+    )
+    git("mv", "old name.txt", "new name.txt")
+    (repo / "assets" / "data.bin").write_bytes(b"\x00two")
+    (repo / "added.py").write_text("VALUE = 2\n", encoding="utf-8")
+    git("rm", "-q", "gone.txt")
+    git("add", "--", ".")
+    git("commit", "-qm", "golden target")
+    return git("rev-parse", "HEAD~1").strip(), git("rev-parse", "HEAD").strip()
+
+
+class GoldenChangeSetTests(unittest.TestCase):
+    def test_producer_output_matches_frozen_golden(self):
+        with tempfile.TemporaryDirectory() as temp:
+            repo = Path(temp)
+            base, target = build_golden_scenario(repo)
+            produced = collect_changes(repo, "HEAD~1", "commit", "HEAD")
+        normalized = json.loads(
+            json.dumps(produced).replace(base, "BASE").replace(target, "TARGET")
+        )
+        golden = json.loads(GOLDEN_PATH.read_text(encoding="utf-8"))
+        self.assertEqual(normalized, golden)
+
+    def test_golden_pins_change_set_semantics(self):
+        golden = json.loads(GOLDEN_PATH.read_text(encoding="utf-8"))
+        self.assertEqual(golden["version"], 1)
+        self.assertEqual(golden["snapshot"], "commit")
+        by_new = {}
+        by_old = {}
+        for record in golden["files"]:
+            if record["new_path"]:
+                by_new[record["new_path"]["text"]] = record
+            if record["old_path"]:
+                by_old[record["old_path"]["text"]] = record
+        renamed = by_new["new name.txt"]
+        self.assertEqual(renamed["status"], "R")
+        self.assertEqual(renamed["old_path"]["text"], "old name.txt")
+        self.assertEqual(renamed["score"], 100)
+        binary = by_new["assets/data.bin"]
+        self.assertEqual(binary["status"], "M")
+        self.assertTrue(binary["binary"])
+        self.assertIsNone(binary["added"])
+        self.assertIsNone(binary["deleted"])
+        self.assertEqual(binary["hunks"], [])
+        deleted = by_old["gone.txt"]
+        self.assertEqual(deleted["status"], "D")
+        self.assertIsNone(deleted["new_path"])
+        added = by_new["added.py"]
+        self.assertEqual(added["status"], "A")
+        self.assertIsNone(added["old_path"])
+        modified = by_new["src/worker.py"]
+        self.assertEqual(modified["status"], "M")
+        self.assertFalse(modified["binary"])
+        self.assertEqual(len(modified["hunks"]), 1)
+        self.assertNotIn("keep.txt", by_new)

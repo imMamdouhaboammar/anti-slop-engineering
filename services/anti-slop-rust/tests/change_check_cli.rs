@@ -295,3 +295,52 @@ fn binary_records_with_fabricated_hunks_are_rejected() {
         String::from_utf8_lossy(&out.stderr)
     );
 }
+
+#[test]
+fn golden_changeset_semantics_reach_the_rust_check() {
+    let golden_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/fixtures/engine-parity/changeset_golden.json");
+    let golden = std::fs::read_to_string(&golden_path)
+        .unwrap_or_else(|error| panic!("read golden fixture {}: {error}", golden_path.display()));
+    // The golden freezes base/target as placeholders; the envelope requires OID shape.
+    let input = golden
+        .replace("\"BASE\"", "\"1111111111111111111111111111111111111111\"")
+        .replace("\"TARGET\"", "\"2222222222222222222222222222222222222222\"");
+    let changes: serde_json::Value = serde_json::from_str(&input).unwrap();
+    let renamed = changes["files"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|file| file["status"] == "R")
+        .unwrap();
+    assert_eq!(renamed["old_path"]["text"], "old name.txt");
+    assert_eq!(renamed["new_path"]["text"], "new name.txt");
+    assert_eq!(renamed["score"], 100);
+    let binary = changes["files"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|file| file["new_path"]["text"] == "assets/data.bin")
+        .unwrap();
+    assert_eq!(binary["binary"], true);
+    assert!(binary["added"].is_null() && binary["deleted"].is_null());
+    assert!(binary["hunks"].as_array().unwrap().is_empty());
+
+    let out = check(&input, &["--read-only"]);
+    let findings = report(&out, 1).findings;
+    let mut paths: Vec<_> = findings.iter().map(|f| f.file.as_str()).collect();
+    paths.sort_unstable();
+    assert_eq!(
+        paths,
+        [
+            "added.py",
+            "assets/data.bin",
+            "gone.txt",
+            "new name.txt",
+            "src/worker.py"
+        ]
+    );
+    assert!(findings
+        .iter()
+        .all(|f| f.code == "STS-I01" && f.line == 1));
+}

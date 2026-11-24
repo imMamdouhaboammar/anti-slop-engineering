@@ -1,0 +1,114 @@
+{
+  "version": 1,
+  "snapshot": "commit",
+  "base": "BASE",
+  "target": "TARGET",
+  "files": [
+    {
+      "status": "A",
+      "score": null,
+      "old_path": null,
+      "new_path": {
+        "text": "added.py",
+        "raw_hex": null
+      },
+      "old_mode": null,
+      "new_mode": "100644",
+      "added": 1,
+      "deleted": 0,
+      "binary": false,
+      "hunks": [
+        {
+          "old_start": 0,
+          "old_count": 0,
+          "new_start": 1,
+          "new_count": 1
+        }
+      ]
+    },
+    {
+      "status": "M",
+      "score": null,
+      "old_path": {
+        "text": "assets/data.bin",
+        "raw_hex": null
+      },
+      "new_path": {
+        "text": "assets/data.bin",
+        "raw_hex": null
+      },
+      "old_mode": "100644",
+      "new_mode": "100644",
+      "added": null,
+      "deleted": null,
+      "binary": true,
+      "hunks": []
+    },
+    {
+      "status": "D",
+      "score": null,
+      "old_path": {
+        "text": "gone.txt",
+        "raw_hex": null
+      },
+      "new_path": null,
+      "old_mode": "100644",
+      "new_mode": null,
+      "added": 0,
+      "deleted": 1,
+      "binary": false,
+      "hunks": [
+        {
+          "old_start": 1,
+          "old_count": 1,
+          "new_start": 0,
+          "new_count": 0
+        }
+      ]
+    },
+    {
+      "status": "R",
+      "score": 100,
+      "old_path": {
+        "text": "old name.txt",
+        "raw_hex": null
+      },
+      "new_path": {
+        "text": "new name.txt",
+        "raw_hex": null
+      },
+      "old_mode": "100644",
+      "new_mode": "100644",
+      "added": 0,
+      "deleted": 0,
+      "binary": false,
+      "hunks": []
+    },
+    {
+      "status": "M",
+      "score": null,
+      "old_path": {
+        "text": "src/worker.py",
+        "raw_hex": null
+      },
+      "new_path": {
+        "text": "src/worker.py",
+        "raw_hex": null
+      },
+      "old_mode": "100644",
+      "new_mode": "100644",
+      "added": 1,
+      "deleted": 0,
+      "binary": false,
+      "hunks": [
+        {
+          "old_start": 4,
+          "old_count": 0,
+          "new_start": 5,
+          "new_count": 1
+        }
+      ]
+    }
+  ],
+  "untracked": []
+}
