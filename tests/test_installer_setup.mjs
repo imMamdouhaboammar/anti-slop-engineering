@@ -896,3 +896,64 @@ test('Enforcement: the flag is rejected without a preview, for other adapters, o
     assert.deepEqual(fs.readdirSync(dir), [])
   })
 })
+
+test('Setup: tracked instruction file updates require explicit consent', () => {
+  const project = fs.mkdtempSync(path.join(os.tmpdir(), 'anti-slop-consent-'))
+  try {
+    const git = (args) => {
+      const result = spawnSync('git', args, { cwd: project, encoding: 'utf8' })
+      assert.equal(result.status, 0, result.stderr)
+    }
+    const run = (args) => spawnSync(process.execPath, [installer, ...args], {
+      cwd: project, encoding: 'utf8', env: { ...process.env, HOME: project, CI: 'true' }, timeout: 20000,
+    })
+    git(['init', '-q', '.'])
+    git(['config', 'user.email', 'test@example.com'])
+    git(['config', 'user.name', 'Test'])
+    const entry = path.join(project, 'AGENTS.md')
+    const original = '# Project\n\nHand-written instructions.\n'
+    fs.writeFileSync(entry, original)
+    git(['add', 'AGENTS.md'])
+    git(['commit', '-qm', 'init'])
+
+    const dry = run(['--agent=codex', '--dry-run', '--json'])
+    assert.equal(dry.status, 0, dry.stderr)
+    const plan = JSON.parse(dry.stdout)
+    assert.equal(plan.selections.length, 1)
+    assert.equal(plan.selections[0].action, 'create')
+    assert.equal(plan.pointers.length, 1)
+    assert.equal(plan.pointers[0].file, entry)
+    assert.equal(plan.pointers[0].action, 'update')
+    assert.equal(plan.pointers[0].tracked, true)
+    assert.equal(plan.pointers[0].requiresConsent, true)
+    assert.equal(fs.readFileSync(entry, 'utf8'), original)
+    assert.equal(spawnSync('git', ['status', '--porcelain'], { cwd: project, encoding: 'utf8' }).stdout, '')
+
+    const human = run(['--agent=codex', '--dry-run'])
+    assert.equal(human.status, 0, human.stderr)
+    assert.match(human.stdout, /pointers/)
+    assert.match(human.stdout, /AGENTS\.md/)
+
+    const blocked = run(['--agent=codex', '--json'])
+    assert.equal(blocked.status, 1)
+    assert.match(blocked.stderr, /--update-instructions/)
+    assert.equal(fs.readFileSync(entry, 'utf8'), original)
+    assert.equal(fs.existsSync(path.join(project, '.codex')), false)
+
+    const applied = run(['--agent=codex', '--update-instructions', '--json'])
+    assert.equal(applied.status, 0, applied.stderr)
+    const updated = fs.readFileSync(entry, 'utf8')
+    assert.match(updated, /anti-slop-engineering:start/)
+    assert.match(updated, /Hand-written instructions\./)
+
+    const settled = JSON.parse(run(['--agent=codex', '--dry-run', '--json']).stdout)
+    assert.equal(settled.pointers[0].action, 'no-op')
+    assert.equal(settled.pointers[0].requiresConsent, false)
+
+    const repeat = run(['--agent=codex', '--json'])
+    assert.equal(repeat.status, 0, repeat.stderr)
+    assert.equal(fs.readFileSync(entry, 'utf8'), updated)
+  } finally {
+    fs.rmSync(project, { recursive: true, force: true })
+  }
+})
