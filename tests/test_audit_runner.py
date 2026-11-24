@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 Mamdouh Aboammar <mamdouhfces1997@gmail.com> and contributors
 
+import datetime
+import io
 import json
 import os
 import re
@@ -1092,3 +1094,80 @@ class GuardBucketLegendTests(unittest.TestCase):
                 [], Path(tmp) / "audit-001.md", guards={}, mode="during")
         self.assertIn("Guard Buckets:", markdown)
         self.assertIn("requiring input = needs a JSON record file", markdown)
+
+
+class AuditOutputPathTests(unittest.TestCase):
+    """Dossier output contract: private default location, explicit --out."""
+
+    def test_get_next_audit_file_uses_sequential_names(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "reports"
+            first = audit_runner.get_next_audit_file(out)
+            self.assertRegex(first.name, r"^audit-001-\d{4}-\d{2}-\d{2}\.md$")
+            first.write_text("sentinel", encoding="utf-8")
+            second = audit_runner.get_next_audit_file(out)
+            self.assertRegex(second.name, r"^audit-002-\d{4}-\d{2}-\d{2}\.md$")
+            self.assertEqual(first.read_text(encoding="utf-8"), "sentinel")
+
+    def test_get_next_audit_file_rejects_a_file_path(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            blocker = Path(tmp) / "file.md"
+            blocker.write_text("x", encoding="utf-8")
+            with self.assertRaises(ValueError):
+                audit_runner.get_next_audit_file(blocker)
+
+    def test_run_audit_out_dir_never_overwrites_existing_dossier(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "reports"
+            out.mkdir()
+            today = datetime.date.today().isoformat()
+            existing = out / f"audit-001-{today}.md"
+            existing.write_text("sentinel", encoding="utf-8")
+            guards = {"diff_guard": {"status": "PASS", "title": "Diff",
+                                     "findings_count": 0, "error": None}}
+            with (
+                patch.object(audit_runner, "collect_audit_findings",
+                             return_value=([], guards)),
+                patch("sys.stdout", new_callable=io.StringIO) as stdout,
+            ):
+                exit_code = audit_runner.run_audit(
+                    json_output=True, mode="during", out_dir=out)
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(existing.read_text(encoding="utf-8"), "sentinel")
+            report = json.loads(stdout.getvalue())
+            self.assertTrue(report["audit_file"].endswith(f"audit-002-{today}.md"))
+
+    def test_handle_audit_rejects_out_pointing_at_a_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            blocker = Path(tmp) / "file.md"
+            blocker.write_text("x", encoding="utf-8")
+            self.assertEqual(audit_runner.handle_audit(["--out", str(blocker)]), 2)
+
+    def test_default_audit_in_clean_repo_leaves_no_untracked_dossier(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+
+            def git(*args):
+                subprocess.run(["git", *args], cwd=repo, check=True, capture_output=True)
+
+            git("init", "-q")
+            git("config", "user.email", "fixture@example.test")
+            git("config", "user.name", "Fixture")
+            (repo / "app.py").write_text("VALUE = 1\n", encoding="utf-8")
+            git("add", ".")
+            git("commit", "-qm", "base")
+            (repo / "app.py").write_text("VALUE = 2\n", encoding="utf-8")
+            script = str(SCRIPTS_DIR / "audit_runner.py")
+            res = subprocess.run(
+                [sys.executable, script, "audit", "--base", "HEAD", "--json"],
+                cwd=repo, capture_output=True, text=True, timeout=600)
+            self.assertIn(res.returncode, (0, 1), res.stderr[-500:])
+            report = json.loads(res.stdout)
+            audit_file = Path(report["audit_file"])
+            self.assertTrue(audit_file.is_file())
+            self.assertIn(".git", audit_file.parts)
+            status = subprocess.run(
+                ["git", "status", "--porcelain"], cwd=repo,
+                capture_output=True, text=True).stdout
+            self.assertNotIn("anti-slop", status)
+            self.assertFalse((repo / "anti-slop").exists())

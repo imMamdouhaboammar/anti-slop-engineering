@@ -33,7 +33,30 @@ GLOBAL_CONFIG_DIR = Path.home() / ".config" / "anti-slop-engineering"
 GLOBAL_SETTINGS_FILE = GLOBAL_CONFIG_DIR / "settings.json"
 LOCAL_CONFIG_DIR = Path.cwd() / ".anti-slop"
 LOCAL_SETTINGS_FILE = LOCAL_CONFIG_DIR / "settings.json"
-AUDIT_DIR = Path.cwd() / "anti-slop"
+def _default_audit_dir() -> Path:
+    """Dossiers live inside the repo's git dir when in a work tree.
+
+    `.git/` is never tracked and never shows in `git status`, so a default
+    audit leaves no untracked dossier in the consumer repository and touches
+    no tracked or config file. Outside a work tree, keep the legacy
+    cwd-local directory.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--git-dir"],
+            capture_output=True, text=True, timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        result = None
+    if result is not None and result.returncode == 0 and result.stdout.strip():
+        git_dir = Path(result.stdout.strip())
+        if not git_dir.is_absolute():
+            git_dir = Path.cwd() / git_dir
+        return git_dir.resolve() / "anti-slop"
+    return Path.cwd() / "anti-slop"
+
+
+AUDIT_DIR = _default_audit_dir()
 GUARD_TIMEOUT_SECONDS = 60
 GUARD_ENV_NAMES = frozenset({
     "PATH", "HOME", "USERPROFILE", "SYSTEMROOT", "WINDIR", "COMSPEC", "PATHEXT",
@@ -798,9 +821,17 @@ def run_command(cmd: List[str], *, restricted_env: bool = False) -> Dict[str, An
                 "error": f"Unable to execute child process: {exc}"}
 
 
-def get_next_audit_file() -> Path:
-    AUDIT_DIR.mkdir(parents=True, exist_ok=True)
-    existing = list(AUDIT_DIR.glob("audit-*.md"))
+def _validate_out_dir(directory: Path) -> Path:
+    directory = Path(directory)
+    if directory.exists() and not directory.is_dir():
+        raise ValueError(f"Audit output path is not a directory: {directory}")
+    return directory
+
+
+def get_next_audit_file(directory: Optional[Path] = None) -> Path:
+    out_dir = _validate_out_dir(directory) if directory is not None else AUDIT_DIR
+    out_dir.mkdir(parents=True, exist_ok=True)
+    existing = list(out_dir.glob("audit-*.md"))
     max_idx = 0
     for p in existing:
         m = re.match(r"audit-(\d+)", p.name)
@@ -808,7 +839,7 @@ def get_next_audit_file() -> Path:
             max_idx = max(max_idx, int(m.group(1)))
     next_idx = max_idx + 1
     today = datetime.date.today().isoformat()
-    return AUDIT_DIR / f"audit-{next_idx:03d}-{today}.md"
+    return out_dir / f"audit-{next_idx:03d}-{today}.md"
 
 
 def build_guard_command(
@@ -1686,8 +1717,11 @@ def run_audit(
     mode: Optional[str] = None, records: Optional[Dict[str, str]] = None,
     installed_selection: Optional[Path] = None,
     restricted_env: bool = False,
+    out_dir: Optional[Path] = None,
     **extra_records: Any,
 ) -> int:
+    if out_dir is not None:
+        _validate_out_dir(out_dir)
     installed_skills = None
     audit_error = None
     if installed_selection is not None:
@@ -1707,7 +1741,7 @@ def run_audit(
     effective_mode = mode if mode is not None else load_settings().get("mode", "during")
     try:
         while audit_file is None:
-            candidate = get_next_audit_file()
+            candidate = get_next_audit_file(out_dir) if out_dir is not None else get_next_audit_file()
             try:
                 generate_audit_markdown(findings, candidate, status=status, guards=guards, mode=effective_mode)
             except FileExistsError:
@@ -1765,6 +1799,8 @@ def handle_audit(args: List[str]) -> int:
     )
     parser.add_argument("--installed-selection", type=Path,
                         help="Opt in to installed optional review skills using a format-1 selection manifest")
+    parser.add_argument("--out", default="",
+                        help="Directory for the audit dossier (default: inside the repo's .git directory)")
     parser.add_argument("--pr-title", default="")
     parser.add_argument("--pr-body-file", default="")
     parser.add_argument("--template-file", default="")
@@ -1787,28 +1823,33 @@ def handle_audit(args: List[str]) -> int:
     parser.add_argument("--fault-isolation-record", default="", help="Path to Scientific Fault Isolation JSON record")
     parser.add_argument("--migration-record", default="", help="Path to Zero-Downtime Migration JSON record")
     options = parser.parse_args(args)
-    return run_audit(
-        options.base, options.json, options.pr_title,
-        options.pr_body_file, options.template_file, options.canary_token,
-        mode=options.mode,
-        installed_selection=options.installed_selection,
-        restricted_env=options.restricted_env,
-        decision_record=options.decision_record,
-        root_fix_record=options.root_fix_record,
-        future_scale_record=options.future_scale_record,
-        paranoid_record=options.paranoid_record,
-        perf_record=options.perf_record,
-        rollout_record=options.rollout_record,
-        simulation_record=options.simulation_record,
-        privacy_record=options.privacy_record,
-        contract_record=options.contract_record,
-        apple_craft_record=options.apple_craft_record,
-        observability_record=options.observability_record,
-        motion_record=options.motion_record,
-        profiler_record=options.profiler_record,
-        fault_isolation_record=options.fault_isolation_record,
-        migration_record=options.migration_record,
-    )
+    try:
+        return run_audit(
+            options.base, options.json, options.pr_title,
+            options.pr_body_file, options.template_file, options.canary_token,
+            mode=options.mode,
+            installed_selection=options.installed_selection,
+            restricted_env=options.restricted_env,
+            out_dir=Path(options.out) if options.out else None,
+            decision_record=options.decision_record,
+            root_fix_record=options.root_fix_record,
+            future_scale_record=options.future_scale_record,
+            paranoid_record=options.paranoid_record,
+            perf_record=options.perf_record,
+            rollout_record=options.rollout_record,
+            simulation_record=options.simulation_record,
+            privacy_record=options.privacy_record,
+            contract_record=options.contract_record,
+            apple_craft_record=options.apple_craft_record,
+            observability_record=options.observability_record,
+            motion_record=options.motion_record,
+            profiler_record=options.profiler_record,
+            fault_isolation_record=options.fault_isolation_record,
+            migration_record=options.migration_record,
+        )
+    except ValueError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 2
 
 
 def handle_check_engines(args: List[str]) -> int:
