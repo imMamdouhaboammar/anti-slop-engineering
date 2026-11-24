@@ -190,7 +190,7 @@ test("serves a fresh cached registry result without consulting the registry", as
   expect(calls).toBe(0);
   expect(result).toEqual({
     source: cacheRecord.source, status: "observed", locked_version: "listed", deprecated: true,
-    latest: "3.2.0", latest_satisfies_declared_range: false, observed_at: "2026-11-20T10:00:00.000Z",
+    latest: "3.2.0", latest_satisfies_declared_range: false, channels: null, observed_at: "2026-11-20T10:00:00.000Z",
     provenance: "cache", age_seconds: 1800, freshness: "fresh",
   });
 });
@@ -201,7 +201,7 @@ test("serves an expired cache as stale evidence while offline", async () => {
   const result = await readRegistryEvidenceWithCache("@demo/library", locked, cacheRecord, cacheNow, 900, offline);
   expect(result).toEqual({
     source: cacheRecord.source, status: "observed", locked_version: "listed", deprecated: true,
-    latest: "3.2.0", latest_satisfies_declared_range: false, observed_at: "2026-11-20T10:00:00.000Z",
+    latest: "3.2.0", latest_satisfies_declared_range: false, channels: null, observed_at: "2026-11-20T10:00:00.000Z",
     provenance: "cache", age_seconds: 1800, freshness: "stale", live_status: "unavailable",
   });
 });
@@ -218,7 +218,7 @@ test("refreshes an expired cache from the registry and reports zero age", async 
     "@demo/library", locked, cacheRecord, cacheNow, 900, async () => Response.json(metadata));
   expect(result).toEqual({
     source: cacheRecord.source, status: "observed", locked_version: "listed", deprecated: true,
-    latest: "3.2.0", latest_satisfies_declared_range: false, observed_at: "2026-11-20T10:30:00.000Z",
+    latest: "3.2.0", latest_satisfies_declared_range: false, channels: { latest: "3.2.0" }, observed_at: "2026-11-20T10:30:00.000Z",
     provenance: "registry", age_seconds: 0, freshness: "fresh",
   });
 });
@@ -268,4 +268,68 @@ test("CLI distinguishes unreadable installed metadata from a missing manifest", 
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("reports the verified release channels from dist-tags", async () => {
+  const locked = inspectDirectDependency(manifest, lock, "@demo/library");
+  const result = await readPublicNpmEvidence("@demo/library", locked, () => Response.json({
+    name: "@demo/library",
+    "dist-tags": { latest: "3.2.0", next: "4.0.0-beta.1", beta: "3.3.0-beta.2", legacy: "9.9.9" },
+    versions: {
+      "2.1.0": { name: "@demo/library", version: "2.1.0" },
+      "3.2.0": { name: "@demo/library", version: "3.2.0" },
+      "4.0.0-beta.1": { name: "@demo/library", version: "4.0.0-beta.1" },
+      "3.3.0-beta.2": { name: "@demo/library", version: "3.3.0-beta.2" },
+    },
+  }));
+  expect(result.status).toBe("observed");
+  expect(result.channels).toEqual({ latest: "3.2.0", next: "4.0.0-beta.1", beta: "3.3.0-beta.2" });
+});
+
+test("observes a locked prerelease on its own terms", async () => {
+  const locked = inspectDirectDependency(manifest, lock, "example-prerelease");
+  const result = await readPublicNpmEvidence("example-prerelease", locked, () => Response.json({
+    name: "example-prerelease", "dist-tags": { latest: "3.0.0" }, versions: {
+      "3.0.0-rc.1": { name: "example-prerelease", version: "3.0.0-rc.1" },
+      "3.0.0": { name: "example-prerelease", version: "3.0.0" },
+    },
+  }));
+  expect(result).toMatchObject({ status: "observed", locked_version: "listed", deprecated: false });
+});
+
+test("an unlisted locked version is never reported as yanked", async () => {
+  const locked = inspectDirectDependency(manifest, lock, "@demo/library");
+  const result = await readPublicNpmEvidence("@demo/library", locked, () => Response.json({
+    name: "@demo/library", "dist-tags": { latest: "3.2.0" }, versions: {
+      "3.2.0": { name: "@demo/library", version: "3.2.0" },
+    },
+  }));
+  expect(result.status).toBe("observed");
+  expect(result.locked_version).toBe("unlisted");
+  expect(result.deprecated).toBeNull();
+  expect(result.yanked).toBeUndefined();
+});
+
+test("distinguishes a rate-limited registry from an unavailable one", async () => {
+  const locked = inspectDirectDependency(manifest, lock, "@demo/library");
+  const limited = () => new Response(null, { status: 429 });
+  expect((await readPublicNpmEvidence("@demo/library", locked, limited)).status).toBe("rate_limited");
+});
+
+test("serves a stale cache when the registry rate-limits the refresh", async () => {
+  const locked = inspectDirectDependency(manifest, lock, "@demo/library");
+  const limited = async () => new Response(null, { status: 429 });
+  const result = await readRegistryEvidenceWithCache("@demo/library", locked, cacheRecord, cacheNow, 900, limited);
+  expect(result).toMatchObject({ provenance: "cache", freshness: "stale", live_status: "rate_limited" });
+});
+
+test("registry metadata contradicting the locked version is untrusted", async () => {
+  const locked = inspectDirectDependency(manifest, lock, "@demo/library");
+  const result = await readPublicNpmEvidence("@demo/library", locked, () => Response.json({
+    name: "@demo/library", "dist-tags": { latest: "3.2.0" }, versions: {
+      "2.1.0": { name: "@demo/library", version: "2.1.1" },
+      "3.2.0": { name: "@demo/library", version: "3.2.0" },
+    },
+  }));
+  expect(result.status).toBe("invalid_metadata");
 });

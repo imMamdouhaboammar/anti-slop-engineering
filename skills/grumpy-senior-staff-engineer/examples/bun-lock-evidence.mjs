@@ -155,12 +155,20 @@ function metadataEvidence(data, packageName, evidence) {
   const latestIsVerified = typeof latest === "string" && releaseVersion(latest) &&
     data.versions[latest]?.name === packageName && data.versions[latest]?.version === latest;
   const latestIsStable = latestIsVerified && !latest.split("+", 1)[0].includes("-");
+  const channels = {};
+  for (const [tag, version] of Object.entries(data["dist-tags"])) {
+    if (typeof version === "string" && releaseVersion(version) &&
+        data.versions[version]?.name === packageName && data.versions[version]?.version === version) {
+      channels[tag] = version;
+    }
+  }
   return {
     status: "observed",
     locked_version: selected ? "listed" : "unlisted",
     deprecated: selected ? typeof selected.deprecated === "string" && selected.deprecated.length > 0 : null,
     latest: latestIsVerified ? latest : null,
     latest_satisfies_declared_range: latestIsStable ? Bun.semver.satisfies(latest, evidence.declared) : null,
+    channels,
   };
 }
 
@@ -183,7 +191,8 @@ export async function readPublicNpmEvidence(packageName, evidence, transport = r
       } else {
         await body?.cancel();
       }
-      return { source, status: code === 404 ? "package_unlisted" : "unavailable" };
+      const status = code === 404 ? "package_unlisted" : code === 429 ? "rate_limited" : "unavailable";
+      return { source, status };
     }
     const raw = await readBoundedRegistryBody(body);
     if (raw === null) {
@@ -200,13 +209,16 @@ function usableCacheRecord(cache, packageName, evidence) {
     return null;
   }
   const observed = Date.parse(cache.observed_at);
+  const channelsUsable = cache.channels === undefined || cache.channels === null ||
+    (typeof cache.channels === "object" && !Array.isArray(cache.channels) &&
+      Object.values(cache.channels).every((version) => typeof version === "string"));
   const usable = cache.package === packageName && cache.resolved === evidence.resolved &&
     cache.status === "observed" && cache.source === npmOrigin + "/" + encodeURIComponent(packageName) &&
     typeof cache.locked_version === "string" &&
     (typeof cache.deprecated === "boolean" || cache.deprecated === null) &&
     (typeof cache.latest === "string" || cache.latest === null) &&
     (typeof cache.latest_satisfies_declared_range === "boolean" ||
-      cache.latest_satisfies_declared_range === null) && Number.isFinite(observed);
+      cache.latest_satisfies_declared_range === null) && channelsUsable && Number.isFinite(observed);
   return usable ? observed : null;
 }
 
@@ -215,6 +227,7 @@ function cachedEvidence(cache) {
     source: cache.source, status: cache.status, locked_version: cache.locked_version,
     deprecated: cache.deprecated, latest: cache.latest,
     latest_satisfies_declared_range: cache.latest_satisfies_declared_range,
+    channels: cache.channels ?? null,
     observed_at: cache.observed_at,
   };
 }
