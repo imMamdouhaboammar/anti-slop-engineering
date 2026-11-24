@@ -5,6 +5,14 @@
 A test file whose own line declares `# targeted-mutation: external-action` is
 excluded before any execution: neither the baseline nor any mutant runs, and
 the report records the exclusion outside the score denominator.
+
+Execution boundary: runs execute in a disposable copy with a minimized
+environment (parent credentials are not inherited; HOME and the temp
+directories are redirected into the run tree) under a per-run timeout.
+This is not an operating-system sandbox — network access is not restricted
+(the marker exclusion is the control for external actions) and absolute-path
+writes outside the disposable tree are not prevented. The report's
+`execution_boundary` field states the same contract.
 """
 
 import argparse
@@ -23,6 +31,7 @@ if not __package__:
 
 from scripts.git_changeset import collect_changes, git, repository_root
 from scripts.verification_oracle_guard import (
+    EXECUTION_BOUNDARY,
     _copy_snapshot_files,
     _execute_test_isolated,
     _regular_relative_file,
@@ -139,6 +148,7 @@ def run_targeted_mutation(root, source_file, function_name, test_file, base, see
         "source": source_file, "function": function_name, "test": test_file, "seed": seed,
         "base": changes["base"], "eligible": len(candidates), "baseline": "not_run",
         "results": [], "score": {"killed": 0, "evaluated": 0}, "exclusion": None,
+        "execution_boundary": EXECUTION_BOUNDARY,
     }
     if not candidates:
         return report
