@@ -27,7 +27,7 @@ PATTERNS = [
     ('SECURITY_BYPASS_CANDIDATE', 'review', r'(?i)(?:\bverify\s*=\s*False\b|\brejectUnauthorized\s*:\s*false\b|--no-verify\b|\bdisable[_-]?auth\s*=\s*true\b)'),
     ('ERROR_SWALLOW_CANDIDATE', 'review', r'(?i)(?:\bexcept\s+[^:]+:\s*pass\b|\bcatch\s*\([^)]*\)\s*\{\s*\}|\.catch\s*\(\s*\(\s*\)\s*=>\s*\{\s*\}\s*\))'),
     ('TYPE_CHECK_SUPPRESSION', 'review', r'(?:@ts-ignore\b|@ts-nocheck\b|type:\s*ignore\b|eslint-disable(?:-next-line)?\b)'),
-    ('DYNAMIC_EXECUTION_CANDIDATE', 'review', r'(?i)(?:\beval\s*\(|\bexec\s*\(|\bshell\s*=\s*True\b)'),
+    ('DYNAMIC_EXECUTION_CANDIDATE', 'review', r'(?i)(?:(?<![.\w])eval\s*\(|(?<![.\w])exec\s*\(|\bshell\s*=\s*True\b)'),
     ('DEV_NOTE_IN_UI', 'blocker', r'(?i)<(?:p|span|div|small|Alert|Badge|Text|Label|h[1-6])[^>]*>[^<]*(?:\b(?:note|todo|fixme|agent note|dev note|developer note)\s*:|\bmock data displayed\b|\bplaceholder until\b)[^<]*</'),
     ('PATRONIZING_UI_COPY', 'review', r'(?i)<(?:p|span|small|div|Label|HelperText)[^>]*>[^<]*(?:\b(?:please enter your|click (?:here|this button) to|this (?:modal|form|button) allows you to)\b)[^<]*</'),
     ('TRIVIAL_COMMENT_NARRATION', 'review', r'(?i)^\s*(?://|#)\s*(?:(?:increment|decrement)\s+\w+|(?:return|returns)\s+(?:the\s+)?(?:result|response|value|data|error|promise|true|false)|(?:initialize|init)\s+(?:state|variable|array|object|list|dict)|(?:check|verify)\s+if\s+(?:\w+\s+is\s+)?(?:null|undefined|empty|none)|handle\s+(?:click|change|submit|event|button)|(?:constructor|destructor)\b|import\s+(?:modules?|packages?|react|dependencies)|call\s+(?:the\s+)?\w+\s+function)'),
@@ -181,6 +181,75 @@ def audit_multiline_retries(root, files, added_lines):
     return findings
 
 
+DB_CONSTRUCTOR = re.compile(r'\b([A-Za-z_$][\w$]*)\s*=\s*(?:await\s+)?new\s+(?:PGlite|Database|Client|Pool|Connection)\s*\(')
+DB_FACTORY = re.compile(r'\b([A-Za-z_$][\w$]*)\s*=\s*(?:await\s+)?(?:PGlite|Database)\.create\s*\(')
+METHOD_EXECUTION = re.compile(r'\b([A-Za-z_$][\w$]*)\s*\.\s*(?:exec|execSync|eval)\s*\(')
+
+
+def _database_receivers(lines):
+    receivers = set()
+    for line in lines:
+        for pattern in (DB_CONSTRUCTOR, DB_FACTORY):
+            match = pattern.search(line)
+            if match:
+                receivers.add(match.group(1))
+    return receivers
+
+
+def audit_dynamic_execution(root, files, added_lines):
+    """Flag method-call exec/eval unless the receiver is a database handle.
+
+    A receiver assigned from a known database constructor or factory in the
+    same file (PGlite, better-sqlite3 Database, pg Client/Pool, ...) runs SQL,
+    not shell code. Every other receiver — child_process aliases, unknown or
+    ambiguous receivers — keeps the review finding.
+    """
+    added_by_file = {}
+    for raw_path, number, raw_line in added_lines:
+        try:
+            name = raw_path.decode("utf-8")
+        except UnicodeDecodeError:
+            continue
+        added_by_file.setdefault(name, []).append(
+            (number, raw_line.decode("utf-8", "replace").removesuffix("\r")))
+
+    findings = []
+    for change in files:
+        path = change["new_path"]
+        if path is None or path["text"] is None or change["new_mode"] not in {"100644", "100755"}:
+            continue
+        name = path["text"]
+        entries = added_by_file.get(name)
+        if not entries:
+            continue
+        if GENERATED_PATH.search(name) or DOC_PATH.search(name):
+            continue
+        if re.search(r'(?i)(?:^|/)references/', name):
+            continue
+        target = root / name
+        try:
+            if target.is_symlink() or not target.is_file() or not target.resolve().is_relative_to(root):
+                continue
+            lines = target.read_text(encoding="utf-8", errors="replace").splitlines()
+        except OSError:
+            continue
+        receivers = _database_receivers(lines)
+        for number, code_line in entries:
+            for match in METHOD_EXECUTION.finditer(code_line):
+                if match.group(1) in receivers:
+                    continue
+                findings.append({
+                    'id': 'DYNAMIC_EXECUTION_CANDIDATE',
+                    'severity': 'review',
+                    'file': name,
+                    'line': number,
+                    'evidence': code_line.strip()[:180],
+                    'action': 'Inspect context and justify or fix; regex match is not proof of a defect.',
+                })
+                break
+    return findings
+
+
 def scan(repo, base, max_lines=400, *, hooks_dir=None):
     root = repository_root(repo)
     hooks = load_hooks(hooks_dir, root) if hooks_dir is not None else {}
@@ -211,6 +280,7 @@ def scan(repo, base, max_lines=400, *, hooks_dir=None):
     )
     patch_findings = audit_patch_lines(added_lines)
     patch_findings.extend(audit_multiline_retries(pathlib.Path(root).resolve(), evidence["files"], added_lines))
+    patch_findings.extend(audit_dynamic_execution(pathlib.Path(root).resolve(), evidence["files"], added_lines))
     findings = meta_findings + patch_findings
 
     report = {
