@@ -65,6 +65,16 @@ Anti-Slop Engineering is an open-source playbook, agent skill, and lightweight t
 43. **The StyleSeed Cognitive Grammar, Token Canon DAG & Spatial Rhythm Mandate:** When designing or modifying UI components, tokens, or layouts, read `skills/styleseed-guard/SKILL.md`. Classify the surface into its Cognitive Output Grammar (`operations-console`, `technical-instrument`, `editorial-reading`, `commerce-conversion`, `consumer-service`, `institutional-service`, `expressive-marketing`); enforce the 4-Tier Token Layering DAG (Primitive -> Semantic -> Spatial/Type -> Component) and eliminate primitive color leakage; enforce 11 pairwise mathematical contrast gates; adhere to the 6-Role Spatial Rhythm Hierarchy (`pageInset`, `sectionGap`, `groupGap`, `stackGap`, `inlineGap`, `componentInset`) eliminating spatial slop and inversion anomalies; bound longitudinal multi-screen drift ($S_1 \le 0.25$); and enforce that decisions outrank defaults while exceptions can NEVER waive invariants. Audit with `bunx anti-slop-engineering styleseed --scan src/ --json`.
 44. **The Tagore Engineering Discourse & Substance Mandate:** When drafting, editing, or auditing pull request descriptions, git commit messages, Architectural Decision Records (ADRs), documentation, state notes, or agent reasoning traces, read `skills/tagore-guard/SKILL.md`. Enforce Rabindranath Tagore's literary restraint, empirical specificity, and authentic technical voice over statistical predictability and mechanical puffery: eliminate the 29 cataloged AI tells (significance inflation, copula avoidance, superficial -ing chains, rule-of-three, em-dash addiction, and promotional hype); mandate active engineering agency and empirical measurements; enforce the 8-Dimension Scoring Matrix with non-negotiable Mechanics ($\ge 35/50$) and Substance ($\ge 21/30$) subtotal floors ($\text{Total} \ge 56/80$); calibrate prose to repository ground truth via `.anti-slop/voice-profile.json`; and run the self-audit reflection loop before delivering. Audit with `bunx anti-slop-engineering tagore --file <file> --json`.
 
+<!-- gate0-preflight:start -->
+## Gate 0 Preflight
+
+1. Before editing a repository with an upstream remote, inspect the working tree, fetch the upstream, and compare local and upstream commits. Reconcile divergence on the appropriate branch without discarding local work or rewriting published history. When offline, record the unverified remote state.
+2. For supported blocking lifecycle hooks, verify the host's actual pre-tool denial behavior. Advisory hooks must be identified as advisory; do not claim enforcement from simulated events or passive logs.
+3. Discover applicable repository instructions, installed skills, and available tool capabilities before implementation. Use authorized tools only and verify their results.
+4. Run unattended commands with bounded, non-interactive input where supported. Do not use force flags to suppress safety checks; delete branches or worktrees only after verifying their work is preserved.
+
+<!-- gate0-preflight:end -->
+
 <!-- anti-slop-engineering:start -->
 ## anti-slop-engineering
 Follow Anti-Slop Engineering standards, Google SRE Discipline (KISS, DRY, YAGNI, Fix Issues at Scale), and clean-room gates:
