@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.0] - 2026-11-25
+
+### Added
+
+- Documented Antigravity 2.35.1 hook adapter in `README.md` covering pre-tool file validation, post-tool observation, and safe workspace containment (#290, #291).
+- Registered all agent plugin manifests (`.claude-plugin/plugin.json`, `plugin.json`, `.qoder-plugin/plugin.json`, `.devin-plugin/plugin.json`, `plugin.yaml`, `skills/anti-slop-engineering/SKILL.md`) in `scripts/bump_version.py` manifest targets DAG (#291).
+
+### Fixed
+
+- Aligned multi-agent adapter plugin descriptors with package version, resolving `tests/adapters-integration.test.js` regression (#291).
+- Refactored regex compilation in `scripts/bump_version.py` ensuring clean passes under Bug Killer quick scan and Ruff B009 (#291).
+
 ## [1.15.0] - 2026-11-25
 
 ### Added
