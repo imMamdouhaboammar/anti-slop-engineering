@@ -912,6 +912,12 @@ test('Enforcement: the flag is rejected without a preview, for other adapters, o
     const gemini = run(['--agent=gemini', '--skills=core', '--gemini-hooks', '--dry-run', '--json', '--enforcement=advisory'])
     assert.notEqual(gemini.status, 0)
     assert.match(gemini.stderr, /only for the Codex/)
+    const agy = run(['--agent=antigravity', '--skills=core', '--antigravity-hooks', '--dry-run', '--json'])
+    assert.equal(agy.status, 0, agy.stderr)
+    const agyPlan = JSON.parse(agy.stdout).hookPlan
+    assert.equal(agyPlan.settings, path.join(fs.realpathSync(dir), '.agents', 'hooks.json'))
+    assert.deepEqual(agyPlan.tools, ['write_file', 'edit_file'])
+    assert.equal(agyPlan.requires_host_hook_trust, false)
     assert.deepEqual(fs.readdirSync(dir), [])
   })
 })

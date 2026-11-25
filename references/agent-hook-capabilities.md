@@ -5,7 +5,8 @@
 | Claude Code | `Read`, `Edit`, `Write` file actions | The same actions after success | Tested on 2.1.318. See [the project opt-in workflow](claude-code-hooks.md). |
 | Codex CLI | `apply_patch` file edits on POSIX | `apply_patch` feedback on POSIX | Tested on CLI 0.166.0. The host must trust the project and hook definition. |
 | Gemini CLI | Built-in `write_file` on POSIX | Same tool, with feedback appended to the result | Tested on CLI 0.68.0. Trust the workspace and enable hooks in Gemini CLI. |
-| Antigravity, Cursor, OpenCode | No verified adapter in this package | No verified adapter in this package | Use the normal skills and explicit repository checks. |
+| Antigravity | Built-in `write_file`, `edit_file` on POSIX | `write_file`, `edit_file` observation (`PostToolUse`) | Tested on Antigravity 2.35.1. `.agents/hooks.json` is loaded at session start. |
+| Cursor, OpenCode | No verified adapter in this package | No verified adapter in this package | Use the normal skills and explicit repository checks. |
 
 ## Codex project setup
 
@@ -41,6 +42,22 @@ python3 /path/to/anti-slop/scripts/gemini_hooks.py uninstall --project /path/to/
 python3 /path/to/anti-slop/scripts/gemini_hooks.py uninstall --project /path/to/project --yes
 ```
 
+## Antigravity project setup
+
+```sh
+python3 /path/to/anti-slop/scripts/antigravity_hooks.py install --project /path/to/project --dry-run
+python3 /path/to/anti-slop/scripts/antigravity_hooks.py install --project /path/to/project --yes
+```
+
+The adapter updates `.agents/hooks.json` under the `"anti-slop"` key, preserving other named hooks and refusing symlinked or malformed files. Antigravity loads `.agents/hooks.json` at session start, so start a new session after installing or removing hooks.
+
+Arm a contract with `anti-slop-engineering exec parse-prompt` from the same project. With `review guard`, `PreToolUse` denies matched `write_file` and `edit_file` calls before execution. With `review watch`, `PreToolUse` returns `"ask"` with the policy reason. `PostToolUse` returns `{}` for observation. Shell (`run_command`), MCP, and other tools remain subject to Antigravity's native permissions.
+
+```sh
+python3 /path/to/anti-slop/scripts/antigravity_hooks.py uninstall --project /path/to/project --dry-run
+python3 /path/to/anti-slop/scripts/antigravity_hooks.py uninstall --project /path/to/project --yes
+```
+
 [Codex hooks documentation](https://learn.chatgpt.com/docs/hooks) · [Gemini CLI hooks](https://geminicli.com/docs/hooks/reference/) · [Antigravity plugin hooks](https://antigravity.google/docs/build-plugins) · [Cursor hooks](https://cursor.com/docs/hooks) · [OpenCode plugin hooks](https://opencode.ai/docs/build/plugins/server)
 
 ## Preview from setup
@@ -50,6 +67,7 @@ From a durable POSIX checkout, run either preview from the project directory.
 ```sh
 node /path/to/anti-slop/bin/cli.js setup --agent=codex --codex-hooks --dry-run --json
 node /path/to/anti-slop/bin/cli.js setup --agent=gemini --gemini-hooks --dry-run --json
+node /path/to/anti-slop/bin/cli.js setup --agent=antigravity --antigravity-hooks --dry-run --json
 ```
 
 The preview reports the project settings path, supported tool, host trust requirement, and enforcement plan. Pass `--enforcement <mode>` (`strict`, `advisory`, `git-boundary`, `skills-only`) with `--codex-hooks`, or in an interactive setup targeting Codex at project scope, to preview whether a requested enforcement mode is supported by the adapter. Use the standalone adapter to apply or remove the hooks.
