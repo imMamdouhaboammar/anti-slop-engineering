@@ -15,16 +15,16 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const rootDir = path.resolve(__dirname, '..')
 
-function readPackageVersion() {
+const loadConfigOrDefault = (filename, fallback) => {
   try {
-    return JSON.parse(fs.readFileSync(path.join(rootDir, 'package.json'), 'utf8')).version
+    return JSON.parse(fs.readFileSync(path.join(rootDir, filename), 'utf8'))
   } catch (error) {
-    if (error.code === 'ENOENT') return '1.6.0'
+    if (error.code === 'ENOENT') return fallback
     throw error
   }
 }
 
-export const VERSION = readPackageVersion()
+export const VERSION = loadConfigOrDefault('package.json', { version: '1.6.0' }).version
 
 export const CORE_SKILL = 'anti-slop-engineering'
 
@@ -96,16 +96,7 @@ export function listAvailableModules() {
   })
 }
 
-function readDomainGroups() {
-  try {
-    return JSON.parse(fs.readFileSync(path.join(rootDir, 'skills.sh.json'), 'utf8')).groupings
-  } catch (error) {
-    if (error.code === 'ENOENT') return []
-    throw error
-  }
-}
-
-const domainGroups = readDomainGroups()
+const domainGroups = loadConfigOrDefault('skills.sh.json', { groupings: [] }).groupings
 export const DOMAIN_PACKS = Object.fromEntries(domainGroups.map(({ title, skills }) => [
   title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''), skills,
 ]))
@@ -178,19 +169,16 @@ export function resolveSkillSelection(requested, available = listAvailableSkills
   return [CORE_SKILL, ...new Set(requestedIds.filter((id) => id !== CORE_SKILL))]
 }
 
-function resolveBase(location) {
-  return location === 'global' ? os.homedir() : process.cwd()
-}
-
-function skillPath(agent, location) {
-  const dir = location === 'global' ? (agent.globalDir ?? agent.dir) : agent.dir
-  return path.join(resolveBase(location), dir)
+const resolveSkillFolder = (agent, location) => {
+  const base = location === 'global' ? os.homedir() : process.cwd()
+  const rel = location === 'global' ? (agent.globalDir ?? agent.dir) : agent.dir
+  return path.join(base, rel)
 }
 
 export function resolveTargets(location, selected = AGENTS.map((a) => a.id)) {
   const byPath = new Map()
   for (const agent of AGENTS.filter((a) => selected.includes(a.id))) {
-    const target = skillPath(agent, location)
+    const target = resolveSkillFolder(agent, location)
     const found = byPath.get(target)
     if (found) found.agents.push(agent)
     else byPath.set(target, { agents: [agent], path: target, exists: fs.existsSync(target) })
@@ -199,7 +187,7 @@ export function resolveTargets(location, selected = AGENTS.map((a) => a.id)) {
 }
 
 export function detectAgents(location) {
-  return AGENTS.flatMap((a) => fs.existsSync(path.dirname(skillPath(a, location))) ? [a.id] : [])
+  return AGENTS.flatMap((a) => fs.existsSync(path.dirname(resolveSkillFolder(a, location))) ? [a.id] : [])
 }
 
 function runSafeInstall(args, input) {
@@ -811,7 +799,9 @@ export function updateAll({ locations = ['project', 'global'] } = {}) {
       )
       results.push({ location, path: target.path, agents: target.agents.map((a) => a.id),
         skills, version: VERSION, changes, entries, state })
-      if (location === 'project') projectTargets.push(target)
+      if (location === 'project') {
+        projectTargets.push(target)
+      }
     }
   }
 
@@ -1035,6 +1025,8 @@ const hookPreviewAdapters = {
     'Codex project hook trust and a durable adapter checkout'],
   gemini: ['Gemini CLI', 'references/agent-hook-capabilities.md', ['BeforeTool policy', 'AfterTool feedback'],
     'Gemini workspace trust, enabled hooks, and a durable adapter checkout'],
+  antigravity: ['Antigravity', 'references/agent-hook-capabilities.md', ['PreToolUse policy', 'PostToolUse observation'],
+    'Antigravity session-start .agents/hooks.json discovery and a durable adapter checkout'],
 }
 
 const ENFORCEMENT_MODES = ['strict', 'advisory', 'git-boundary', 'skills-only']
@@ -1145,6 +1137,7 @@ Options:
   --claude-hooks      With --dry-run, preview local Claude hooks from this checkout
   --codex-hooks       With --dry-run, preview local Codex hooks from this checkout
   --gemini-hooks      With --dry-run, preview local Gemini hooks from this checkout
+  --antigravity-hooks With --dry-run, preview local Antigravity hooks from this checkout
   --enforcement <mode> With --codex-hooks --dry-run, or shown in the interactive plan: requested hook enforcement (strict, advisory, git-boundary, skills-only)
   --json              Output JSON result
   --no-interactive    Skip terminal selection (defaults to core only)
@@ -1233,7 +1226,8 @@ Options:
   let resolvedScope = scopeArg
 
   const promptOutput = selectionOnly ? process.stderr : process.stdout
-  const canPrompt = !dryRun && !jsonMode && !process.env.CI && !args.includes('--no-interactive')
+  const isCi = Boolean(process.env.CI)
+  const canPrompt = !dryRun && !jsonMode && !isCi && !args.includes('--no-interactive')
     && skillsArg == null && presetArg == null && promptOutput.isTTY
   if (enforcementArg && !hookPreview && !canPrompt) {
     throw new Error('--enforcement requires a hook preview (for example --codex-hooks with --dry-run)')

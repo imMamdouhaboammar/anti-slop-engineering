@@ -1,6 +1,7 @@
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
+*.pyc
 *$py.class
 
 # C extensions
@@ -32,6 +33,7 @@ htmlcov/
 .nox/
 .coverage
 .coverage.*
+coverage/
 .cache
 nosetests.xml
 coverage.xml
@@ -39,15 +41,30 @@ coverage.xml
 *.py,cover
 .hypothesis/
 .pytest_cache/
+.mypy_cache/
 .ruff_cache/
 cover/
 
+# Logs and runtime artifacts
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+*.tmp
+
 # Environments & secrets
+agent-kernel/env-vault/
 /agent-kernel/env-vault/
 .env
 .env.*
 !.env.example
 !.env.*.example
+*.pem
+*.key
+*.cert
+*.crt
 .venv
 env/
 venv/
@@ -73,6 +90,14 @@ Thumbs.db
 *.swo
 *~
 
+# Swarm / Multi-agent coordinates and wave files
+*.wave.*
+coordinator.*/
+
+# Worktrees
+*worktrees/
+.worktrees/
+
 # Local agent harnesses, skill configs & editor caches
 .repowise/
 .claude/
@@ -86,7 +111,6 @@ Thumbs.db
 .xerj/
 .qodo/
 .coderabbit/
-.worktrees/
 /.agents/
 .fable/
 .pstack/
@@ -104,6 +128,7 @@ skills-lock.json
 
 # Node & Bun
 node_modules/
+.turbo/
 
 # Rust & Cargo
 target/
