@@ -27,94 +27,137 @@ def format_git_error(command, returncode, stdout="", stderr=""):
     detail = stderr.strip() or stdout.strip() or f"exit code {returncode}"
     return f"Git command failed (exit {returncode}): {shlex.join(list(command))}\n{detail}"
 
-SEMVER_PATTERN = re.compile(
+_compile = re.compile
+
+SEMVER_PATTERN = _compile(
     r'^(?P<major>\d{1,8})\.(?P<minor>\d{1,8})\.(?P<patch>\d{1,8})(?:-(?P<prerelease>[0-9A-Za-z.-]{1,50}))?$'
 )
+
+JSON_VERSION_PATTERN = _compile(r'("version"\s*:\s*)"[^"]+"')
+PYPROJECT_VERSION_PATTERN = _compile(r'(version\s*=\s*)"[^"]+"')
+SKILL_VERSION_PATTERN = _compile(r'(version\s*:\s*)"[^"]+"')
+CLI_VERSION_PATTERN = _compile(r'Anti-Slop Engineering CLI \(v[^\)]+\)')
+CITATION_VERSION_PATTERN = _compile(r'(?m)(^version\s*:\s*)[^\n]+')
+CITATION_DATE_PATTERN = _compile(r'(date-released\s*:\s*)[^\n]+')
+CARGO_VERSION_PATTERN = _compile(r'(\[package\][\s\S]*?version\s*=\s*)"[^"]+"')
+GO_MODEL_VERSION_PATTERN = _compile(r'(Version\s*:\s*)"[^"]+"')
+PYTHON_MODULE_VERSION_PATTERN = _compile(r"(__version__\s*=\s*)'[^']+'")
+YAML_VERSION_PATTERN = _compile(r'(?m)(^version\s*:\s*)[^\n]+')
 
 MANIFEST_TARGETS = [
     {
         "file": "package.json",
-        "pattern": re.compile(r'("version"\s*:\s*)"[^"]+"'),
+        "pattern": JSON_VERSION_PATTERN,
         "replacement": r'\g<1>"{version}"',
     },
     {
         "file": "pyproject.toml",
-        "pattern": re.compile(r'(version\s*=\s*)"[^"]+"'),
+        "pattern": PYPROJECT_VERSION_PATTERN,
         "replacement": r'\g<1>"{version}"',
     },
     {
         "file": ".skills.json",
-        "pattern": re.compile(r'("version"\s*:\s*)"[^"]+"'),
+        "pattern": JSON_VERSION_PATTERN,
         "replacement": r'\g<1>"{version}"',
     },
     {
         "file": "marketplace.json",
-        "pattern": re.compile(r'("version"\s*:\s*)"[^"]+"'),
+        "pattern": JSON_VERSION_PATTERN,
         "replacement": r'\g<1>"{version}"',
     },
     {
         "file": "SKILL.md",
-        "pattern": re.compile(r'(version\s*:\s*)"[^"]+"'),
+        "pattern": SKILL_VERSION_PATTERN,
         "replacement": r'\g<1>"{version}"',
     },
     {
         "file": "bin/cli.js",
-        "pattern": re.compile(r'Anti-Slop Engineering CLI \(v[^\)]+\)'),
+        "pattern": CLI_VERSION_PATTERN,
         "replacement": r'Anti-Slop Engineering CLI (v{version})',
     },
     {
         "file": "CITATION.cff",
-        "pattern": re.compile(r'(?m)(^version\s*:\s*)[^\n]+'),
+        "pattern": CITATION_VERSION_PATTERN,
         "replacement": r'\g<1>{version}',
     },
     {
         "file": "CITATION.cff",
-        "pattern": re.compile(r'(date-released\s*:\s*)[^\n]+'),
+        "pattern": CITATION_DATE_PATTERN,
         "replacement": r'\g<1>{release_date}',
     },
     {
         "file": "submission/listing.json",
-        "pattern": re.compile(r'("version"\s*:\s*)"[^"]+"'),
+        "pattern": JSON_VERSION_PATTERN,
         "replacement": r'\g<1>"{version}"',
     },
     {
         "file": "submission/reviewer-packet.json",
-        "pattern": re.compile(r'("version"\s*:\s*)"[^"]+"'),
+        "pattern": JSON_VERSION_PATTERN,
         "replacement": r'\g<1>"{version}"',
     },
     {
         "file": "services/anti-slop-rust/Cargo.toml",
-        "pattern": re.compile(r'(\[package\][\s\S]*?version\s*=\s*)"[^"]+"'),
+        "pattern": CARGO_VERSION_PATTERN,
         "replacement": r'\g<1>"{version}"',
     },
     {
         "file": "services/toil-guard-go/pkg/model/types.go",
-        "pattern": re.compile(r'(Version\s*:\s*)"[^"]+"'),
+        "pattern": GO_MODEL_VERSION_PATTERN,
         "replacement": r'\g<1>"{version}"',
     },
     {
         "file": "services/toil-guard-go/pkg/server/server.go",
-        "pattern": re.compile(r'("version"\s*:\s*)"[^"]+"'),
+        "pattern": JSON_VERSION_PATTERN,
         "replacement": r'\g<1>"{version}"',
     },
     {
         "file": "scripts/diff_guard.py",
-        "pattern": re.compile(r"(__version__\s*=\s*)'[^']+'"),
+        "pattern": PYTHON_MODULE_VERSION_PATTERN,
         "replacement": r"\g<1>'{version}'",
     },
     {
         "file": "scripts/sre_guard.py",
-        "pattern": re.compile(r"(__version__\s*=\s*)'[^']+'"),
+        "pattern": PYTHON_MODULE_VERSION_PATTERN,
         "replacement": r"\g<1>'{version}'",
     },
     {
         "file": "scripts/ast_slop_guard.py",
-        "pattern": re.compile(r"(__version__\s*=\s*)'[^']+'"),
+        "pattern": PYTHON_MODULE_VERSION_PATTERN,
         "replacement": r"\g<1>'{version}'",
     },
     {
         "file": ".codex-plugin/plugin.json",
-        "pattern": re.compile(r'("version"\s*:\s*)"[^"]+"'),
+        "pattern": JSON_VERSION_PATTERN,
+        "replacement": r'\g<1>"{version}"',
+    },
+    {
+        "file": ".claude-plugin/plugin.json",
+        "pattern": JSON_VERSION_PATTERN,
+        "replacement": r'\g<1>"{version}"',
+    },
+    {
+        "file": "plugin.json",
+        "pattern": JSON_VERSION_PATTERN,
+        "replacement": r'\g<1>"{version}"',
+    },
+    {
+        "file": ".qoder-plugin/plugin.json",
+        "pattern": JSON_VERSION_PATTERN,
+        "replacement": r'\g<1>"{version}"',
+    },
+    {
+        "file": ".devin-plugin/plugin.json",
+        "pattern": JSON_VERSION_PATTERN,
+        "replacement": r'\g<1>"{version}"',
+    },
+    {
+        "file": "plugin.yaml",
+        "pattern": YAML_VERSION_PATTERN,
+        "replacement": r'\g<1>{version}',
+    },
+    {
+        "file": "skills/anti-slop-engineering/SKILL.md",
+        "pattern": SKILL_VERSION_PATTERN,
         "replacement": r'\g<1>"{version}"',
     },
 ]
