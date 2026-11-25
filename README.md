@@ -91,7 +91,16 @@ pipx install git+https://github.com/imMamdouhaboammar/anti-slop-engineering.git
 
 ## Antigravity agentic plugin and MCP architecture
 
-Anti-Slop Engineering operates as a native agentic plugin within the Antigravity ecosystem (`plugin.json`, `mcp_config.json`, `hooks.json`). It exposes 15 dedicated MCP tools via `bin/mcp-server.js` and 7 domain-specialized subagents in `agents/`.
+Anti-Slop Engineering operates as a native agentic plugin within the Antigravity ecosystem (`plugin.json`, `mcp_config.json`, `hooks.json`, `.agents/hooks.json`). It exposes 15 dedicated MCP tools via `bin/mcp-server.js`, 7 domain-specialized subagents in `agents/`, and verified runtime hook adapters in `scripts/antigravity_hooks.py`.
+
+### Verified Antigravity Hook Adapter
+
+Antigravity 2.35.1+ loads `.agents/hooks.json` at session startup. Anti-Slop provides a zero-dependency POSIX hook adapter (`scripts/antigravity_hooks.py`) managing the `anti-slop` key:
+
+- **PreToolUse gate**: Intercepts `write_file` and `edit_file` invocations before execution, evaluating diff safety and returning `{ "decision": "deny" }` with an actionable invariant reason if the target violates policy.
+- **PostToolUse telemetry**: Emits post-mutation observations (`{}`) to record file modification events without side effects.
+- **Containment & safety**: Rejects symlinks, preserves other configured project hooks, and verifies canonical path containment within the workspace.
+- **CLI setup & preview**: Run `bunx anti-slop-engineering setup --antigravity-hooks` (or `--dry-run --json`) to preview and apply configuration.
 
 ### Native MCP Tools
 
