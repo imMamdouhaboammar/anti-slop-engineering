@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.15.0] - 2026-11-25
+
+### Added
+
+- Verified Antigravity 2.35.1 hook adapter (`scripts/antigravity_hooks.py`) managing `.agents/hooks.json` under `anti-slop` key for `write_file` and `edit_file` (#74, #290).
+- Canonical `resolve_working_target` helper in `scripts/claude_hooks.py` consolidating working directory containment and relative target resolution across hook adapters (#290).
+- Preview and dry-run support for `--antigravity-hooks` in installer wizard (#290).
+
+### Security
+
+- Hardened `.gitignore` against secrets (`*.pem`, `*.key`, `*.cert`, `*.crt`, `agent-kernel/env-vault/`), worktree directories, swarm coordinator state, logs, coverage, and caches (#290).
+
 ## [1.14.0] - 2026-11-24
 
 ### Added
