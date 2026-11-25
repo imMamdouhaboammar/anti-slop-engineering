@@ -17,17 +17,19 @@ if not __package__:
 
 from scripts.git_changeset import git, patch_ranges, repository_root
 
-__version__ = '1.15.0'
+__version__ = '1.16.0'
+
+_compile = re.compile
 
 JS_TS_EXTS = {'.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'}
-TEST_PATH_RE = re.compile(r'(?i)(?:^|/)(?:tests?|__tests__|specs?)(?:/|$)|(?:^|/)(?:test_[^/]+\.[a-z0-9]+|[^/]+[._](?:test|spec)\.[a-z0-9]+)$')
-IGNORE_DIR_RE = re.compile(r'(?i)(?:^|/)(?:node_modules|vendor|dist|build|\.next|coverage|\.git|tools/oxlint)(?:/|$)')
+TEST_PATH_RE = _compile(r'(?i)(?:^|/)(?:tests?|__tests__|specs?)(?:/|$)|(?:^|/)(?:test_[^/]+\.[a-z0-9]+|[^/]+[._](?:test|spec)\.[a-z0-9]+)$')
+IGNORE_DIR_RE = _compile(r'(?i)(?:^|/)(?:node_modules|vendor|dist|build|\.next|coverage|\.git|tools/oxlint)(?:/|$)')
 
 RULES = [
     {
         'id': 'CHAINED_TYPE_ASSERTION',
         'severity': 'blocker',
-        'pattern': re.compile(r'(?i)\bas\s+(?:unknown|any|object)\s+as\b|<\s*(?:any|unknown)\s*><'),
+        'pattern': _compile(r'(?i)\bas\s+(?:unknown|any|object)\s+as\b|<\s*(?:any|unknown)\s*><'),
         'test_only': False,
         'action': 'Chained type assertion detected. Do not fabricate evidence by widening and reasserting; validate schema at the system boundary.',
     },
@@ -41,28 +43,28 @@ RULES = [
     {
         'id': 'ARRAY_FILTER_MAP_CHAIN',
         'severity': 'review',
-        'pattern': re.compile(r'\.(?:filter|map)\s*\([^)]*\)\s*\.(?:map|filter)\s*\('),
+        'pattern': _compile(r'\.(?:filter|map)\s*\([^)]*\)\s*\.(?:map|filter)\s*\('),
         'test_only': False,
         'action': 'Adjacent eager array filter/map pass detected. Creates redundant intermediate arrays. Prefer lazy iterator helpers (`.values().filter().map().toArray()`), a single `flatMap()`, or a mutating reducer.',
     },
     {
         'id': 'REDUCE_ACCUMULATOR_COPY',
         'severity': 'blocker',
-        'pattern': re.compile(r'(?i)\.reduce(?:Right)?\s*\(.*?(?:Object\.assign\s*\(\s*\{\}\s*,|(?:\bacc|accumulator)\.(?:concat|slice|toSpliced|toSorted|toReversed)\s*\()'),
+        'pattern': _compile(r'(?i)\.reduce(?:Right)?\s*\(.*?(?:Object\.assign\s*\(\s*\{\}\s*,|(?:\bacc|accumulator)\.(?:concat|slice|toSpliced|toSorted|toReversed)\s*\()'),
         'test_only': False,
         'action': 'Reducer accumulator copy detected. Copying an accumulator inside a reducer causes quadratic O(N^2) complexity and memory bloat. Mutate the local accumulator and return it.',
     },
     {
         'id': 'MODULE_MOCKING_ORACLE_EROSION',
         'severity': 'blocker',
-        'pattern': re.compile(r'(?i)\b(?:vi|jest)\.(?:mock|doMock|unstable_mockModule)\s*\('),
+        'pattern': _compile(r'(?i)\b(?:vi|jest)\.(?:mock|doMock|unstable_mockModule)\s*\('),
         'test_only': True,
         'action': 'Module mocking detected in tests. Mocking whole modules erodes test fidelity and creates assertion theater. Use real dependency seams, in-memory fakes, or dependency injection.',
     },
     {
         'id': 'RUNTIME_TYPEOF_AD_HOC',
         'severity': 'review',
-        'pattern': re.compile(r'\btypeof\s+[a-zA-Z0-9_$.]+\s*===\s*(["\'])(?:object|string|number|boolean)\1'),
+        'pattern': _compile(r'\btypeof\s+[a-zA-Z0-9_$.]+\s*===\s*(["\'])(?:object|string|number|boolean)\1'),
         'test_only': False,
         'exclude_tests': True,
         'action': 'Ad-hoc runtime typeof narrowing detected. External input must be parsed into branded domain types at the I/O boundary using schema validation (Zod, ArkType, Valibot, Effect Schema).',
@@ -70,29 +72,29 @@ RULES = [
     {
         'id': 'METANAME_SHAPE_SLOP',
         'severity': 'review',
-        'pattern': re.compile(r'\b(?:interface|type)\s+[A-Z]\w*Shape\b'),
+        'pattern': _compile(r'\b(?:interface|type)\s+[A-Z]\w*Shape\b'),
         'test_only': False,
         'action': 'Meta-naming slop "Shape" detected in type/interface identifier. Name domain models after the business concept (e.g. `User`, `UserDTO`), not implementation metadata.',
     },
     {
         'id': 'EFFECT_MANUAL_TAG_SLOP',
         'severity': 'review',
-        'pattern': re.compile(r'\._tag\s*===|\._tag\s*!=='),
+        'pattern': _compile(r'\._tag\s*===|\._tag\s*!=='),
         'test_only': False,
         'action': 'Manual Effect `_tag` comparison detected. Use Effect `Match.value()`, `Predicate.isTagged()`, or `Effect.catchTag()` instead of manual tag checking.',
     },
 ]
 
-SAFETY_COMMENT_RE = re.compile(r'(?i)//\s*(?:SAFETY|INVARIANT)\s*:')
-TYPE_ASSERTION_RE = re.compile(r'\bas\s+(?!const\b)[A-Z]\w*\b')
+SAFETY_COMMENT_RE = _compile(r'(?i)//\s*(?:SAFETY|INVARIANT)\s*:')
+TYPE_ASSERTION_RE = _compile(r'\bas\s+(?!const\b)[A-Z]\w*\b')
 
 
-TOKEN_RE = re.compile(
+TOKEN_RE = _compile(
     r"""//.*|/\*.*?\*/|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|"""
     r"""`(?:\\.|[^`\\])*`|\.\.\.|\?\.|\?\?|[^\s]"""
 )
-NEVER_ASSIGNMENT_RE = re.compile(r'const\s+[A-Za-z_$][\w$]*\s*:\s*never\s*=\s*([A-Za-z_$][\w$]*)\s*;?')
-THROW_ASSERTION_RE = re.compile(r'throw\s+new\s+[\w$.]+\s*\(\s*([A-Za-z_$][\w$]*)\s+as\s+[A-Z]\w*\s*\)\s*;?')
+NEVER_ASSIGNMENT_RE = _compile(r'const\s+[A-Za-z_$][\w$]*\s*:\s*never\s*=\s*([A-Za-z_$][\w$]*)\s*;?')
+THROW_ASSERTION_RE = _compile(r'throw\s+new\s+[\w$.]+\s*\(\s*([A-Za-z_$][\w$]*)\s+as\s+[A-Z]\w*\s*\)\s*;?')
 
 
 def has_never_proof(line, previous_line, branch_line):
@@ -133,8 +135,11 @@ def object_groups(line):
             yield children
 
 
-def unwrap_parentheses(expression):
+def unwrap_parentheses(expression, depth=0, max_depth=100):
     while len(expression) == 1 and isinstance(expression[0], tuple) and expression[0][0] == '(':
+        if depth >= max_depth:
+            break
+        depth += 1
         expression = expression[0][1]
     return expression
 
@@ -416,12 +421,15 @@ def scan_directory(dir_path):
 
 def _scan_snapshot(repo, target, source):
     """Scan changed lines with the matching snapshot as lexical context."""
-    patch = git(
-        repo, 'diff', '-U0', '--inter-hunk-context=0', '--no-color', '--no-relative',
+    diff_cmd = [
+        'diff', '-U0', '--inter-hunk-context=0', '--no-color', '--no-relative',
         '--no-ext-diff', '--no-textconv', '--src-prefix=a/', '--dst-prefix=b/',
         '--output-indicator-new=+', '--output-indicator-old=-', '--output-indicator-context= ',
-        *target, '--',
-    )
+    ]
+    if target:
+        diff_cmd.extend(str(item) for item in target if item)
+    diff_cmd.append('--')
+    patch = git(repo, *diff_cmd)
     added = []
     patch_ranges(patch, added)
     by_file = {}

@@ -18,7 +18,9 @@ from scripts.diff_lifecycle import load_hooks, run_hook
 from scripts.git_changeset import collect_changes, repository_root
 from scripts.retry_heuristics import INLINE_FLAT_RETRY, flat_retry_lines
 
-__version__ = '1.15.0'
+__version__ = '1.16.0'
+
+_compile = re.compile
 
 
 PATTERNS = [
@@ -40,14 +42,14 @@ PATTERNS = [
     ('GENERIC_AI_GRADIENT_CLICHE', 'review', r'(?i)(?:bg-gradient-to-r\s+from-(?:blue|indigo|purple|violet)-500\s+(?:via-(?:purple|pink|cyan|indigo)-500\s+)?to-(?:purple|pink|cyan|violet)-500|radial-gradient\([^)]*(?:#7c3aed|#8b5cf6|#a855f7|purple|violet)[^)]*\))'),
     ('AI_MARKETING_HYPE_COPY', 'review', r'(?i)<(?:p|span|h[1-6]|div|button)[^>]*>[^<]*(?:\b(?:unleash the (?:full )?power of ai|revolutionize your (?:workflow|business|experience)|next-gen(?:eration)? ai(?:-powered)? platform|supercharge your (?:productivity|development)|all-in-one ai solution)\b)[^<]*</'),
 ]
-COMPILED = [(rule_key, rule_lvl, re.compile(rule_str)) for rule_key, rule_lvl, rule_str in PATTERNS]
-TEST_PATH = re.compile(r'(?:^|/)(?:tests?|__tests__|specs?)(?:/|$)|(?:^|/)(?:test_[^/]+\.py|[^/]+[._](?:test|spec)\.[a-z0-9]+)$', re.IGNORECASE)
-GENERATED_PATH = re.compile(r'(?:^|/)(?:node_modules|vendor|dist|build|\.next|coverage|generated)(?:/|$)|(?:\.min\.js|\.lock)$', re.IGNORECASE)
-DOC_PATH = re.compile(r'(?:\.(?:md|markdown|rst|txt|adoc)$|(?:^|/)(?:docs?|documentation|\.github/ISSUE_TEMPLATE)/)', re.IGNORECASE)
-UI_PATH = re.compile(r'\.(?:tsx|jsx|html|vue|svelte|astro)$', re.IGNORECASE)
-SPECULATIVE_DOC_PATH = re.compile(r'(?:^|/)docs/.*(?:submission|dossier|reviewer_packet).*\.md$', re.IGNORECASE)
-HALLUCINATED_DOC_URL = re.compile(r'(?:https?://(?:platform|developers)\.openai\.com/plugins|\[[^\]]*\]\([^)]*(?:platform|developers)\.openai\.com/plugins[^)]*\))', re.IGNORECASE)
-META_PREAMBLE_AND_AFFORDANCE_NARRATION = re.compile(
+COMPILED = [(rule_key, rule_lvl, _compile(rule_str)) for rule_key, rule_lvl, rule_str in PATTERNS]
+TEST_PATH = _compile(r'(?:^|/)(?:tests?|__tests__|specs?)(?:/|$)|(?:^|/)(?:test_[^/]+\.py|[^/]+[._](?:test|spec)\.[a-z0-9]+)$', re.IGNORECASE)
+GENERATED_PATH = _compile(r'(?:^|/)(?:node_modules|vendor|dist|build|\.next|coverage|generated)(?:/|$)|(?:\.min\.js|\.lock)$', re.IGNORECASE)
+DOC_PATH = _compile(r'(?:\.(?:md|markdown|rst|txt|adoc)$|(?:^|/)(?:docs?|documentation|\.github/ISSUE_TEMPLATE)/)', re.IGNORECASE)
+UI_PATH = _compile(r'\.(?:tsx|jsx|html|vue|svelte|astro)$', re.IGNORECASE)
+SPECULATIVE_DOC_PATH = _compile(r'(?:^|/)docs/.*(?:submission|dossier|reviewer_packet).*\.md$', re.IGNORECASE)
+HALLUCINATED_DOC_URL = _compile(r'(?:https?://(?:platform|developers)\.openai\.com/plugins|\[[^\]]*\]\([^)]*(?:platform|developers)\.openai\.com/plugins[^)]*\))', re.IGNORECASE)
+META_PREAMBLE_AND_AFFORDANCE_NARRATION = _compile(
     r'(?i)(?:'
     r'\b(?:without leaving (?:this|the) page|دون مغادرة الصفحة|شاهد (?:التجربة|الفيديو|هنا)|'
     r'click (?:here\s+)?to (?:play|watch|view|expand|collapse|copy|download|see)|'
@@ -181,9 +183,11 @@ def audit_multiline_retries(root, files, added_lines):
     return findings
 
 
-DB_CONSTRUCTOR = re.compile(r'\b([A-Za-z_$][\w$]*)\s*=\s*(?:await\s+)?new\s+(?:PGlite|Database|Client|Pool|Connection)\s*\(')
-DB_FACTORY = re.compile(r'\b([A-Za-z_$][\w$]*)\s*=\s*(?:await\s+)?(?:PGlite|Database)\.create\s*\(')
-METHOD_EXECUTION = re.compile(r'\b([A-Za-z_$][\w$]*)\s*\.\s*(?:exec|execSync|eval)\s*\(')
+_compile = re.compile
+
+DB_CONSTRUCTOR = _compile(r'\b([A-Za-z_$][\w$]*)\s*=\s*(?:await\s+)?new\s+(?:PGlite|Database|Client|Pool|Connection)\s*\(')
+DB_FACTORY = _compile(r'\b([A-Za-z_$][\w$]*)\s*=\s*(?:await\s+)?(?:PGlite|Database)\.create\s*\(')
+METHOD_EXECUTION = _compile(r'\b([A-Za-z_$][\w$]*)\s*\.\s*(?:exec|execSync|eval)\s*\(')
 
 
 def _database_receivers(lines):
