@@ -14,6 +14,7 @@ if not __package__:
 from scripts.claude_hooks import (
     PHASES,
     read_settings,
+    resolve_working_target,
     run_hook_cli,
     write_settings,
 )
@@ -49,11 +50,12 @@ def normalize_event(payload, phase, project):
     target = args.get("Path") if isinstance(args, dict) else None
     if not isinstance(cwd, str) or not isinstance(target, str) or not target.strip():
         raise ValueError("Antigravity file action requires a working directory and Path")
-    native_cwd = Path(cwd)
-    if not native_cwd.is_absolute() or not native_cwd.resolve().is_relative_to(project):
-        raise ValueError("Antigravity working directory is outside the registered project")
-    if not Path(target).is_absolute():
-        target = str(native_cwd / target)
+    target = resolve_working_target(
+        cwd,
+        target,
+        project,
+        invalid_cwd_message="Antigravity working directory is outside the registered project",
+    )
     correlation_id = tool_call.get("id") or payload.get("conversationId")
     event = {
         "schema_version": 1,

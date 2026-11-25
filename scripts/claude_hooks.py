@@ -43,6 +43,22 @@ CHECKPOINT_MANAGED_PATHS = {
 }
 
 
+def resolve_working_target(
+    location,
+    target,
+    project,
+    *,
+    invalid_cwd_message="Working directory is outside the registered project",
+):
+    """Validate that location is an absolute directory inside project, and resolve target to an absolute path."""
+    native_cwd = Path(location)
+    if not native_cwd.is_absolute() or not native_cwd.resolve().is_relative_to(project):
+        raise ValueError(invalid_cwd_message)
+    if not Path(target).is_absolute():
+        return str(native_cwd / target)
+    return str(target)
+
+
 def normalize_event(payload, phase, project):
     if payload.get("hook_event_name") != phase:
         raise ValueError("Unexpected Claude hook phase")
@@ -56,11 +72,12 @@ def normalize_event(payload, phase, project):
     target = tool_input.get("file_path") if isinstance(tool_input, dict) else None
     if not isinstance(location, str) or not isinstance(target, str) or not target:
         raise ValueError("Expected Claude project and file path")
-    native_cwd = Path(location)
-    if not native_cwd.is_absolute() or not native_cwd.resolve().is_relative_to(project):
-        raise ValueError("Unexpected Claude working directory")
-    if not Path(target).is_absolute():
-        target = str(native_cwd / target)
+    target = resolve_working_target(
+        location,
+        target,
+        project,
+        invalid_cwd_message="Unexpected Claude working directory",
+    )
     event = {
         "schema_version": 1, "agent": "claude-code",
         "phase": PHASES[phase], "tool": tool, "operation": TOOLS[tool],
