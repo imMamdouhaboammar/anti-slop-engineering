@@ -27,7 +27,7 @@ def format_git_error(command, returncode, stdout="", stderr=""):
     detail = stderr.strip() or stdout.strip() or f"exit code {returncode}"
     return f"Git command failed (exit {returncode}): {shlex.join(list(command))}\n{detail}"
 
-_compile = getattr(re, "compile")
+_compile = re.compile
 
 SEMVER_PATTERN = _compile(
     r'^(?P<major>\d{1,8})\.(?P<minor>\d{1,8})\.(?P<patch>\d{1,8})(?:-(?P<prerelease>[0-9A-Za-z.-]{1,50}))?$'
