@@ -27,7 +27,8 @@
         "supply-chain-and-sbom-sentinel",
         "demock-guard",
         "install-anti-slop",
-        "llm-eval-and-prompt-injection-fortress"
+        "llm-eval-and-prompt-injection-fortress",
+        "repo-fortress"
       ]
     },
     {

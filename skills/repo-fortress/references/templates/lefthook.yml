@@ -1,0 +1,68 @@
+min_version: 1.7.0
+no_tty: true
+
+# ==============================================================================
+# COMMIT-MSG: Enforce Conventional Commits for Automated SemVer
+# ==============================================================================
+commit-msg:
+  commands:
+    commitlint:
+      run: bunx commitlint --edit {1} # or npx commitlint --edit {1}
+
+# ==============================================================================
+# PRE-COMMIT: Instant Parallel Check on Staged Files (< 2 seconds)
+# ==============================================================================
+pre-commit:
+  parallel: true
+  commands:
+    # 1. Anti-Suppression Guard: Rejects disable comments and 'as unknown as' in staged diff
+    anti-suppression:
+      exclude: "(^tests/|\\.md$|^lefthook\\.yml$|^\\.github/workflows/)"
+      run: |
+        VIOLATIONS=$(git diff --cached -U0 -- {staged_files} | grep -E '^\+.*(oxlint-disable|eslint-disable|@ts-ignore|@ts-expect-error|# noqa|# type:\s*ignore|as unknown as)' || true)
+        if [ -n "$VIOLATIONS" ]; then
+          echo "❌ Blocked: Forbidden lint/type suppression or 'as unknown as' detected in staged files:"
+          echo "$VIOLATIONS"
+          exit 1
+        fi
+
+    # 2. Secret Leak Blocker: Prevents accidental token/key commits
+    secrets-check:
+      exclude: "(\\.env\\.example$|\\.lock$)"
+      run: |
+        LEAKS=$(git diff --cached -U0 -- {staged_files} | grep -E '^\+.*(AIza[0-9A-Za-z-_]{35}|sk-[A-Za-z0-9]{20,}|ghp_[A-Za-z0-9]{36})' || true)
+        if [ -n "$LEAKS" ]; then
+          echo "❌ Blocked: Potential API key or secret detected in staged changes!"
+          exit 1
+        fi
+
+    # 3. Fast Staged Linter (JS/TS)
+    lint-staged-ts:
+      glob: "*.{ts,tsx,js,jsx,mjs,cjs}"
+      run: bunx oxlint -c .oxlintrc.json --deny-warnings {staged_files}
+
+    # 4. Type Checking (Scoped to relevant changes)
+    typecheck:
+      glob: "**/*.{ts,tsx}"
+      run: bunx tsc --noEmit
+
+    # 5. Fast Python Linter & Formatter (If Python files staged)
+    lint-staged-python:
+      glob: "**/*.py"
+      run: |
+        if command -v uvx >/dev/null 2>&1; then
+          uvx ruff check {staged_files} --select E,F,W,B,S,UP,SIM,RUF
+          uvx ruff format --check {staged_files}
+        elif command -v ruff >/dev/null 2>&1; then
+          ruff check {staged_files} --select E,F,W,B,S,UP,SIM,RUF
+          ruff format --check {staged_files}
+        fi
+
+# ==============================================================================
+# PRE-PUSH: Preflight Verification before Remote Push
+# ==============================================================================
+pre-push:
+  parallel: true
+  commands:
+    unit-tests:
+      run: bun test # or npm test / pytest / cargo test

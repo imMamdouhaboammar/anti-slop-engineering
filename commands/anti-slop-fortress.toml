@@ -1,0 +1,2 @@
+description = "Audit repository fortification and scaffold three-tier quality shield (Lefthook, Commitlint, CI Gate, Release Please, Docker)"
+prompt = "Analyze this repository through Repo Fortress. Audit and enforce the 5 Anti-Cheating Invariants (no @ts-ignore, no eslint-disable, no as unknown as, no silent catch). Verify or scaffold Tier 1 local lightning hooks (Lefthook + Commitlint), Tier 2 CI/CD anti-suppression quality gate (lint-gate.yml), and Tier 3 automated SemVer release engine (Release Please + Multi-Arch Docker)."

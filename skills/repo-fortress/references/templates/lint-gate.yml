@@ -1,0 +1,88 @@
+name: Strict Lint & Quality Gate
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: lint-gate-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # 1. Anti-Suppression Guard: Reject PRs introducing inline suppressions
+  # ---------------------------------------------------------------------------
+  anti-suppression-guard:
+    name: Anti-Suppression Diff Guard
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Checkout repository (with full base history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Reject newly added lint/type suppressions in PR diff
+        run: |
+          echo "Scanning PR diff for forbidden suppression comments..."
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+          FORBIDDEN_PATTERN='^\+.*(oxlint-disable|eslint-disable|@ts-ignore|@ts-expect-error|# noqa|# type:\s*ignore|as unknown as)'
+          VIOLATIONS=$(git diff -U0 "$BASE_SHA" "$HEAD_SHA" -- \
+            ':!.github/workflows/lint-gate.yml' \
+            ':!*.md' \
+            ':!tests/**' | grep -E "$FORBIDDEN_PATTERN" || true)
+
+          if [ -n "$VIOLATIONS" ]; then
+            echo "::error::Forbidden lint/type suppression or type-laundering detected in PR diff:"
+            echo "$VIOLATIONS"
+            exit 1
+          fi
+          echo "Clean diff — zero forbidden suppressions introduced."
+
+  # ---------------------------------------------------------------------------
+  # 2. TypeScript / JavaScript / UI Workspace Gate
+  # ---------------------------------------------------------------------------
+  ts-gate:
+    name: TypeScript & Linters Gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install dependencies (frozen lockfile)
+        run: bun install --frozen-lockfile
+      - name: Run Strict Linters (Zero-Warning Policy)
+        run: bunx oxlint --deny-warnings
+      - name: Strict Type-Check
+        run: bunx tsc --noEmit
+      - name: Execute Tests & Production Build
+        run: |
+          bun test
+          bun run --if-present build
+
+  # ---------------------------------------------------------------------------
+  # 3. Python Gate (If Python exists)
+  # ---------------------------------------------------------------------------
+  python-gate:
+    name: Python Lint & Type Gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.11"
+      - name: Ruff Check & Format
+        run: |
+          uvx ruff check . --select E,F,W,B,S,UP,SIM,RUF
+          uvx ruff format --check .
+      - name: Mypy Strict Type Check
+        run: |
+          if [ -f "pyproject.toml" ] || [ -f "requirements.txt" ]; then
+            uvx mypy . --ignore-missing-imports --check-untyped-defs
+          fi
