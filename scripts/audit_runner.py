@@ -563,6 +563,9 @@ EXCLUDED_CLI_COMMANDS: Dict[str, str] = {
     "version": "CLI version display",
     "--version": "CLI version flag",
     "-v": "CLI version flag shorthand",
+    "fortress": "Repo Fortress Guard & Scaffolder for 3-tier quality shield setup",
+    "repo-fortress": "Alias for fortress command",
+    "init-fortress": "Alias for fortress command",
 }
 
 RECORD_FLAG_TO_GUARD_MAP: Dict[str, str] = {
