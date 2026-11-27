@@ -9,13 +9,14 @@ import re
 import shutil
 import stat
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
-if __package__:
-    from .design_policy import POLICY_PATH, PolicyError, check_source, source_kind, validate_policy
-else:
-    from design_policy import POLICY_PATH, PolicyError, check_source, source_kind, validate_policy
+if str(Path(__file__).resolve().parents[1]) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from scripts.design_policy import POLICY_PATH, PolicyError, check_source, source_kind, validate_policy
 
 TRUST_ENV = "ANTI_SLOP_DESIGN_TRUST"
 DIRECTORY = ".anti-slop/design"
@@ -592,10 +593,7 @@ def preview(workspace, file=MANIFEST):
 
 
 def browser_command(workspace, args):
-    if __package__:
-        from .design_runtime import run_scenarios
-    else:
-        from design_runtime import run_scenarios
+    from scripts.design_runtime import run_scenarios
     output = None
     candidate = None
     if args.command == "capture":
@@ -624,10 +622,7 @@ def browser_command(workspace, args):
     if "extension" in policy:
         if not args.extension_dir or args.origin:
             raise DesignRejection("UI_POLICY_INVALID")
-        if __package__:
-            from .design_extension import run_extension_scenarios
-        else:
-            from design_extension import run_extension_scenarios
+        from scripts.design_extension import run_extension_scenarios
         receipts = run_extension_scenarios(Path(args.extension_dir), manifest, policy, output)
     else:
         if not args.origin or args.extension_dir:
@@ -648,10 +643,7 @@ def browser_command(workspace, args):
 
 
 def import_reference(workspace, file):
-    if __package__:
-        from .design_reference import import_tokens
-    else:
-        from design_reference import import_tokens
+    from scripts.design_reference import import_tokens
     try:
         data = read_regular(safe_path(workspace, file))
         tokens = import_tokens(parse_record(data))
@@ -688,10 +680,7 @@ def inspect_proposal(workspace, args):
 
 
 def build_command(workspace, args):
-    if __package__:
-        from .design_builder import build
-    else:
-        from design_builder import build
+    from scripts.design_builder import build
     try:
         return build(workspace, args.file, args.output, args.capture_dir)
     except (OSError, ValueError, TypeError, RuntimeError, RecursionError, KeyError) as exc:
@@ -755,10 +744,7 @@ def main():
         if args.command in {"runtime", "ci", "capture"}:
             report = browser_command(workspace, args)
         elif args.command == "ci-independent":
-            if __package__:
-                from .design_ci import independent_ci
-            else:
-                from design_ci import independent_ci
+            from scripts.design_ci import independent_ci
             try:
                 report = independent_ci(workspace, args)
             except ValueError as exc:

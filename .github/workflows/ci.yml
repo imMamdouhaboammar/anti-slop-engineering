@@ -182,7 +182,7 @@ jobs:
 
   test-design-integrity:
     name: Design Integrity AST and browser fixtures
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
     steps:

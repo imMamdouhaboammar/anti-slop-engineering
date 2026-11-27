@@ -94,8 +94,10 @@ def web_fixture(files, manifest, policy):
                 self.send_error(404)
                 return
             data = files[name]
+            guessed = mimetypes.guess_type("fixture" + Path(name).suffix.lower())[0] or "application/octet-stream"
+            content_type = guessed.replace("\r", "").replace("\n", "")
             self.send_response(200)
-            self.send_header("Content-Type", mimetypes.guess_type(name)[0] or "application/octet-stream")
+            self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
             self.wfile.write(data)
