@@ -17,7 +17,7 @@ if not __package__:
 
 from scripts.git_changeset import git, patch_ranges, repository_root
 
-__version__ = '1.16.0'
+__version__ = '1.17.0'
 
 _compile = re.compile
 

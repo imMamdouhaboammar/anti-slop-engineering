@@ -6,7 +6,7 @@
   "note": "Repository-maintained reviewer packet for preparing the plugin submission form. This is not an upload schema.",
   "plugin": {
     "name": "anti-slop-engineering",
-    "version": "1.16.0",
+    "version": "1.17.0",
     "architecture": "skills-only",
     "displayName": "Anti-Slop Engineering",
     "developerName": "Mamdouh Aboammar",

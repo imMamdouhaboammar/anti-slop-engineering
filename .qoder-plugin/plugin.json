@@ -1,6 +1,6 @@
 {
   "name": "anti-slop-engineering",
-  "version": "1.16.0",
+  "version": "1.17.0",
   "description": "Enterprise-grade agentic guard suite, SRE/AST verification engines, and neural invariant governance for Qoder.",
   "author": {
     "name": "Mamdouh Aboammar",

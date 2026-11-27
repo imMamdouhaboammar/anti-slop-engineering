@@ -79,6 +79,10 @@ pipx install git+https://github.com/imMamdouhaboammar/anti-slop-engineering.git
 
 An opt-in owner-signed design contract gates structured UI mutations before approval and checks signed artifacts, design tokens, approved classes and components, and declared browser scenarios against signed visual baselines. See [Design Integrity Guard](references/design-integrity-guard.md) for setup, trust boundaries, commands, and enforcement limits.
 
+### Repo Fortress guard & scaffolder
+
+Audits and scaffolds a 3-tier repository quality shield (`lefthook` pre-commit hooks, `commitlint`, CI lint-gate, `release-please`, and polyglot Docker templates) while blocking suppression bypasses (`@ts-ignore`, `eslint-disable`, `# noqa`, `as unknown as`). Run `bunx anti-slop-engineering fortress` (or `init-fortress`) to audit or scaffold. See [Repo Fortress](skills/repo-fortress/SKILL.md).
+
 ### Verification Contracts
 
 | Command | Scope & Checks | When to Use |
