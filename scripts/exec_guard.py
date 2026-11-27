@@ -922,10 +922,9 @@ def evaluate_hook_event(event, state, workspace):
     contract = _validate_hook_policy(state)
     operation = event["operation"]
     if "ANTI_SLOP_DESIGN_TRUST" in os.environ:
-        if __package__:
-            from .design_integrity_guard import check_mutation
-        else:
-            from design_integrity_guard import check_mutation
+        if str(Path(__file__).resolve().parents[1]) not in sys.path:
+            sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+        from scripts.design_integrity_guard import check_mutation
         design = check_mutation(
             workspace.resolve(), os.environ["ANTI_SLOP_DESIGN_TRUST"], operation, event["target_paths"],
             pre_tool=event["phase"] == "pre_tool",
