@@ -31,8 +31,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"hooks/hook_dispatch.mjs\" PreToolUse write",
-            "timeout": 10
+            "command": "node \"${CLAUDE_PLUGIN_ROOT:-.}/hooks/hook_dispatch.mjs\" PreToolUse write",
+            "timeout": 5
           }
         ]
       }
@@ -43,8 +43,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"hooks/hook_dispatch.mjs\" PostToolUse write",
-            "timeout": 10
+            "command": "node \"${CLAUDE_PLUGIN_ROOT:-.}/hooks/hook_dispatch.mjs\" PostToolUse write",
+            "timeout": 5
           }
         ]
       }

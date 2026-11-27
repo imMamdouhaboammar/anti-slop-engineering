@@ -4,29 +4,29 @@
       {
         "type": "command",
         "command": "node \"hooks/hook_dispatch.mjs\" SessionStart",
-        "timeout": 10
+        "timeout": 5
       }
     ],
     "PreToolUse": [
       {
-        "matcher": "write_file|edit_file",
+        "matcher": "write_file|edit_file|Write|Edit|MultiEdit",
         "hooks": [
           {
             "type": "command",
             "command": "node \"hooks/hook_dispatch.mjs\" PreToolUse write",
-            "timeout": 10
+            "timeout": 5
           }
         ]
       }
     ],
     "PostToolUse": [
       {
-        "matcher": "write_file|edit_file",
+        "matcher": "write_file|edit_file|Write|Edit|MultiEdit",
         "hooks": [
           {
             "type": "command",
             "command": "node \"hooks/hook_dispatch.mjs\" PostToolUse write",
-            "timeout": 10
+            "timeout": 5
           }
         ]
       }
