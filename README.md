@@ -75,6 +75,10 @@ uv tool install git+https://github.com/imMamdouhaboammar/anti-slop-engineering.g
 pipx install git+https://github.com/imMamdouhaboammar/anti-slop-engineering.git
 ```
 
+### Design integrity guard
+
+An opt-in owner-signed design contract gates structured UI mutations before approval and checks signed artifacts, design tokens, approved classes and components, and declared browser scenarios against signed visual baselines. See [Design Integrity Guard](references/design-integrity-guard.md) for setup, trust boundaries, commands, and enforcement limits.
+
 ### Verification Contracts
 
 | Command | Scope & Checks | When to Use |

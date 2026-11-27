@@ -48,6 +48,7 @@ const chromaDriftGuardScript = resolve(rootDir, "scripts", "chroma_drift_guard.p
 const houseTellGuardScript = resolve(rootDir, "scripts", "house_tell_guard.py");
 const motionRuntimeGuardScript = resolve(rootDir, "scripts", "motion_runtime_guard.py");
 const assetProvenanceGuardScript = resolve(rootDir, "scripts", "asset_provenance_guard.py");
+const designIntegrityScript = resolve(rootDir, "scripts", "design_integrity_guard.py");
 const styleseedGuardScript = resolve(rootDir, "scripts", "styleseed_guard.py");
 const tagoreGuardScript = resolve(rootDir, "scripts", "tagore_guard.py");
 const profilerGuardScript = resolve(rootDir, "scripts", "profiler_guard.py");
@@ -170,6 +171,7 @@ const executableAliases = {
   "provenance": "asset-provenance",
   "asset-guard": "asset-provenance",
   "source-ledger": "asset-provenance",
+  "design": "design",
   "styleseed": "styleseed",
   "styleseed-guard": "styleseed",
   "styleseed-engine": "styleseed",
@@ -266,6 +268,7 @@ Commands:
   house-tell, commit-sheet Run Agent House-Tell & Triple-Reflex Inversion Guard (Gate 0 commit-sheet contract, tells broken)
   motion-runtime, motionqa Run DPR-2 Runtime Motion & Fillrate Sentry (5.2MP retina, 4x CPU throttle, long-tasks, audio policy)
   asset-provenance, provenance Run Asset Sourcing & License Provenance Ledger Guard (cryptographic SHA-256 & open-license ledger)
+  design                 Verify externally approved design manifests and gate changes
   styleseed              Run StyleSeed Cognitive Grammar & Token Canon Guard (primitives, OKLCH, spatial inversion)
   tagore, discourse      Run Tagore Engineering Discourse & Substance Guard (29 tells, 8-dim rubric, voice calibration)
   profiler audit <file>  Check Mechanical Sympathy & Empirical Profiler record for baseline/post-change measurements
@@ -519,6 +522,8 @@ if (cmd === "build") {
   runPythonScript(motionRuntimeGuardScript, args.slice(1), "motion_runtime_guard");
 } else if (cmd === "asset-provenance" || cmd === "provenance" || cmd === "asset-guard" || cmd === "source-ledger") {
   runPythonScript(assetProvenanceGuardScript, args.slice(1), "asset_provenance_guard");
+} else if (cmd === "design") {
+  runPythonScript(designIntegrityScript, args.slice(1), "design_integrity_guard");
 } else if (cmd === "styleseed" || cmd === "styleseed-guard" || cmd === "styleseed-engine") {
   runPythonScript(styleseedGuardScript, args.slice(1), "styleseed_guard");
 } else if (cmd === "tagore" || cmd === "tagore-guard" || cmd === "discourse" || cmd === "deslop-prose" || cmd === "humanize" || cmd === "prose") {
