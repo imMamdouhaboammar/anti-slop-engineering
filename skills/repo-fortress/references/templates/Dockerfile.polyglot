@@ -1,0 +1,65 @@
+# syntax=docker/dockerfile:1.7
+
+ARG NODE_VERSION=20
+ARG BUN_VERSION=1.3.0
+ARG PYTHON_VERSION=3.11
+
+# ==============================================================================
+# Stage 1: Build Static Assets natively on $BUILDPLATFORM (Fast, zero QEMU lag)
+# ==============================================================================
+FROM --platform=$BUILDPLATFORM oven/bun:${BUN_VERSION}-slim AS asset-builder
+WORKDIR /build
+
+COPY package.json bun.lock* ./
+RUN --mount=type=cache,target=/root/.bun/install/cache \
+    bun install --frozen-lockfile
+
+COPY . ./
+RUN bun run --if-present build
+
+# ==============================================================================
+# Stage 2: Install Production Dependencies (Target Architecture)
+# ==============================================================================
+FROM oven/bun:${BUN_VERSION}-slim AS prod-deps
+WORKDIR /app
+
+COPY package.json bun.lock* ./
+RUN --mount=type=cache,target=/root/.bun/install/cache \
+    bun install --frozen-lockfile --production
+
+# ==============================================================================
+# Stage 3: Minimal Hardened Polyglot Runtime (Tini + Non-Root User)
+# ==============================================================================
+FROM debian:bookworm-slim AS runtime
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      ca-certificates \
+      tini \
+      curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy Bun binary to target architecture
+COPY --from=prod-deps /usr/local/bin/bun /usr/local/bin/bun
+RUN ln -s /usr/local/bin/bun /usr/local/bin/bunx
+
+# Create unprivileged system user
+RUN groupadd --gid 10001 fortress && \
+    useradd --uid 10001 --gid fortress --shell /bin/sh --create-home fortress && \
+    mkdir -p /app/data && chown -R fortress:fortress /app
+
+WORKDIR /app
+
+# Copy production artifacts & modules
+COPY --from=prod-deps --chown=fortress:fortress /app/node_modules ./node_modules
+COPY --chown=fortress:fortress package.json ./
+COPY --from=asset-builder --chown=fortress:fortress /build/dist ./dist
+
+ENV NODE_ENV=production \
+    PORT=3000
+
+VOLUME ["/app/data"]
+USER fortress
+EXPOSE 3000
+
+ENTRYPOINT ["/usr/bin/tini", "--"]
+CMD ["bun", "run", "start"]

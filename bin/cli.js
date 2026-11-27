@@ -55,6 +55,7 @@ const profilerGuardScript = resolve(rootDir, "scripts", "profiler_guard.py");
 const faultIsolationGuardScript = resolve(rootDir, "scripts", "fault_isolation_guard.py");
 const migrationGuardScript = resolve(rootDir, "scripts", "migration_guard.py");
 const verificationOracleGuardScript = resolve(rootDir, "scripts", "verification_oracle_guard.py");
+const repoFortressGuardScript = resolve(rootDir, "scripts", "repo_fortress_guard.py");
 const skillsComplianceScript = resolve(rootDir, "scripts", "skills_compliance_engine.py");
 const extractSkillsScript = resolve(rootDir, "scripts", "extract_skill_rules.py");
 const auditRunnerScript = resolve(rootDir, "scripts", "audit_runner.py");
@@ -213,6 +214,9 @@ const executableAliases = {
   "skills-compliance": "skills",
   "verify": "skills",
   "extract-skills": "extract-skills",
+  "fortress": "fortress",
+  "repo-fortress": "fortress",
+  "init-fortress": "fortress",
 };
 const args = process.argv.slice(2);
 if (executableAliases[invokedAs]) args.unshift(executableAliases[invokedAs]);
@@ -271,6 +275,7 @@ Commands:
   design                 Verify externally approved design manifests and gate changes
   styleseed              Run StyleSeed Cognitive Grammar & Token Canon Guard (primitives, OKLCH, spatial inversion)
   tagore, discourse      Run Tagore Engineering Discourse & Substance Guard (29 tells, 8-dim rubric, voice calibration)
+  fortress, init-fortress Run Repo Fortress Guard & Scaffolder (audit & setup 3-tier quality shield)
   profiler audit <file>  Check Mechanical Sympathy & Empirical Profiler record for baseline/post-change measurements
   fault-isolation audit <file> Check Scientific Fault Isolation record for 3-hypothesis differential diagnosis
   migration audit <file> Check Zero-Downtime Migration record for Expand-Migrate-Contract and lock-free DDL
@@ -538,6 +543,8 @@ if (cmd === "build") {
   runPythonScript(verificationOracleGuardScript, args.slice(1), "verification_oracle_guard");
 } else if (cmd === "counterfactual" || cmd === "proof") {
   runPythonScript(verificationOracleGuardScript, ["counterfactual", ...args.slice(1)], "verification_oracle_guard");
+} else if (cmd === "fortress" || cmd === "repo-fortress" || cmd === "init-fortress") {
+  runPythonScript(repoFortressGuardScript, args.slice(1), "repo_fortress_guard");
 } else if (cmd === "audit") {
   runPythonScript(auditRunnerScript, ["audit", ...args.slice(1)], "audit_runner");
 } else if (cmd === "skills" || cmd === "skills-compliance" || cmd === "verify") {
