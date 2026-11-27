@@ -2,9 +2,9 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, realpathSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { performance } from "node:perf_hooks";
 import test from "node:test";
@@ -22,6 +22,12 @@ function output(result) {
   return result.stdout;
 }
 
+function realNpm() {
+  const npm = join(dirname(realpathSync(process.execPath)), "npm");
+  assert.ok(existsSync(npm), "Install real npm alongside Node for npm package compatibility tests");
+  return npm;
+}
+
 test("packaged CLI installs offline with or without native compilers on PATH", (t) => {
   const dir = mkdtempSync(join(tmpdir(), "anti-slop-package-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
@@ -32,7 +38,7 @@ test("packaged CLI installs offline with or without native compilers on PATH", (
   assert.match(files, /package\/services\/anti-slop-rust\/Cargo.lock/);
   assert.match(files, /package\/services\/toil-guard-go\/go.mod/);
 
-  const npm = output(run("/bin/sh", ["-c", 'which -a npm 2>/dev/null | grep -v "$HOME/.local/bin" | grep -v "$HOME/.bun/bin" | head -n 1 || command -v npm'])).trim();
+  const npm = realNpm();
   const python = output(run("/bin/sh", ["-c", "command -v python3"])).trim();
   const bash = output(run("/bin/sh", ["-c", "command -v bash"])).trim();
 
@@ -148,7 +154,7 @@ test("packaged npm install gives an actionable hook diagnostic and a skills-only
   const project = join(dir, "project");
   mkdirSync(project, { recursive: true });
   writeFileSync(join(project, "package.json"), '{"name":"anti-slop-hooks","private":true}\n');
-  const npm = output(run("/bin/sh", ["-c", 'which -a npm 2>/dev/null | grep -v "$HOME/.local/bin" | grep -v "$HOME/.bun/bin" | head -n 1 || command -v npm'])).trim();
+  const npm = realNpm();
   const options = {
     cwd: project,
     env: {
@@ -185,7 +191,7 @@ test("packaged CLI keeps version parity and user-facing guard surfaces", (t) => 
   const project = join(dir, "project");
   mkdirSync(project, { recursive: true });
   writeFileSync(join(project, "package.json"), '{"name":"anti-slop-consistency","private":true}\n');
-  const npm = output(run("/bin/sh", ["-c", 'which -a npm 2>/dev/null | grep -v "$HOME/.local/bin" | grep -v "$HOME/.bun/bin" | head -n 1 || command -v npm'])).trim();
+  const npm = realNpm();
   const options = {
     cwd: project,
     env: {
