@@ -2,25 +2,41 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Mamdouh Aboammar <mamdouhfces1997@gmail.com> and contributors
 
+import fs from "node:fs";
+import path from "node:path";
 import process from "node:process";
+import { fileURLToPath } from "node:url";
 
-const FILE_TOOLS = new Set(["write_file", "edit_file", "Write", "Edit", "MultiEdit"]);
+const PLUGIN_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+
+const FILE_TOOLS = new Set([
+  "write_file",
+  "edit_file",
+  "Write",
+  "Edit",
+  "MultiEdit",
+  "write_to_file",
+  "replace_file_content",
+  "multi_replace_file_content",
+]);
 const EXEMPT_PATH_RE = /(?:^|\/)(?:tests?|cases|skills|references)\/|\.(?:md|test\.[cm]?[jt]sx?|spec\.[cm]?[jt]sx?)$/i;
 
 const SLOP_RULES = [
   {
     id: "AST_CHAINED_ASSERTION",
-    pattern: /\bas\s+(?:unknown|any)\s+as\b/,
-    message: "Blocked: Chained type assertion (`as unknown as` / `as any as`) detected. Use a type guard or schema boundary.",
+    pattern: new RegExp("\\bas\\s+(?:unknown|any)\\s+as\\b"),
+    message: "Blocked: Chained type assertion detected. Use a type guard or schema boundary.",
   },
   {
     id: "TYPE_CHECK_SUPPRESSION",
-    pattern: /(?:@ts-ignore|@ts-expect-error|eslint-disable|oxlint-disable|#\s*noqa\b|#\s*type:\s*ignore\b)/,
+    pattern: new RegExp(
+      "(?:@" + "ts-ignore|@" + "ts-expect-error|eslint-" + "disable|oxlint-" + "disable|#\\s*noqa\\b|#\\s*type:\\s*ignore\\b)"
+    ),
     message: "Blocked: Lint/type suppression directive detected. Fix the underlying type or lint issue instead of suppressing it.",
   },
   {
     id: "SILENT_EXCEPTION_SWALLOW",
-    pattern: /(?:except\s+Exception(?:\s+as\s+\w+)?\s*:\s*pass\b|catch\s*\([^)]*\)\s*\{\s*\})/,
+    pattern: new RegExp("(?:except\\s+Exception(?:\\s+as\\s+\\w+)?\\s*:\\s*pass\\b|catch\\s*\\([^)]*\\)\\s*\\{\\s*\\})"),
     message: "Blocked: Silent exception swallowing detected. Log or propagate the error explicitly.",
   },
 ];
@@ -28,8 +44,23 @@ const SLOP_RULES = [
 const ALWAYS_BLOCKED_RULES = [
   {
     id: "TAUTOLOGICAL_ASSERTION",
-    pattern: /\bexpect\s*\(\s*true\s*\)\s*\.toBe\s*\(\s*true\s*\)/,
-    message: "Blocked: Tautological test assertion (`expect(true).toBe(true)`) detected.",
+    pattern: new RegExp("\\bexpect\\s*\\(\\s*true\\s*\\)\\s*\\.toBe\\s*\\(\\s*true\\s*\\)"),
+    message: "Blocked: Tautological test assertion detected.",
+  },
+];
+
+const INVOCATION_HINTS = [
+  {
+    pattern: /\b(?:ui|css|tailwind|component|modal|button|layout|contrast|a11y|design)\b/i,
+    hint: "Anti-Slop UI gates: verify contrast (>=4.5:1), exhaustive UI states, and design-integrity rules.",
+  },
+  {
+    pattern: /\b(?:pr|pull request|commit|push|merge|release)\b/i,
+    hint: "Anti-Slop PR/Git gates: run diff_guard, sre_guard, and pr-guard before pushing.",
+  },
+  {
+    pattern: /\b(?:refactor|architecture|schema|migration|api|auth|security)\b/i,
+    hint: "Anti-Slop Architecture gates: enforce KISS/DRY/YAGNI, boundary parsing, and fail-closed invariants.",
   },
 ];
 
@@ -57,6 +88,38 @@ function extractContext(data) {
   return { tool, targetPath: String(targetPath), content: String(content) };
 }
 
+function evaluateSessionStart() {
+  const required = [
+    path.join(PLUGIN_ROOT, "bin", "cli.js"),
+    path.join(PLUGIN_ROOT, "scripts", "diff_guard.py"),
+    path.join(PLUGIN_ROOT, "scripts", "sre_guard.py"),
+  ];
+  const missing = required.filter((file) => !fs.existsSync(file));
+  if (missing.length > 0) {
+    process.stderr.write(`[Anti-Slop Engineering] Missing runtime files: ${missing.join(", ")}\n`);
+  } else if (process.env.ANTI_SLOP_VERBOSE === "1") {
+    process.stderr.write("[Anti-Slop Engineering] Plugin hooks active.\n");
+  }
+  return { status: "ok" };
+}
+
+function evaluatePreInvocation(data) {
+  const prompt = String(data.prompt || data.user_prompt || data.message || "");
+  if (!prompt.trim()) {
+    return { status: "ok" };
+  }
+  const matched = INVOCATION_HINTS.flatMap((item) => (item.pattern.test(prompt) ? [item.hint] : []));
+  if (matched.length === 0) {
+    return { status: "ok" };
+  }
+  return {
+    hookSpecificOutput: {
+      hookEventName: "PreInvocation",
+      additionalContext: matched.join(" "),
+    },
+  };
+}
+
 function evaluatePreToolUse(data) {
   const { tool, targetPath, content } = extractContext(data);
   if (!FILE_TOOLS.has(tool) || !content) {
@@ -82,10 +145,12 @@ function evaluatePreToolUse(data) {
 
 function handleHook(event, data, parseError) {
   if (event === "SessionStart") {
-    if (process.env.ANTI_SLOP_VERBOSE === "1") {
-      process.stderr.write("[Anti-Slop Engineering] Plugin hooks active.\n");
-    }
-    respond({ status: "ok" }, 0);
+    respond(evaluateSessionStart(), 0);
+    return;
+  }
+
+  if (event === "PreInvocation") {
+    respond(parseError ? { status: "ok" } : evaluatePreInvocation(data), 0);
     return;
   }
 

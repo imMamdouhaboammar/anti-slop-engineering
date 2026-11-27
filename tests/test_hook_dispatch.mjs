@@ -1,11 +1,14 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const DISPATCH = path.join(ROOT, "hooks", "hook_dispatch.mjs");
+const GIT_HOOK = path.join(ROOT, "hooks", "git_hook.mjs");
 
 function runHook(args, input) {
   const result = spawnSync(process.execPath, [DISPATCH, ...args], {
@@ -24,6 +27,15 @@ test("SessionStart exits 0 silently by default", () => {
   const { stdout, stderr } = runHook(["SessionStart"], {});
   assert.deepEqual(stdout, { status: "ok" });
   assert.equal(stderr, "");
+});
+
+test("PreInvocation returns context hint for matching prompt and status ok otherwise", () => {
+  const matched = runHook(["PreInvocation"], { prompt: "Fix the CSS contrast in modal" });
+  assert.equal(matched.stdout.hookSpecificOutput.hookEventName, "PreInvocation");
+  assert.match(matched.stdout.hookSpecificOutput.additionalContext, /contrast/);
+
+  const plain = runHook(["PreInvocation"], { prompt: "hello" });
+  assert.deepEqual(plain.stdout, { status: "ok" });
 });
 
 test("PreToolUse allows clean writes", () => {
@@ -53,7 +65,7 @@ test("PreToolUse supports Antigravity toolCall payload format", () => {
   const { stdout } = runHook(["PreToolUse", "write"], {
     hookEventName: "PreToolUse",
     toolCall: {
-      name: "edit_file",
+      name: "replace_file_content",
       args: { Path: "src/index.ts", Replacement: "// eslint-disable-next-line" },
     },
   });
@@ -85,4 +97,20 @@ test("PostToolUse exits 0 quietly", () => {
   });
   assert.deepEqual(stdout, {});
   assert.equal(stderr, "");
+});
+
+test("git_hook commit-msg enforces Conventional Commits", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "anti-slop-msg-"));
+  const msgFile = path.join(dir, "COMMIT_EDITMSG");
+  try {
+    fs.writeFileSync(msgFile, "feat(hooks): add pre-push preflight\n");
+    const ok = spawnSync(process.execPath, [GIT_HOOK, "commit-msg", msgFile], { encoding: "utf8" });
+    assert.equal(ok.status, 0, ok.stderr);
+
+    fs.writeFileSync(msgFile, "wip stuff\n");
+    const bad = spawnSync(process.execPath, [GIT_HOOK, "commit-msg", msgFile], { encoding: "utf8" });
+    assert.equal(bad.status, 1);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
