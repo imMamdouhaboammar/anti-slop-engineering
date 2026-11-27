@@ -1280,10 +1280,11 @@ Options:
   }
 
   if (dryRun) {
+    const hookPlan = hookPreview ? previewAgentHooks(hookPreview, resolvedScope, selectedAgents, enforcementArg) : null
     const operations = installSkills({ skills: selectedSkills, targets, overwrite, dryRun: true })
     const writes = planWrites({ targets, scope: resolvedScope, skills: selectedSkills })
     const plan = { scope: resolvedScope, agents: selectedAgents, skills: selectedSkills, targets: targets.map((t) => t.path), operations, selections: writes.selections, pointers: writes.pointers }
-    if (hookPreview) plan.hookPlan = previewAgentHooks(hookPreview, resolvedScope, selectedAgents, enforcementArg)
+    if (hookPlan) plan.hookPlan = hookPlan
     if (jsonMode) console.log(JSON.stringify(plan, null, 2))
     else console.log('Dry-run installation plan:', plan)
     return 0

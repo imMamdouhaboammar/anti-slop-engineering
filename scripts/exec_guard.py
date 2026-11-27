@@ -921,6 +921,19 @@ def evaluate_hook_event(event, state, workspace):
         return _hook_result(event, "error", "STATE_DAMAGED")
     contract = _validate_hook_policy(state)
     operation = event["operation"]
+    if "ANTI_SLOP_DESIGN_TRUST" in os.environ:
+        if __package__:
+            from .design_integrity_guard import check_mutation
+        else:
+            from design_integrity_guard import check_mutation
+        design = check_mutation(
+            workspace.resolve(), os.environ["ANTI_SLOP_DESIGN_TRUST"], operation, event["target_paths"],
+            pre_tool=event["phase"] == "pre_tool",
+        )
+        if design["decision"] == "block":
+            response = _hook_result(event, "block", design["reason_code"])
+            response["message"] = design["message"]
+            return response
     if contract["level"] == "off" or contract["mode"] == "unconfirmed":
         return _hook_result(event, "allow", "CONTROL_INACTIVE")
 

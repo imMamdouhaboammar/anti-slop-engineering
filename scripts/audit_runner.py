@@ -526,6 +526,7 @@ CLI_COMMAND_TO_GUARD_MAP: Dict[str, str] = {
 }
 
 EXCLUDED_CLI_COMMANDS: Dict[str, str] = {
+    "design": "External approval boundary; run design check with trusted verifier and owner-controlled trust separately.",
     "serve-rust": "Daemon lifecycle command for background Rust HTTP microservice (:9091)",
     "serve-go": "Daemon lifecycle command for background Go HTTP microservice (:9092)",
     "mcp-server": "MCP stdio server exposing anti-slop tools to agentic IDEs and Antigravity",
