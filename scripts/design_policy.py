@@ -154,7 +154,7 @@ def validate_policy(policy, manifest):
 
 # Deliberately lexical. Complex source expressions require owner-signed artifacts or a later AST adapter.
 COMPONENT = re.compile(r"<\s*([A-Z][\w]*(?:\.[A-Z][\w]*)*)\b")
-ATTRIBUTE = re.compile(r"\b(className|class|style|data-design-component)\s*=\s*")
+ATTRIBUTE = re.compile(r"\b(className|class|style|data-design-component)\s*=\s*", re.I)
 LITERAL = re.compile(r"""(?:\{\s*)?(["'])(.*?)\1\s*(\})?""", re.S)
 JS_COMMENT = re.compile(r"/\*.*?\*/|<!--[\s\S]*?-->")
 SPREAD = re.compile(r"\{\s*\.\.\.")
@@ -169,7 +169,7 @@ def check_source(content, manifest, policy):
         raise PolicyError("UI_STYLE_UNVERIFIED")
     for match in ATTRIBUTE.finditer(content):
         attr = match.group(1)
-        if attr == "style":
+        if attr.lower() == "style":
             raise PolicyError("UI_STYLE_UNVERIFIED")
         value = LITERAL.match(content, match.end())
         if value is None or (content[match.end()] == "{" and value.group(3) != "}"):

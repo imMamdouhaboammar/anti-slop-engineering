@@ -78,7 +78,7 @@ function checkCSS(source, tokens) {
 
 function checkClass(value, policy) {
   const allowed = new Set(policy.allowed_classes);
-  check(value.split(/\s+/u).filter(Boolean).every(item => allowed.has(item)), "UI_UNAPPROVED_UTILITY");
+  check(value.split(/[ \t\n\f\r]+/).filter(Boolean).every(item => allowed.has(item)), "UI_UNAPPROVED_UTILITY");
 }
 
 function checkAttribute(name, values, manifest, policy) {

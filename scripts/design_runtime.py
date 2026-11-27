@@ -173,8 +173,10 @@ def focus_evidence(locator):
         const outline = s.outlineStyle !== 'none' && s.outlineStyle !== 'hidden' &&
             parseFloat(s.outlineWidth) > 0 && visibleColor(s.outlineColor);
         const shadow = s.boxShadow !== 'none' &&
-            [...s.boxShadow.matchAll(/rgba?\([^)]*\)/g)].some(m => visibleColor(m[0])) &&
-            [...s.boxShadow.matchAll(/(-?[0-9.]+)px/g)].some(m => Number(m[1]) !== 0);
+            s.boxShadow.split(/,(?![^(]*\))/).some(layer =>
+                [...layer.matchAll(/rgba?\([^)]*\)/g)].some(m => visibleColor(m[0])) &&
+                [...layer.matchAll(/(-?[0-9.]+)px/g)].some(m => Number(m[1]) !== 0)
+            );
         return {
             focused: e === document.activeElement,
             visible: e.checkVisibility({opacityProperty:true, visibilityProperty:true}),

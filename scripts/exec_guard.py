@@ -925,8 +925,12 @@ def evaluate_hook_event(event, state, workspace):
         if str(Path(__file__).resolve().parents[1]) not in sys.path:
             sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
         from scripts.design_integrity_guard import check_mutation
+        normalized_targets = [
+            Path(item).as_posix() if isinstance(item, str) else item
+            for item in event["target_paths"]
+        ]
         design = check_mutation(
-            workspace.resolve(), os.environ["ANTI_SLOP_DESIGN_TRUST"], operation, event["target_paths"],
+            workspace.resolve(), os.environ["ANTI_SLOP_DESIGN_TRUST"], operation, normalized_targets,
             pre_tool=event["phase"] == "pre_tool",
         )
         if design["decision"] == "block":
