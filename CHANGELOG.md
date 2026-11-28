@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.18.0] - 2026-11-28
+
+### Added
+
+- `hooks/hook_dispatch.mjs` with `PreInvocation`, expanded `PreToolUse` / `PostToolUse` matchers, fail-closed JSON parsing, and multi-agent payload normalization.
+- `hooks/git_hook.mjs` for `pre-commit`, `commit-msg`, and `pre-push` Git lifecycle gates.
+- `skills/hooks-long-playbook/SKILL.md` registered in `skills.sh.json` (#296).
+- Ruff `C4` and `SIM` lint rules enabled in `pyproject.toml` with cleanups across `scripts/` and `tests/` (#297).
+
+### Security
+
+- Hardened `.gitignore` for `*.tgz`, `*.tsbuildinfo`, `.npmrc`, `*.p12`, `*.pfx`, `id_rsa*`, `id_ed25519*`, and `tests/tmp_*.md` (#295).
+
 ## [1.16.0] - 2026-11-25
 
 ### Added
