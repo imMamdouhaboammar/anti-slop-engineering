@@ -261,9 +261,7 @@ def _detect_mutating_command(tokens):
         "sed", "awk", "truncate", "dd", "tar", "unzip",
     }
     if cmd in mutating_bins:
-        if cmd == "sed" and "-i" not in tokens and "--in-place" not in tokens:
-            return False
-        return True
+        return not (cmd == "sed" and "-i" not in tokens and "--in-place" not in tokens)
 
     if cmd == "git" and len(tokens) > 1:
         mutating_git = {

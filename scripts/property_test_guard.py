@@ -63,10 +63,7 @@ def parse_seed(val: Union[int, str]) -> Tuple[int, str]:
     elif isinstance(val, str):
         cleaned = val.strip().replace("_", "")
         try:
-            if cleaned.lower().startswith("0x"):
-                seed_int = int(cleaned, 16)
-            else:
-                seed_int = int(cleaned, 10)
+            seed_int = int(cleaned, 16) if cleaned.lower().startswith("0x") else int(cleaned, 10)
         except ValueError as err:
             raise ValueError(f"Invalid seed representation: {val!r}") from err
     else:
@@ -105,9 +102,8 @@ class SeedContext:
 
 def _python_call_name(call: ast.Call) -> str:
     target = call.func
-    if isinstance(target, ast.Attribute) and isinstance(target.value, ast.Name):
-        if target.value.id == "random":
-            return target.attr
+    if isinstance(target, ast.Attribute) and isinstance(target.value, ast.Name) and target.value.id == "random":
+        return target.attr
     return ""
 
 

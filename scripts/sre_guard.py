@@ -249,7 +249,7 @@ def check_dry_duplication(file_contents_map, min_dup_lines=4):
         for i in range(len(code_lines) - min_dup_lines + 1):
             window = code_lines[i:i + min_dup_lines]
             block_text = '\n'.join(line for _, line in window)
-            if len(set(line for _, line in window)) <= 1:
+            if len({line for _, line in window}) <= 1:
                 continue
             block_hash = hashlib.sha256(block_text.encode('utf-8')).hexdigest()[:16]
             start_line = window[0][0]

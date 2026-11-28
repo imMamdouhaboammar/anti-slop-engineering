@@ -940,14 +940,13 @@ def _proof_test_status(baseline, current):
     base_run, baseline_cases = baseline
     current_run, current_cases = current
     status = _evaluate_test_status(base_run["classification"], current_run["classification"])
-    if status == "verified" and baseline_cases:
-        if any(
-            state == "fail" and current_cases.get(name) != "pass"
-            for name, state in baseline_cases.items()
-        ):
-            base_run["classification"] = "unattributed"
-            base_run["reason"] = "A failing baseline test did not pass in the current snapshot"
-            return "inconclusive"
+    if status == "verified" and baseline_cases and any(
+        state == "fail" and current_cases.get(name) != "pass"
+        for name, state in baseline_cases.items()
+    ):
+        base_run["classification"] = "unattributed"
+        base_run["reason"] = "A failing baseline test did not pass in the current snapshot"
+        return "inconclusive"
     return status
 
 

@@ -183,10 +183,7 @@ class DiffLifecycleTests(unittest.TestCase):
         self.install_hooks(checkout_hooks)
         case_alias = self.repo.with_name(self.repo.name.upper())
 
-        if case_alias.is_dir():
-            candidate = case_alias / "hooks"
-        else:
-            candidate = checkout_hooks
+        candidate = case_alias / "hooks" if case_alias.is_dir() else checkout_hooks
 
         result = self.scan("--hooks-dir", str(candidate), check=False)
 
