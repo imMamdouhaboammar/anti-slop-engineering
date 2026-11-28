@@ -110,6 +110,12 @@ Antigravity 2.35.1+ loads `.agents/hooks.json` at session startup. Anti-Slop pro
 - **Containment & safety**: Rejects symlinks, preserves other configured project hooks, and verifies canonical path containment within the workspace.
 - **CLI setup & preview**: Run `bunx anti-slop-engineering setup --antigravity-hooks` (or `--dry-run --json`) to preview and apply configuration.
 
+### Lifecycle & Git Hooks
+
+`hooks/hook_dispatch.mjs` handles `SessionStart`, `PreInvocation`, `PreToolUse`, and `PostToolUse` events defined in `hooks.json`. It parses JSON stdin fail-closed, normalizes payloads across Claude Code, Codex, Cursor, and Antigravity, and enforces physical admission control before file mutations run.
+
+`hooks/git_hook.mjs` runs `pre-commit`, `commit-msg`, and `pre-push` checks for Git workflows. Design rules and reference engines for these hooks live in [`skills/hooks-long-playbook/SKILL.md`](skills/hooks-long-playbook/SKILL.md).
+
 ### Native MCP Tools
 
 | Tool | Purpose | Key Inputs |
