@@ -65,6 +65,11 @@ agent-kernel/env-vault/
 *.key
 *.cert
 *.crt
+*.p12
+*.pfx
+id_rsa*
+id_ed25519*
+.npmrc
 .venv
 env/
 venv/
@@ -129,6 +134,11 @@ skills-lock.json
 # Node & Bun
 node_modules/
 .turbo/
+*.tgz
+*.tsbuildinfo
+
+# Transient test outputs
+tests/tmp_*.md
 
 # Rust & Cargo
 target/
