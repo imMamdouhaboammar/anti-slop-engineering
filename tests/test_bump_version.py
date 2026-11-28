@@ -113,9 +113,8 @@ class BumpVersionTests(unittest.TestCase):
             self.assertIn("__version__ = '1.0.1'", ast_guard.read_text(encoding="utf-8"))
 
     def test_missing_package_json_raises(self):
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            with self.assertRaises(FileNotFoundError):
-                read_current_version(tmp_dir)
+        with tempfile.TemporaryDirectory() as tmp_dir, self.assertRaises(FileNotFoundError):
+            read_current_version(tmp_dir)
 
     def test_cli_dry_run_execution(self):
         result = subprocess.run(

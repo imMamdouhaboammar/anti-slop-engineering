@@ -94,6 +94,8 @@ select = [
   "F",
   "W",
   "B",
+  "C4",
+  "SIM",
 ]
 ignore = [
   "E501",  # Line length handled by formatter / permitted for long regex & test fixtures
@@ -105,10 +107,23 @@ ignore = [
   "F841",  # Local variable assigned but never used
   "B007",  # Loop control variable not used within loop body
   "B008",  # Do not perform function calls in argument defaults
+  "SIM102",  # Nested if statements permitted when combining conditions hurts readability
+  "SIM117",  # Nested with statements permitted in test setups
   "W293",  # Blank line contains whitespace
 ]
 
 [tool.ruff.lint.per-file-ignores]
+# Legacy guard modules with pre-existing error-handling debt outside this change
+"scripts/asset_provenance_guard.py" = ["C414"]
+"scripts/demock_guard.py" = ["SIM110"]
+"scripts/design_integrity_guard.py" = ["SIM114"]
+"scripts/forensic_hunter.py" = ["SIM103"]
+"scripts/house_tell_guard.py" = ["SIM110"]
+"scripts/pr_boundary_guard.py" = ["SIM108"]
+"scripts/skills_compliance_engine.py" = ["C414"]
+"scripts/styleseed_guard.py" = ["SIM105"]
+"scripts/system_drift_guard.py" = ["C414"]
+"scripts/tagore_guard.py" = ["C401"]
 "tests/*" = [
   "E402",  # Module level import not at top of file (sys.path.insert required for standalone discovery)
   "F401",  # Module imported but unused (test fixtures and helper imports)

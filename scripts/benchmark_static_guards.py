@@ -27,7 +27,7 @@ def _environment(root, git):
         "GIT_ALLOW_PROTOCOL": "",
     }
     if os.name == "nt" and "SystemRoot" in os.environ:
-        env["SystemRoot"] = os.environ["SystemRoot"]
+        env["SystemRoot"] = os.environ["SYSTEMROOT"]
     return env
 
 

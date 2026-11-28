@@ -322,9 +322,7 @@ def is_eligible_file(path_str):
     p = pathlib.Path(path_str)
     if p.suffix.lower() not in JS_TS_EXTS:
         return False
-    if IGNORE_DIR_RE.search(path_str):
-        return False
-    return True
+    return not IGNORE_DIR_RE.search(path_str)
 
 
 def audit_source_lines(lines, file_path, changed_lines=None):

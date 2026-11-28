@@ -593,23 +593,21 @@ class AuditRunnerTests(unittest.TestCase):
 
     def test_run_engine_command_strict_failure(self):
         """run_engine_command prints error and returns 1 when engine is missing in strict mode."""
-        with patch("shutil.which", return_value=None):
-            with patch("builtins.print") as mock_print:
-                code = audit_runner.run_engine_command("cargo", ["cargo", "test"], strict=True)
-                self.assertEqual(code, 1)
-                mock_print.assert_called()
-                error_msg = str(mock_print.call_args[0][0])
-                self.assertIn("Error: Required engine 'cargo'", error_msg)
+        with patch("shutil.which", return_value=None), patch("builtins.print") as mock_print:
+            code = audit_runner.run_engine_command("cargo", ["cargo", "test"], strict=True)
+            self.assertEqual(code, 1)
+            mock_print.assert_called()
+            error_msg = str(mock_print.call_args[0][0])
+            self.assertIn("Error: Required engine 'cargo'", error_msg)
 
     def test_run_engine_command_executes_when_available(self):
         """run_engine_command delegates execution when engine is available."""
-        with patch("shutil.which", return_value="/usr/bin/node"):
-            with patch("subprocess.run") as mock_run:
-                mock_run.return_value.returncode = 0
-                code = audit_runner.run_engine_command("node", ["node", "-v"], strict=True, title="Node version")
-                self.assertEqual(code, 0)
-                mock_run.assert_called_once()
-                self.assertEqual(mock_run.call_args[0][0], ["node", "-v"])
+        with patch("shutil.which", return_value="/usr/bin/node"), patch("subprocess.run") as mock_run:
+            mock_run.return_value.returncode = 0
+            code = audit_runner.run_engine_command("node", ["node", "-v"], strict=True, title="Node version")
+            self.assertEqual(code, 0)
+            mock_run.assert_called_once()
+            self.assertEqual(mock_run.call_args[0][0], ["node", "-v"])
 
     def test_cli_engine_commands(self):
         script = [sys.executable, str(SCRIPTS_DIR / "audit_runner.py")]
@@ -1077,14 +1075,13 @@ class ScopeAwareSummaryTests(unittest.TestCase):
             ([], {"diff_guard": self._guard("ERROR", error="boom")}, 2),
         ]
         for findings, guards, expected_exit in scenarios:
-            with tempfile.TemporaryDirectory() as tmp:
-                with (
-                    patch.object(audit_runner, "AUDIT_DIR", Path(tmp)),
-                    patch.object(audit_runner, "collect_audit_findings",
-                                 return_value=(findings, guards)),
-                    patch("sys.stdout", new_callable=lambda: __import__("io").StringIO()),
-                ):
-                    self.assertEqual(audit_runner.run_audit(mode="during"), expected_exit)
+            with (
+                tempfile.TemporaryDirectory() as tmp, patch.object(audit_runner, "AUDIT_DIR", Path(tmp)),
+                patch.object(audit_runner, "collect_audit_findings",
+                             return_value=(findings, guards)),
+                patch("sys.stdout", new_callable=lambda: __import__("io").StringIO()),
+            ):
+                self.assertEqual(audit_runner.run_audit(mode="during"), expected_exit)
 
 
 class GuardBucketLegendTests(unittest.TestCase):

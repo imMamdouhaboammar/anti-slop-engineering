@@ -102,9 +102,7 @@ def has_anchor(paragraph: str) -> bool:
     """Paragraph contains a scannable anchor (bold, list item, arrow, heading, quote, code)."""
     if _ANCHOR_LINE.search(paragraph) or _BOLD.search(paragraph):
         return True
-    if paragraph.startswith("```") or paragraph.startswith("#") or paragraph.startswith(">"):
-        return True
-    return False
+    return bool(paragraph.startswith("```") or paragraph.startswith("#") or paragraph.startswith(">"))
 
 
 def strip_frontmatter(text: str) -> str:
@@ -125,10 +123,7 @@ def calculate_scannability_metrics(text: str) -> Dict[str, Any]:
     
     # Words to first bold anchor (headline: time-to-point)
     bold_match = _BOLD.search(content)
-    if bold_match:
-        ttp = count_words(content[: bold_match.start()])
-    else:
-        ttp = words
+    ttp = count_words(content[:bold_match.start()]) if bold_match else words
 
     # Answer first: line 1 starts with bold statement or heading
     lines = [ln.strip() for ln in content.strip().splitlines() if ln.strip()]
