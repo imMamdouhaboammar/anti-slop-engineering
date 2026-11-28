@@ -28,7 +28,7 @@ class ValidateSkillsTests(unittest.TestCase):
     def test_repository_skills_and_agents_pointers_pass_clean_checkout(self):
         report = validate_skills.validate_repository(REPO_ROOT)
         self.assertTrue(report["ok"], report["errors"])
-        self.assertEqual(report["skills_checked"], 47)
+        self.assertEqual(report["skills_checked"], 48)
         self.assertEqual(report["errors"], [])
         self.assertEqual(report["missing_cli_handlers"], [])
 

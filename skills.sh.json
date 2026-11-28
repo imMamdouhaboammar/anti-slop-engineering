@@ -28,7 +28,8 @@
         "demock-guard",
         "install-anti-slop",
         "llm-eval-and-prompt-injection-fortress",
-        "repo-fortress"
+        "repo-fortress",
+        "hooks-long-playbook"
       ]
     },
     {
